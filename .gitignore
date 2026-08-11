@@ -1,0 +1,89 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Packaging / build output
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+share/python-wheels/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Test / coverage output
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.hypothesis/
+
+# Type checking / linting caches
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+dmypy.json
+dmypy.json.*
+
+# Documentation builds
+docs/_build/
+site/
+
+# Local documentation and patch files
+*.md
+!/README.md
+!/DEVELOPMENT_GUIDE.md
+!/CONTRIBUTING.md
+!/SECURITY.md
+!/.github/pull_request_template.md
+*.diff
+*-recording.tape
+*.txt
+!/requirements.txt
+*.mk
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE / editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local runtime files
+*.log
+*.pid
+*.sqlite
+*.sqlite3
