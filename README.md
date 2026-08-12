@@ -2,6 +2,21 @@
 
 <img src="docs/assets/logo.png" alt="Easy Docker Manager logo" width="200">
 
+[![PyPI](https://img.shields.io/pypi/v/easy-docker-manager?logo=pypi&logoColor=white)](https://pypi.org/project/easy-docker-manager/)
+[![Python](https://img.shields.io/pypi/pyversions/easy-docker-manager?logo=python&logoColor=white)](https://pypi.org/project/easy-docker-manager/)
+[![Quality](https://github.com/arabnejad/edm/actions/workflows/quality.yml/badge.svg?branch=main)](https://github.com/arabnejad/edm/actions/workflows/quality.yml)
+[![Package](https://github.com/arabnejad/edm/actions/workflows/package.yml/badge.svg?branch=main)](https://github.com/arabnejad/edm/actions/workflows/package.yml)
+[![Security](https://github.com/arabnejad/edm/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/arabnejad/edm/actions/workflows/security.yml)
+[![License: MIT](https://custom-icon-badges.demolab.com/github/license/arabnejad/edm?logo=law&logoColor=white)](https://github.com/arabnejad/edm/blob/main/LICENSE)
+
+[![Open issues](https://custom-icon-badges.demolab.com/github/issues-raw/arabnejad/edm?logo=issue-opened&logoColor=white)](https://github.com/arabnejad/edm/issues)
+[![Open pull requests](https://custom-icon-badges.demolab.com/github/issues-pr-raw/arabnejad/edm?logo=git-pull-request&logoColor=white)](https://github.com/arabnejad/edm/pulls)
+
+[![Black](https://img.shields.io/badge/code%20style-black-000000?logo=black&logoColor=white)](https://github.com/psf/black)
+[![Ruff](https://img.shields.io/badge/linter-ruff-D7FF64?logo=ruff&logoColor=black)](https://docs.astral.sh/ruff/)
+[![mypy](https://img.shields.io/badge/type%20checked-mypy-2A6DB2?logo=python&logoColor=white)](https://mypy-lang.org/)
+[![CodeQL](https://github.com/arabnejad/edm/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/arabnejad/edm/actions/workflows/github-code-scanning/codeql)
+
 Easy Docker Manager (EDM) is a keyboard-driven terminal application for
 inspecting Docker containers running on your computer. It uses Urwid for the
 terminal interface and the Docker Python SDK to read container data.
