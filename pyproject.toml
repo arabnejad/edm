@@ -39,7 +39,7 @@ dependencies = [
 dev = [
     "bandit[toml]==1.8.6",
     "black==25.11.0",
-    "build==1.4.4",
+    "build==1.5.0",
     "mypy==1.19.1",
     "pre-commit>=3.5,<5",
     "pytest==8.4.2",
