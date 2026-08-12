@@ -15,7 +15,7 @@ body:
     attributes:
       label: EDM version
       description: Run `python -m pip show easy-docker-manager` to find it.
-      placeholder: 1.0.0
+      placeholder: Paste the value shown after Version
     validations:
       required: true
 

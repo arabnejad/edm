@@ -564,6 +564,39 @@ Dependabot checks Python packages and GitHub Actions every week. GitHub secret
 scanning and push protection are repository settings and should be enabled
 separately.
 
+## Publishing A Release
+
+EDM uses `setuptools-scm` to get the package version from a Git tag. Do not edit
+a version in `pyproject.toml`. A tag such as `v1.0.1` produces package version
+`1.0.1`.
+
+Before creating a release, update `main` and run the local checks:
+
+```bash
+git switch main
+git pull --ff-only
+git status
+make check
+```
+
+Make sure the working tree is clean and the required GitHub checks have passed
+on `main`. Then create an annotated tag for the new semantic version, review
+it, and push it:
+
+```bash
+git tag -a v1.0.0 -m "Release Easy Docker Manager 1.0.0"
+git show v1.0.0
+git push origin v1.0.0
+```
+
+Pushing the tag starts `.github/workflows/release.yml`. The workflow builds and
+tests the package, creates the GitHub Release, and then waits for approval to
+use the protected `pypi` environment. Review the completed jobs before
+approving the PyPI publication.
+
+Do not move or reuse a release tag after pushing it. If the source or package
+files need to change, make the fix on `main` and publish a new version.
+
 ## Recording The README Demo
 
 [VHS](https://github.com/charmbracelet/vhs) records terminal actions as a text
