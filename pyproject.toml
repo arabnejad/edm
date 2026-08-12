@@ -36,14 +36,17 @@ dependencies = [
 ]
 
 [dependency-groups]
+test = [
+    "pytest==8.4.2",
+    "pytest-cov==7.0.0",
+]
 dev = [
+    { include-group = "test" },
     "bandit[toml]==1.8.6",
-    "black==25.11.0",
+    "black==26.5.1",
     "build==1.4.4",
     "mypy==1.19.1",
     "pre-commit>=3.5,<5",
-    "pytest==8.4.2",
-    "pytest-cov==7.0.0",
     "ruff==0.15.20",
     "twine==6.2.0",
 ]
