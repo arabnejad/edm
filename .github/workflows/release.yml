@@ -1,0 +1,212 @@
+name: Release package
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and validate distributions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the release tag and Git history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install development tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --group dev -e .
+
+      - name: Validate the release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+
+          release_tag = os.environ["RELEASE_TAG"]
+          if not re.fullmatch(r"v\d+\.\d+\.\d+", release_tag):
+              raise SystemExit(
+                  "Release tags must use vX.Y.Z format, for example v1.0.1"
+              )
+          PY
+
+      - name: Confirm the tagged commit belongs to main
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Run quality checks and unit tests
+        run: make check
+
+      - name: Build and validate distributions
+        run: |
+          rm -rf build dist
+          make package-check
+
+      - name: Confirm the built version matches the tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from packaging.utils import parse_sdist_filename, parse_wheel_filename
+          from packaging.version import Version
+
+          expected_version = Version(os.environ["RELEASE_TAG"].removeprefix("v"))
+          wheels = list(Path("dist").glob("*.whl"))
+          source_archives = list(Path("dist").glob("*.tar.gz"))
+
+          if len(wheels) != 1 or len(source_archives) != 1:
+              raise SystemExit("Expected one wheel and one source distribution")
+
+          wheel_version = parse_wheel_filename(wheels[0].name)[1]
+          source_version = parse_sdist_filename(source_archives[0].name)[1]
+
+          if wheel_version != expected_version or source_version != expected_version:
+              raise SystemExit(
+                  "Built version does not match release tag: "
+                  f"tag={expected_version}, wheel={wheel_version}, "
+                  f"source={source_version}"
+              )
+          PY
+
+      - name: Store distribution files
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: python-package-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  test-wheel:
+    name: Test wheel on Python ${{ matrix.python-version }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download distribution files
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Install the built wheel
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install dist/*.whl
+
+      - name: Check the installed package and version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python -m pip check
+          python - <<'PY'
+          import os
+          from importlib.metadata import distribution
+
+          expected_version = os.environ["RELEASE_TAG"].removeprefix("v")
+          installed_distribution = distribution("easy-docker-manager")
+
+          if installed_distribution.version != expected_version:
+              raise SystemExit(
+                  f"Installed {installed_distribution.version}, "
+                  f"expected {expected_version}"
+              )
+
+          commands = {
+              item.name
+              for item in installed_distribution.entry_points
+              if item.group == "console_scripts"
+          }
+          if "edm" not in commands:
+              raise SystemExit("The edm console command is missing")
+
+          import easy_docker_manager
+          PY
+
+  create-github-release:
+    name: Create GitHub Release
+    needs: [build, test-wheel]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download tested distribution files
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Create the release and attach distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/* \
+            --verify-tag \
+            --generate-notes \
+            --title "Easy Docker Manager ${RELEASE_TAG#v}"
+
+  publish-to-pypi:
+    name: Publish distributions to PyPI
+    needs: create-github-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/easy-docker-manager
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download tested distribution files
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
