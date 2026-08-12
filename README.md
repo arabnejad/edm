@@ -1,5 +1,7 @@
 # Easy Docker Manager
 
+<img src="docs/assets/logo.png" alt="Easy Docker Manager logo" width="200">
+
 Easy Docker Manager (EDM) is a keyboard-driven terminal application for
 inspecting Docker containers running on your computer. It uses Urwid for the
 terminal interface and the Docker Python SDK to read container data.
