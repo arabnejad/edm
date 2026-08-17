@@ -212,6 +212,7 @@ make ruff-fix
 make mypy
 make bandit
 make test
+make integration-test
 make pre-commit
 make audit
 make security
@@ -222,13 +223,16 @@ make package-check
 Python 3.10 or newer and network access, so it is not part of `make check`.
 
 `make test` prints statement and branch coverage after the unit tests finish.
+`make integration-test` starts a temporary Alpine container and checks container
+listing, logs, environment variables, inspection data, and process information.
+It requires access to a running local Docker daemon.
 
 GitHub Actions runs Black, Ruff, mypy, and Bandit once on Python 3.12. It runs
-the unit tests on Python 3.9 through 3.14 and verifies the minimum supported
-runtime dependency versions on Python 3.9. It also checks dependencies and
-committed secrets, builds the source distribution and wheel, and installs the
-wheel on every supported Python version. Dependabot checks Python packages and
-GitHub Actions each week.
+the unit tests on Python 3.9 through 3.14, runs the Docker integration tests on
+Python 3.12, and verifies the minimum supported runtime dependency versions on
+Python 3.9. It also checks dependencies and committed secrets, builds the source
+distribution and wheel, and installs the wheel on every supported Python
+version. Dependabot checks Python packages and GitHub Actions each week.
 
 Workflow actions are pinned to full commit SHAs so CI always runs the exact
 reviewed action code instead of a movable version tag. The comment beside each

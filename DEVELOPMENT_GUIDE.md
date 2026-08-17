@@ -53,6 +53,7 @@ src/
       app_logging.py              Configures EDM application logging
 
 tests/
+  integration_tests/              Tests against a temporary Docker container
   unit_tests/                     Unit tests for all EDM modules
 ```
 
@@ -542,6 +543,7 @@ Other useful commands are:
 | `make mypy` | Check Python types |
 | `make bandit` | Check Python source for common security problems |
 | `make test` | Run unit tests and print statement and branch coverage |
+| `make integration-test` | Test Docker data access with a temporary container |
 | `make pre-commit` | Run every configured pre-commit hook |
 | `make audit` | Check dependencies for known vulnerabilities |
 | `make security` | Run Bandit and the dependency audit |
@@ -554,6 +556,7 @@ GitHub Actions:
 
 - runs Black, Ruff, mypy, and Bandit once on Python 3.12
 - runs unit tests on Python 3.9 through 3.14
+- runs real Docker integration tests on Python 3.12
 - tests the minimum supported runtime dependencies on Python 3.9
 - runs dependency review for pull requests
 - runs `pip-audit` and Gitleaks

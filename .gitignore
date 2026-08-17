@@ -62,6 +62,7 @@ site/
 !/CONTRIBUTING.md
 !/SECURITY.md
 !/.github/pull_request_template.md
+!/tests/integration_tests/README.md
 *.diff
 *-recording.tape
 *.txt
