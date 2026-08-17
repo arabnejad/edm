@@ -114,6 +114,9 @@ skips = ["B101"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit_tests"]
+markers = [
+    "integration: requires a running local Docker daemon",
+]
 addopts = [
     "-ra",
     "--import-mode=importlib",
