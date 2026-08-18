@@ -1,6 +1,8 @@
 PYTHON ?= python
 SRC ?= src/easy_docker_manager
-TESTS ?= tests/unit_tests
+TESTS ?= tests
+UNIT_TESTS ?= tests/unit_tests
+INTEGRATION_TESTS ?= tests/integration_tests
 
 RUFF ?= ruff
 BLACK ?= black
@@ -12,8 +14,8 @@ PIP_AUDIT ?= $(PYTHON) -m pip_audit
 BUILD ?= $(PYTHON) -m build
 TWINE ?= $(PYTHON) -m twine
 
-.PHONY: audit bandit black black-check check format lint mypy package-build \
-	package-check pre-commit ruff ruff-fix security test
+.PHONY: audit bandit black black-check check format integration-test lint mypy \
+	package-build package-check pre-commit ruff ruff-fix security test
 
 ruff:
 	$(RUFF) check $(SRC) $(TESTS)
@@ -39,7 +41,10 @@ audit:
 security: bandit audit
 
 test:
-	$(PYTEST) $(TESTS)
+	$(PYTEST) $(UNIT_TESTS)
+
+integration-test:
+	$(PYTEST) --no-cov -m integration $(INTEGRATION_TESTS)
 
 package-build:
 	$(BUILD)

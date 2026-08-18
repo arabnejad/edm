@@ -55,6 +55,14 @@ Run the full local check before opening a pull request:
 make check
 ```
 
+When changing Docker data access, also run the real-container integration
+tests. They require a running local Docker daemon and remove their temporary
+container after the test session:
+
+```bash
+make integration-test
+```
+
 You can also run all pre-commit hooks directly:
 
 ```bash
