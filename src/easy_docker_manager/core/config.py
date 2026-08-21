@@ -9,7 +9,7 @@ from easy_docker_manager.core.log_text import MIN_LOG_LINE_CHARS
 
 @dataclass(frozen=True)
 class AppConfig:
-    """Settings loaded at startup for refresh, logs, cache, and worker behavior.
+    """Settings loaded at startup for the UI and background work.
 
     The same configuration object is shared by the scheduler, data loaders,
     cache, and UI. It is frozen so one component cannot change a setting while
@@ -26,6 +26,7 @@ class AppConfig:
     content_cache_max_bytes: int = 25_000_000
     docker_request_timeout: float = 10.0
     max_workers: int = 4
+    colors_enabled: bool = True
 
     def __post_init__(self) -> None:
         """Reject invalid settings before the application starts."""

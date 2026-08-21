@@ -25,6 +25,7 @@ def test_load_keeps_valid_values_and_removes_unknown_keys(tmp_path: Path) -> Non
             {
                 "refresh_interval": 5,
                 "log_tail": 25,
+                "colors_enabled": False,
                 "removed_setting": True,
             }
         ),
@@ -36,6 +37,7 @@ def test_load_keeps_valid_values_and_removes_unknown_keys(tmp_path: Path) -> Non
 
     assert loaded_config.refresh_interval == 5.0
     assert loaded_config.log_tail == 25
+    assert loaded_config.colors_enabled is False
     assert saved_config["tab_refresh_interval"] == 2.0
     assert "removed_setting" not in saved_config
 
@@ -43,7 +45,13 @@ def test_load_keeps_valid_values_and_removes_unknown_keys(tmp_path: Path) -> Non
 def test_invalid_values_use_defaults_and_are_rewritten(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
     config_path.write_text(
-        json.dumps({"log_tail": True, "max_workers": -2}),
+        json.dumps(
+            {
+                "log_tail": True,
+                "max_workers": -2,
+                "colors_enabled": "false",
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -51,6 +59,7 @@ def test_invalid_values_use_defaults_and_are_rewritten(tmp_path: Path) -> None:
 
     assert loaded_config.log_tail == AppConfig().log_tail
     assert loaded_config.max_workers == AppConfig().max_workers
+    assert loaded_config.colors_enabled is True
 
 
 def test_invalid_json_and_non_object_json_use_defaults(tmp_path: Path) -> None:

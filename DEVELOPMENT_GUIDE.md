@@ -129,13 +129,14 @@ flowchart TD
 
     Start --> ParseOptions
     ParseOptions -->|help or version| ShowInfo
-    ParseOptions -->|no options| Logging --> LoadConfig --> BuildApp --> StartNotifier
+    ParseOptions -->|start EDM| Logging --> LoadConfig --> BuildApp --> StartNotifier
     StartNotifier --> FirstRefresh --> FirstDraw --> StartTimer --> RunUI
 ```
 
 `easy_docker_manager.main` first parses the command options. `--help` and
-`--version` print their output and exit without starting the application. With
-no options, it performs three startup steps:
+`--version` print their output and exit without starting the application.
+`--no-color` starts EDM with a temporary no-color override. Starting EDM then
+performs three steps:
 
 1. Configure EDM's application log.
 2. Load `AppConfig` from `config.json`.
@@ -431,7 +432,7 @@ environment keys, structured values, search matches, and errors.
 
 | Class or module | What it does |
 | --- | --- |
-| `AppConfig` | Stores validated refresh, log, cache, timeout, and worker settings |
+| `AppConfig` | Stores validated refresh, log, cache, timeout, worker, and color settings |
 | `AppConfigStore` | Loads, checks, and rewrites `config.json` |
 | `ContainerSummary` | Stores the container fields shown in the left panel |
 | `ContainerProcessTable` | Stores process column names and rows from Docker top |

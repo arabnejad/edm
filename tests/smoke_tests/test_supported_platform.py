@@ -222,7 +222,8 @@ def test_installed_cli_supports_help_version_and_package_module() -> None:
         [sys.executable, "-m", "easy_docker_manager", "--version"]
     )
 
-    assert "usage: edm [-h] [--version]" in help_result.stdout
+    assert "usage: edm [-h] [--version] [--no-color]" in help_result.stdout
+    assert "--no-color" in help_result.stdout
     assert command_version_result.stdout == f"edm {installed_version}\n"
     assert module_version_result.stdout == f"edm {installed_version}\n"
 

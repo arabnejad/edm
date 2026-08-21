@@ -33,6 +33,22 @@ def test_layout_builds_all_named_palette_entries() -> None:
     } <= names
 
 
+def test_no_color_palette_uses_terminal_defaults_and_keeps_selection_visible() -> None:
+    view = TerminalLayoutView(AppConfig(colors_enabled=False))
+    palette = {
+        name: (foreground, background)
+        for name, foreground, background in view.build_palette()
+    }
+
+    assert {background for _foreground, background in palette.values()} == {"default"}
+    assert all(
+        foreground in {"default", "default,bold", "default,standout"}
+        for foreground, _background in palette.values()
+    )
+    assert palette["selected"] == ("default,standout", "default")
+    assert palette["border_active"] == ("default,bold", "default")
+
+
 def test_render_shows_empty_container_state() -> None:
     view = TerminalLayoutView(AppConfig())
     state = UISessionState(status_message="No running containers.")

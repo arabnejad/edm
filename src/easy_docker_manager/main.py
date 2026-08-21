@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
+from dataclasses import replace
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as distribution_version
 from typing import Optional
@@ -44,6 +45,11 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         version=f"%(prog)s {_installed_version()}",
         help="show the installed EDM version and exit",
     )
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="disable terminal colors for this run",
+    )
     return parser
 
 
@@ -51,13 +57,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     """Handle command options or start the terminal application.
 
     The installed edm command and python -m easy_docker_manager both call this
-    function. Help and version options exit during argument parsing. With no
-    options, EDM configures logging, loads its config, and opens the terminal
-    interface.
+    function. Help and version options exit during argument parsing. Other
+    options are applied after EDM loads its config and before the terminal
+    interface opens.
     """
-    _build_argument_parser().parse_args(argv)
+    command_options = _build_argument_parser().parse_args(argv)
     configure_logging()
     app_config = AppConfigStore().load_and_sync()
+    if command_options.no_color:
+        app_config = replace(app_config, colors_enabled=False)
     app = EDMApp(app_config=app_config)
     app.run()
     return 0

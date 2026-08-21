@@ -78,8 +78,13 @@ class TerminalLayoutView:
         self.layout = self._build_layout()
 
     def build_palette(self) -> list[tuple[str, str, str]]:
-        """Return the named colors passed to the Urwid main loop."""
-        return [
+        """Build the color or monochrome styles used by the terminal view.
+
+        EDMApp passes these named styles to Urwid when the terminal interface
+        starts. In no-color mode, bold and reverse text keep focused items and
+        selected rows visible without using foreground or background colors.
+        """
+        color_palette = [
             ("app_title", "light blue,bold", "default"),
             ("footer", "light blue,bold", "default"),
             ("shortcut_key", "black,bold", "light green"),
@@ -112,6 +117,41 @@ class TerminalLayoutView:
             ("log_number", "light cyan", "default"),
             ("log_http", "light green", "default"),
         ]
+        if self.app_config.colors_enabled:
+            return color_palette
+
+        standout_styles = {
+            "shortcut_key",
+            "selected",
+            "selected_inactive",
+            "detail_selected",
+            "active_detail_tab",
+            "highlight",
+        }
+        bold_styles = {
+            "app_title",
+            "footer",
+            "key",
+            "title_border",
+            "border_active",
+            "title",
+            "accent",
+            "host",
+            "status_ok",
+            "error",
+            "log_error",
+        }
+
+        monochrome_palette = []
+        for name, _foreground, _background in color_palette:
+            foreground = "default"
+            if name in standout_styles:
+                foreground = "default,standout"
+            elif name in bold_styles:
+                foreground = "default,bold"
+            monochrome_palette.append((name, foreground, "default"))
+
+        return monochrome_palette
 
     def render(
         self,
