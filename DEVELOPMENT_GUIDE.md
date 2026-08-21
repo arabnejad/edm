@@ -116,6 +116,8 @@ The main responsibilities are:
 ```mermaid
 flowchart TD
     Start([Run edm])
+    ParseOptions[Parse command options]
+    ShowInfo([Print help or version and exit])
     Logging[Configure application logging]
     LoadConfig[Load or create config.json]
     BuildApp[Create EDMApp and its runtime objects]
@@ -125,11 +127,15 @@ flowchart TD
     StartTimer[Schedule the next background check]
     RunUI([Run the terminal event loop])
 
-    Start --> Logging --> LoadConfig --> BuildApp --> StartNotifier
+    Start --> ParseOptions
+    ParseOptions -->|help or version| ShowInfo
+    ParseOptions -->|no options| Logging --> LoadConfig --> BuildApp --> StartNotifier
     StartNotifier --> FirstRefresh --> FirstDraw --> StartTimer --> RunUI
 ```
 
-`easy_docker_manager.main` performs three steps:
+`easy_docker_manager.main` first parses the command options. `--help` and
+`--version` print their output and exit without starting the application. With
+no options, it performs three startup steps:
 
 1. Configure EDM's application log.
 2. Load `AppConfig` from `config.json`.
@@ -406,7 +412,7 @@ environment keys, structured values, search matches, and errors.
 
 | Class or module | What it does |
 | --- | --- |
-| `easy_docker_manager.main` | Configures logging, loads config, and starts `EDMApp` |
+| `easy_docker_manager.main` | Handles CLI options or configures logging, loads config, and starts `EDMApp` |
 | `EDMApp` | Starts the UI, receives input and task notifications, and closes resources |
 | `_KeyboardRoutingWidget` | Passes terminal keypresses to `EDMApp` |
 | `EDMRuntimeFactory` | Creates and connects the objects used by `EDMApp` |
