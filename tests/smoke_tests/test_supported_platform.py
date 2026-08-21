@@ -6,6 +6,8 @@ import os
 import pkgutil
 import platform
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -28,8 +30,19 @@ from easy_docker_manager.logging.app_logging import default_log_file_path
 pytestmark = pytest.mark.smoke
 
 
+def _run_installed_command(command: list[str]) -> subprocess.CompletedProcess[str]:
+    """Run a command assembled by this test and return its captured output."""
+    # Every argument is fixed by the smoke test; no user input reaches the process.
+    return subprocess.run(  # noqa: S603
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 class SmokeTestContainerDataSource(ContainerDataSource):
-    """Provide empty container data so EDM can start without a Docker daemon."""
+    """Provide predictable container data without requiring a Docker daemon."""
 
     def __init__(self) -> None:
         self.list_request_count = 0
@@ -196,6 +209,22 @@ def test_installed_distribution_exposes_all_edm_modules_and_console_command() ->
     assert len(edm_commands) == 1
     assert edm_commands[0].value == "easy_docker_manager.main:main"
     assert shutil.which("edm") is not None
+
+
+def test_installed_cli_supports_help_version_and_package_module() -> None:
+    installed_version = importlib.metadata.version("easy-docker-manager")
+    edm_command = shutil.which("edm")
+    assert edm_command is not None
+
+    help_result = _run_installed_command([edm_command, "--help"])
+    command_version_result = _run_installed_command([edm_command, "--version"])
+    module_version_result = _run_installed_command(
+        [sys.executable, "-m", "easy_docker_manager", "--version"]
+    )
+
+    assert "usage: edm [-h] [--version]" in help_result.stdout
+    assert command_version_result.stdout == f"edm {installed_version}\n"
+    assert module_version_result.stdout == f"edm {installed_version}\n"
 
 
 def test_default_files_use_the_platform_config_directory() -> None:

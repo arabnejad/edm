@@ -9,6 +9,8 @@ The smoke suite verifies that:
 
 - the installed package contains every EDM module
 - installation creates the `edm` console command
+- `edm --help` and `edm --version` run successfully
+- `python -m easy_docker_manager` reaches the same command-line interface
 - config and log files use the operating system's user config directory
 - Windows selects the polling background notifier
 - macOS selects the pipe background notifier

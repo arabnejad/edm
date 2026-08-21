@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import runpy
 from unittest.mock import Mock
+
+import pytest
 
 from easy_docker_manager import main as main_module
 from easy_docker_manager.core import AppConfig
@@ -18,10 +21,66 @@ def test_main_configures_logging_loads_config_and_runs_app(monkeypatch) -> None:
     monkeypatch.setattr(main_module, "AppConfigStore", config_store_class)
     monkeypatch.setattr(main_module, "EDMApp", edm_app_class)
 
-    assert main_module.main() == 0
+    assert main_module.main([]) == 0
 
     configure_logging.assert_called_once_with()
     config_store_class.assert_called_once_with()
     config_store.load_and_sync.assert_called_once_with()
     edm_app_class.assert_called_once_with(app_config=app_config)
     edm_app.run.assert_called_once_with()
+
+
+def test_help_prints_usage_without_starting_the_application(
+    monkeypatch, capsys
+) -> None:
+    configure_logging = Mock()
+    monkeypatch.setattr(main_module, "configure_logging", configure_logging)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main_module.main(["--help"])
+
+    output = capsys.readouterr().out
+    single_line_output = " ".join(output.split())
+    assert exit_info.value.code == 0
+    assert "usage: edm [-h] [--version]" in output
+    assert "Run without options to start EDM." in single_line_output
+    configure_logging.assert_not_called()
+
+
+def test_version_prints_installed_version_without_starting_the_application(
+    monkeypatch, capsys
+) -> None:
+    configure_logging = Mock()
+    monkeypatch.setattr(main_module, "configure_logging", configure_logging)
+    monkeypatch.setattr(main_module, "_installed_version", lambda: "1.2.3")
+
+    with pytest.raises(SystemExit) as exit_info:
+        main_module.main(["--version"])
+
+    assert exit_info.value.code == 0
+    assert capsys.readouterr().out == "edm 1.2.3\n"
+    configure_logging.assert_not_called()
+
+
+def test_installed_version_returns_unknown_without_package_metadata(
+    monkeypatch,
+) -> None:
+    package_not_found = main_module.PackageNotFoundError("easy-docker-manager")
+    monkeypatch.setattr(
+        main_module,
+        "distribution_version",
+        Mock(side_effect=package_not_found),
+    )
+
+    assert main_module._installed_version() == "unknown"
+
+
+def test_package_module_calls_main(monkeypatch) -> None:
+    main = Mock(return_value=7)
+    monkeypatch.setattr(main_module, "main", main)
+
+    with pytest.raises(SystemExit) as exit_info:
+        runpy.run_module("easy_docker_manager", run_name="__main__")
+
+    assert exit_info.value.code == 7
+    main.assert_called_once_with()

@@ -106,10 +106,17 @@ Run the installed command:
 edm
 ```
 
+Show the available command options or installed version:
+
+```bash
+edm --help
+edm --version
+```
+
 You can also run the Python module directly:
 
 ```bash
-python -m easy_docker_manager.main
+python -m easy_docker_manager
 ```
 
 ## Keyboard Controls
