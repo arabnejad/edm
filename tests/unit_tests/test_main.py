@@ -30,6 +30,21 @@ def test_main_configures_logging_loads_config_and_runs_app(monkeypatch) -> None:
     edm_app.run.assert_called_once_with()
 
 
+def test_no_color_option_disables_colors_for_the_application_run(monkeypatch) -> None:
+    config_store = Mock()
+    config_store.load_and_sync.return_value = AppConfig(colors_enabled=True)
+    edm_app = Mock()
+    monkeypatch.setattr(main_module, "configure_logging", Mock())
+    monkeypatch.setattr(main_module, "AppConfigStore", Mock(return_value=config_store))
+    edm_app_class = Mock(return_value=edm_app)
+    monkeypatch.setattr(main_module, "EDMApp", edm_app_class)
+
+    assert main_module.main(["--no-color"]) == 0
+
+    edm_app_class.assert_called_once_with(app_config=AppConfig(colors_enabled=False))
+    edm_app.run.assert_called_once_with()
+
+
 def test_help_prints_usage_without_starting_the_application(
     monkeypatch, capsys
 ) -> None:
@@ -42,8 +57,9 @@ def test_help_prints_usage_without_starting_the_application(
     output = capsys.readouterr().out
     single_line_output = " ".join(output.split())
     assert exit_info.value.code == 0
-    assert "usage: edm [-h] [--version]" in output
+    assert "usage: edm [-h] [--version] [--no-color]" in output
     assert "Run without options to start EDM." in single_line_output
+    assert "--no-color" in output
     configure_logging.assert_not_called()
 
 

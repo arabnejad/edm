@@ -21,6 +21,7 @@ def test_app_config_uses_expected_defaults() -> None:
     assert config.content_cache_max_bytes == 25_000_000
     assert config.docker_request_timeout == 10.0
     assert config.max_workers == 4
+    assert config.colors_enabled is True
 
 
 @pytest.mark.parametrize(

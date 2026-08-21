@@ -106,11 +106,13 @@ Run the installed command:
 edm
 ```
 
-Show the available command options or installed version:
+Show the available command options or installed version, or start EDM without
+terminal colors:
 
 ```bash
 edm --help
 edm --version
+edm --no-color
 ```
 
 You can also run the Python module directly:
@@ -182,6 +184,9 @@ settings are removed.
 | `content_cache_max_bytes` | `25000000` | Maximum UTF-8 size of all cached tab text |
 | `docker_request_timeout` | `10.0` | Docker SDK request timeout in seconds |
 | `max_workers` | `4` | Maximum number of background worker threads |
+| `colors_enabled` | `true` | Use terminal colors; set to `false` for monochrome output |
+
+`edm --no-color` disables colors for one run without changing `config.json`.
 
 ## Application Logs
 
