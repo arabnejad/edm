@@ -132,11 +132,43 @@ python -m easy_docker_manager
 | `[` | Open the previous detail tab |
 | `]` | Open the next detail tab |
 | `/` | Start editing the search for the current tab |
+| `s` | Open container sorting while the container panel is active |
 | `Page Up` / `Page Down` | Move through the detail panel one page at a time |
 | `Home` / `End` | Select the first or last detail line |
 
 While entering a search, press `Enter` to keep the query and return to detail
 navigation. Press `Esc` to keep the query and return to the container list.
+
+## Container Sorting
+
+Press `s` while the container panel is active to open this menu:
+
+```text
+Sort Containers
+
+  Docker order
+> Name
+  Image
+  Status
+  Creation time
+
+Direction: Ascending
+
+Up/Down Field   Left/Right Direction
+Enter Apply     Esc Cancel
+```
+
+Use `Up` and `Down` to choose a field. Use `Left` for ascending order and
+`Right` for descending order. `Enter` applies the choice, while `Esc` closes
+the menu without changing the list. The active sort is shown below the
+container list.
+
+When you apply a sort, EDM reorders the list without changing which container
+is selected. The selected sort stays active when the container list refreshes.
+Choose Docker order to show containers in the order returned by Docker.
+
+EDM currently shows running containers only, so they usually have the same
+status. For this reason, sorting by Status may not visibly change the list.
 
 ## Detail Tabs
 

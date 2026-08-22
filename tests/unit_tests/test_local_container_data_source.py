@@ -39,7 +39,11 @@ def docker_container_factory():
             "attrs": {
                 "Id": "container-id",
                 "Image": "sha256:image",
-                "Config": {"Env": ["A=1", "EMPTY=", "INVALID"]},
+                "Config": {
+                    "Env": ["A=1", "EMPTY=", "INVALID"],
+                    "Image": "example:latest",
+                },
+                "Created": "2026-01-01T12:00:00Z",
                 "HostConfig": {"LogConfig": {"Type": "json-file"}},
             },
             "logs": Mock(return_value=b"hello\xff"),
@@ -90,8 +94,20 @@ def test_list_running_containers_filters_and_maps_containers(
 
     client.containers.list.assert_called_once_with(filters={"status": "running"})
     assert running_containers == [
-        ContainerSummary("one", "one", "running"),
-        ContainerSummary("two", "two", "running"),
+        ContainerSummary(
+            "one",
+            "one",
+            "running",
+            "example:latest",
+            "2026-01-01T12:00:00Z",
+        ),
+        ContainerSummary(
+            "two",
+            "two",
+            "running",
+            "example:latest",
+            "2026-01-01T12:00:00Z",
+        ),
     ]
 
 
@@ -105,7 +121,14 @@ def test_list_running_containers_skips_a_container_that_cannot_be_mapped(
     client = docker_client_factory()
     client.containers.list.return_value = [first_container, second_container]
     container_data_source = LocalContainerDataSource(create_client=lambda: client)
-    calls = iter([ValueError("bad container"), ContainerSummary("two", "two", "up")])
+    expected_container = ContainerSummary(
+        "two",
+        "two",
+        "up",
+        "example:latest",
+        "2026-01-01T12:00:00Z",
+    )
+    calls = iter([ValueError("bad container"), expected_container])
 
     def map_container(_container):
         value = next(calls)
@@ -117,9 +140,7 @@ def test_list_running_containers_skips_a_container_that_cannot_be_mapped(
         "easy_docker_manager.docker.local.to_container_summary", map_container
     )
 
-    assert container_data_source.list_running_containers() == [
-        ContainerSummary("two", "two", "up")
-    ]
+    assert container_data_source.list_running_containers() == [expected_container]
 
 
 def test_list_running_containers_wraps_docker_failure(docker_client_factory) -> None:

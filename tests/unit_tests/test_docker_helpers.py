@@ -85,7 +85,11 @@ def test_container_mapper_prefers_sdk_attributes() -> None:
         short_id="short-id",
         name="web",
         status="running",
-        attrs={"State": {"Status": "stopped"}},
+        attrs={
+            "State": {"Status": "stopped"},
+            "Config": {"Image": "nginx:latest"},
+            "Created": "2026-01-01T12:00:00Z",
+        },
     )
 
     container_summary = to_container_summary(container)
@@ -93,6 +97,8 @@ def test_container_mapper_prefers_sdk_attributes() -> None:
     assert container_summary.container_id == "full-id"
     assert container_summary.name == "web"
     assert container_summary.status == "running"
+    assert container_summary.image_name == "nginx:latest"
+    assert container_summary.created_at == "2026-01-01T12:00:00Z"
 
 
 def test_container_mapper_uses_inspection_fallbacks() -> None:
@@ -101,6 +107,8 @@ def test_container_mapper_uses_inspection_fallbacks() -> None:
             "Id": "abcdefghijklmnop",
             "Name": "/worker",
             "State": {"Status": "paused"},
+            "Config": {"Image": "worker:1.0"},
+            "Created": "2025-12-01T12:00:00Z",
         }
     )
 
@@ -109,6 +117,8 @@ def test_container_mapper_uses_inspection_fallbacks() -> None:
     assert container_summary.container_id == "abcdefghijklmnop"
     assert container_summary.name == "worker"
     assert container_summary.status == "paused"
+    assert container_summary.image_name == "worker:1.0"
+    assert container_summary.created_at == "2025-12-01T12:00:00Z"
 
 
 def test_container_mapper_uses_unknown_when_no_name_exists() -> None:

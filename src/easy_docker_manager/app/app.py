@@ -26,12 +26,16 @@ logger = logging.getLogger(__name__)
 
 
 class _KeyboardRoutingWidget(urwid.WidgetWrap):
-    """Send Urwid keypresses to EDMApp."""
+    """Keep keyboard input routed to EDMApp for every displayed screen."""
 
     def __init__(self, app: EDMApp) -> None:
         """Wrap the main layout so EDMApp can handle every keypress."""
         self.app = app
         super().__init__(app.layout)
+
+    def selectable(self) -> bool:
+        """Accept keys even when the displayed overlay contains only text."""
+        return True
 
     def keypress(self, size: tuple[int, ...], key: str) -> Optional[str]:
         """Pass one Urwid keypress to EDMApp."""

@@ -35,6 +35,8 @@ class KeyboardController:
         terminal_size: Optional[tuple[int, ...]] = None,
     ) -> KeyAction:
         """Handle one keypress and tell EDMApp whether to redraw or quit."""
+        if self.state.is_container_sort_menu_open:
+            return self._handle_container_sort_menu_keypress(key)
         if self.state.is_search_active:
             return (
                 KeyAction.RENDER
@@ -97,6 +99,12 @@ class KeyboardController:
             self.state.active_focus_area = FocusArea.DETAIL
             self.state.is_search_active = True
             return KeyAction.RENDER
+        elif key in {"s", "S"} and self.state.active_focus_area == FocusArea.CONTAINERS:
+            return (
+                KeyAction.RENDER
+                if self.ui_controller.open_container_sort_menu()
+                else KeyAction.NONE
+            )
         elif (
             key in {"page up", "page down", "home", "end"}
             and self.state.active_focus_area == FocusArea.DETAIL
@@ -107,6 +115,27 @@ class KeyboardController:
                 else KeyAction.NONE
             )
         return KeyAction.NONE
+
+    def _handle_container_sort_menu_keypress(self, key: str) -> KeyAction:
+        """Handle navigation, apply, and cancel keys while sorting is open."""
+        changed = False
+        if key == "up":
+            changed = self.ui_controller.move_container_sort_menu_selection(-1)
+        elif key == "down":
+            changed = self.ui_controller.move_container_sort_menu_selection(1)
+        elif key == "left":
+            changed = self.ui_controller.set_container_sort_menu_direction(
+                descending=False
+            )
+        elif key == "right":
+            changed = self.ui_controller.set_container_sort_menu_direction(
+                descending=True
+            )
+        elif key == "enter":
+            changed = self.ui_controller.apply_container_sort_menu()
+        elif key == "esc":
+            changed = self.ui_controller.close_container_sort_menu()
+        return KeyAction.RENDER if changed else KeyAction.NONE
 
     def _handle_search_keypress(
         self,
