@@ -14,6 +14,7 @@ from enum import Enum
 from typing import Optional
 
 from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.container_sorting import ContainerSortField
 from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.core.content_cache import ContainerTabKey, LRUTabContentCache
 from easy_docker_manager.core.tabs import TabName
@@ -48,6 +49,13 @@ class UISessionState:
     running_containers: list[ContainerSummary] = field(default_factory=list)
     # Index of the selected item in running_containers, or None when empty.
     selected_container_index: Optional[int] = None
+    # Sort order currently applied to the container list.
+    container_sort_field: ContainerSortField = ContainerSortField.DOCKER_ORDER
+    container_sort_descending: bool = False
+    # Temporary choices shown while the container sorting menu is open.
+    is_container_sort_menu_open: bool = False
+    container_sort_menu_field: ContainerSortField = ContainerSortField.DOCKER_ORDER
+    container_sort_menu_descending: bool = False
     # Detail tab currently displayed in the right panel.
     active_detail_tab_name: TabName = TabName.LOGS
     # Which panel receives keyboard input.

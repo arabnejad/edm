@@ -37,11 +37,15 @@ def container_summary_factory() -> Callable[..., ContainerSummary]:
         container_id: str = "container-1",
         name: str = "web",
         status: str = "running",
+        image_name: str = "python:3.12",
+        created_at: str = "2026-01-01T12:00:00Z",
     ) -> ContainerSummary:
         return ContainerSummary(
             container_id=container_id,
             name=name,
             status=status,
+            image_name=image_name,
+            created_at=created_at,
         )
 
     return create_container_summary

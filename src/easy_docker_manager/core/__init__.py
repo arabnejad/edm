@@ -1,4 +1,5 @@
 from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.container_sorting import ContainerSortField
 from easy_docker_manager.core.containers import ContainerProcessTable, ContainerSummary
 from easy_docker_manager.core.content_cache import ContainerTabKey, LRUTabContentCache
 from easy_docker_manager.core.tabs import TabName
@@ -8,6 +9,7 @@ __all__ = [
     "AppConfig",
     "LRUTabContentCache",
     "ContainerProcessTable",
+    "ContainerSortField",
     "ContainerSummary",
     "ContainerTabKey",
     "FocusArea",

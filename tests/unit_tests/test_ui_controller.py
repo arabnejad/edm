@@ -6,6 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from easy_docker_manager.core import ContainerSummary
+from easy_docker_manager.core.container_sorting import ContainerSortField
 from easy_docker_manager.core.content_cache import ContainerTabKey
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.ui_session_state import UISessionState
@@ -202,6 +203,85 @@ def test_container_selection_does_not_move_outside_bounds(
     test_setup.scheduler.schedule_selected_tab_load.assert_not_called()
 
 
+def test_sort_menu_applies_name_order_and_preserves_selected_container(
+    controller_factory,
+    container_summary_factory,
+) -> None:
+    state = UISessionState(
+        running_containers=[
+            container_summary_factory("z", name="Zulu"),
+            container_summary_factory("a", name="alpha"),
+        ],
+        selected_container_index=0,
+    )
+    test_setup = controller_factory(state)
+
+    assert test_setup.controller.open_container_sort_menu()
+    assert test_setup.controller.move_container_sort_menu_selection(1)
+    assert state.container_sort_menu_field == ContainerSortField.NAME
+    assert test_setup.controller.apply_container_sort_menu()
+
+    assert [container.container_id for container in state.running_containers] == [
+        "a",
+        "z",
+    ]
+    assert state.selected_container_id == "z"
+    assert state.selected_container_index == 1
+    assert not state.is_container_sort_menu_open
+    test_setup.scheduler.schedule_selected_tab_load.assert_not_called()
+
+
+def test_sort_menu_can_cancel_and_reject_unavailable_movements(
+    controller_factory,
+) -> None:
+    state = UISessionState()
+    test_setup = controller_factory(state)
+
+    assert not test_setup.controller.close_container_sort_menu()
+    assert not test_setup.controller.move_container_sort_menu_selection(1)
+    assert not test_setup.controller.set_container_sort_menu_direction(descending=True)
+    assert not test_setup.controller.apply_container_sort_menu()
+
+    assert test_setup.controller.open_container_sort_menu()
+    assert not test_setup.controller.open_container_sort_menu()
+    assert not test_setup.controller.move_container_sort_menu_selection(-1)
+    assert not test_setup.controller.set_container_sort_menu_direction(descending=True)
+    assert test_setup.controller.close_container_sort_menu()
+    assert state.container_sort_field == ContainerSortField.DOCKER_ORDER
+
+
+def test_sort_menu_sets_direction_and_restores_docker_order(
+    controller_factory,
+    container_summary_factory,
+) -> None:
+    state = UISessionState(
+        running_containers=[
+            container_summary_factory("z", name="Zulu"),
+            container_summary_factory("a", name="alpha"),
+        ],
+        selected_container_index=0,
+    )
+    test_setup = controller_factory(state)
+    test_setup.controller.open_container_sort_menu()
+    test_setup.controller.move_container_sort_menu_selection(1)
+
+    assert test_setup.controller.set_container_sort_menu_direction(descending=True)
+    assert not test_setup.controller.set_container_sort_menu_direction(descending=True)
+    assert test_setup.controller.apply_container_sort_menu()
+    assert state.container_sort_descending
+
+    test_setup.controller.open_container_sort_menu()
+    assert test_setup.controller.move_container_sort_menu_selection(-1)
+    assert test_setup.controller.apply_container_sort_menu()
+
+    assert [container.container_id for container in state.running_containers] == [
+        "z",
+        "a",
+    ]
+    assert state.container_sort_field == ContainerSortField.DOCKER_ORDER
+    assert not state.container_sort_descending
+
+
 def test_switch_detail_tab_resets_navigation_and_requests_content(
     controller_factory,
     session_state_factory,
@@ -265,13 +345,41 @@ def test_update_running_containers_preserves_selection_by_id(
     )
     test_setup = controller_factory(state)
     refreshed = [
-        ContainerSummary("two", "two-new", "running"),
+        ContainerSummary(
+            "two",
+            "two-new",
+            "running",
+            "python:3.12",
+            "2026-01-01T12:00:00Z",
+        ),
         container_summary_factory("three"),
     ]
 
     assert test_setup.controller.update_running_containers(refreshed)
     assert state.selected_container_id == "two"
     test_setup.scheduler.schedule_selected_tab_load.assert_not_called()
+
+
+def test_container_refresh_reapplies_the_active_sort(
+    controller_factory,
+    container_summary_factory,
+) -> None:
+    state = UISessionState(
+        container_sort_field=ContainerSortField.IMAGE,
+        container_sort_descending=True,
+    )
+    test_setup = controller_factory(state)
+    refreshed = [
+        container_summary_factory("nginx", image_name="nginx:latest"),
+        container_summary_factory("redis", image_name="redis:7"),
+    ]
+
+    assert test_setup.controller.update_running_containers(refreshed)
+
+    assert [container.container_id for container in state.running_containers] == [
+        "redis",
+        "nginx",
+    ]
 
 
 def test_unchanged_refresh_clears_old_error_status(

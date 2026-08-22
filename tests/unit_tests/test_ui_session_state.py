@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from easy_docker_manager.core.container_sorting import ContainerSortField
 from easy_docker_manager.core.content_cache import ContainerTabKey
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.ui_session_state import FocusArea, UISessionState
@@ -13,6 +14,9 @@ def test_state_defaults_describe_the_initial_screen() -> None:
     assert state.active_detail_tab_name == TabName.LOGS
     assert state.active_focus_area == FocusArea.CONTAINERS
     assert state.status_message == "Loading containers..."
+    assert state.container_sort_field == ContainerSortField.DOCKER_ORDER
+    assert not state.container_sort_descending
+    assert not state.is_container_sort_menu_open
 
 
 def test_selected_container_properties_require_a_valid_index(

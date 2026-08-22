@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from easy_docker_manager.app.scheduler import BackgroundTaskScheduler
 from easy_docker_manager.core import ContainerSummary
+from easy_docker_manager.core.container_sorting import (
+    ContainerSortField,
+    sort_container_summaries,
+)
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.ui_session_state import UISessionState
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
+
+if TYPE_CHECKING:
+    from easy_docker_manager.app.scheduler import BackgroundTaskScheduler
 
 
 class UIController:
@@ -21,6 +27,7 @@ class UIController:
     """
 
     DETAIL_TABS = tuple(TabName)
+    CONTAINER_SORT_FIELDS = tuple(ContainerSortField)
 
     def __init__(
         self,
@@ -33,6 +40,7 @@ class UIController:
         self.terminal_layout_view = terminal_layout_view
         self.detail_tab_text_formatter = detail_tab_text_formatter
         self.scheduler = scheduler
+        self._containers_in_docker_order = list(state.running_containers)
 
     @staticmethod
     def _estimate_detail_page_height(
@@ -171,6 +179,77 @@ class UIController:
         self._handle_container_selection_change()
         return True
 
+    def open_container_sort_menu(self) -> bool:
+        """Open the sorting menu with the currently applied choices selected."""
+        if self.state.is_container_sort_menu_open:
+            return False
+        self.state.container_sort_menu_field = self.state.container_sort_field
+        self.state.container_sort_menu_descending = self.state.container_sort_descending
+        self.state.is_container_sort_menu_open = True
+        return True
+
+    def close_container_sort_menu(self) -> bool:
+        """Close the sorting menu without changing the container order."""
+        if not self.state.is_container_sort_menu_open:
+            return False
+        self.state.is_container_sort_menu_open = False
+        return True
+
+    def move_container_sort_menu_selection(self, selection_offset: int) -> bool:
+        """Move the highlighted sorting field without leaving the menu bounds."""
+        if not self.state.is_container_sort_menu_open:
+            return False
+        previous_field = self.state.container_sort_menu_field
+        previous_index = self.CONTAINER_SORT_FIELDS.index(previous_field)
+        selected_index = max(
+            0,
+            min(
+                len(self.CONTAINER_SORT_FIELDS) - 1,
+                previous_index + selection_offset,
+            ),
+        )
+        self.state.container_sort_menu_field = self.CONTAINER_SORT_FIELDS[
+            selected_index
+        ]
+        return self.state.container_sort_menu_field != previous_field
+
+    def set_container_sort_menu_direction(self, *, descending: bool) -> bool:
+        """Choose a direction for the highlighted field in the sorting menu."""
+        if (
+            not self.state.is_container_sort_menu_open
+            or self.state.container_sort_menu_field == ContainerSortField.DOCKER_ORDER
+            or self.state.container_sort_menu_descending == descending
+        ):
+            return False
+        self.state.container_sort_menu_descending = descending
+        return True
+
+    def apply_container_sort_menu(self) -> bool:
+        """Apply the menu choices while keeping the same container selected."""
+        if not self.state.is_container_sort_menu_open:
+            return False
+
+        selected_container_id = self.state.selected_container_id
+        self.state.container_sort_field = self.state.container_sort_menu_field
+        self.state.container_sort_descending = (
+            self.state.container_sort_menu_descending
+            if self.state.container_sort_field != ContainerSortField.DOCKER_ORDER
+            else False
+        )
+        self.state.running_containers = self._sort_containers_for_display(
+            self._containers_in_docker_order
+        )
+        self.state.selected_container_index = self.state.find_running_container_index(
+            selected_container_id
+        )
+        if (
+            self.state.selected_container_index is None
+            and self.state.running_containers
+        ):
+            self.state.selected_container_index = 0
+        self.state.is_container_sort_menu_open = False
+        return True
+
     def switch_detail_tab(self, tab_offset: int) -> bool:
         """Switch tabs, restore cached text, or schedule a missing tab load."""
         active_tab_index = self.DETAIL_TABS.index(self.state.active_detail_tab_name)
@@ -199,20 +278,18 @@ class UIController:
     ) -> bool:
         """Apply a refreshed container list and keep the same id selected."""
         previously_selected_container_id = self.state.selected_container_id
-        previous_signature = [
-            (item.container_id, item.name, item.status)
-            for item in self.state.running_containers
-        ]
+        previous_containers = self.state.running_containers
+        self._containers_in_docker_order = list(running_containers)
+        sorted_running_containers = self._sort_containers_for_display(
+            self._containers_in_docker_order
+        )
         running_container_ids = {
             container.container_id for container in running_containers
         }
         self.state.remove_stopped_container_state(running_container_ids)
         self.scheduler.remove_stopped_container_log_tracking(running_container_ids)
 
-        refreshed_signature = [
-            (item.container_id, item.name, item.status) for item in running_containers
-        ]
-        if refreshed_signature == previous_signature:
+        if sorted_running_containers == previous_containers:
             if (
                 not running_containers
                 and self.state.status_message != "No running containers."
@@ -228,7 +305,7 @@ class UIController:
                 return True
             return False
 
-        self.state.running_containers = running_containers
+        self.state.running_containers = sorted_running_containers
         if not self.state.running_containers:
             self.state.selected_container_index = None
             self.state.status_message = "No running containers."
@@ -249,6 +326,17 @@ class UIController:
         ):
             self._handle_container_selection_change()
         return True
+
+    def _sort_containers_for_display(
+        self,
+        containers: list[ContainerSummary],
+    ) -> list[ContainerSummary]:
+        """Return containers in the sort order selected for the current session."""
+        return sort_container_summaries(
+            containers,
+            self.state.container_sort_field,
+            self.state.container_sort_descending,
+        )
 
     def _handle_container_selection_change(self) -> bool:
         """Reset detail navigation and load the newly selected container tab."""

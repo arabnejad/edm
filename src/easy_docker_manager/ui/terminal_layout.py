@@ -8,6 +8,7 @@ from typing import Optional, Union
 import urwid
 
 from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.container_sorting import ContainerSortField
 from easy_docker_manager.core.log_text import count_line_overlap
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.ui_session_state import FocusArea, UISessionState
@@ -72,10 +73,12 @@ class TerminalLayoutView:
         self._cached_detail_lines: list[str] = []
         self._cached_detail_line_widgets: list[FocusableDetailLine] = []
         self.detail_status_text = urwid.Text("", wrap="clip")
+        self.container_sort_text = urwid.Text("", wrap="clip")
         self.shortcut_footer_text = urwid.Text("", wrap="clip")
         self.container_panel: Optional[urwid.AttrMap] = None
         self.detail_panel: Optional[urwid.AttrMap] = None
-        self.layout = self._build_layout()
+        self._main_layout = self._build_layout()
+        self.layout = urwid.WidgetPlaceholder(self._main_layout)
 
     def build_palette(self) -> list[tuple[str, str, str]]:
         """Build the color or monochrome styles used by the terminal view.
@@ -116,6 +119,9 @@ class TerminalLayoutView:
             ("log_error", "light red,bold", "default"),
             ("log_number", "light cyan", "default"),
             ("log_http", "light green", "default"),
+            ("sort_menu", "light gray", "default"),
+            ("sort_menu_title", "yellow,bold", "default"),
+            ("sort_menu_selected", "black,bold", "light cyan"),
         ]
         if self.app_config.colors_enabled:
             return color_palette
@@ -127,6 +133,7 @@ class TerminalLayoutView:
             "detail_selected",
             "active_detail_tab",
             "highlight",
+            "sort_menu_selected",
         }
         bold_styles = {
             "app_title",
@@ -140,6 +147,7 @@ class TerminalLayoutView:
             "status_ok",
             "error",
             "log_error",
+            "sort_menu_title",
         }
 
         monochrome_palette = []
@@ -162,9 +170,11 @@ class TerminalLayoutView:
         """Redraw the screen from current UI state and prepared detail lines."""
         self._update_panel_border_styles(state)
         self._render_container_list(state)
+        self._render_container_footer(state)
         self._render_detail_header(state)
         self._render_detail_lines(state, detail_lines, format_detail_line)
         self.detail_status_text.set_text(state.status_message)
+        self._render_container_sort_menu(state)
 
     def focus_detail_line(self, index: int) -> None:
         """Move focus to an available row in the scrollable detail list."""
@@ -189,15 +199,20 @@ class TerminalLayoutView:
                 ("pack", urwid.AttrMap(urwid.Divider("─"), "muted")),
             ]
         )
-        container_footer = urwid.Text(
+        container_footer = urwid.Pile(
             [
-                ("muted", "Refresh "),
-                ("value", f"{self.app_config.refresh_interval:g}s"),
-                ("muted", " | Logs "),
-                ("value", f"{self.app_config.log_tail}"),
-                ("muted", " lines"),
-            ],
-            wrap="clip",
+                urwid.Text(
+                    [
+                        ("muted", "Refresh "),
+                        ("value", f"{self.app_config.refresh_interval:g}s"),
+                        ("muted", " | Logs "),
+                        ("value", f"{self.app_config.log_tail}"),
+                        ("muted", " lines"),
+                    ],
+                    wrap="clip",
+                ),
+                self.container_sort_text,
+            ]
         )
         container_frame = urwid.Frame(
             self.container_list_view,
@@ -262,7 +277,9 @@ class TerminalLayoutView:
                 ("shortcut_key", " ] "),
                 ("footer", " Next Tab  "),
                 ("shortcut_key", " / "),
-                ("footer", " Search"),
+                ("footer", " Search  "),
+                ("shortcut_key", " s "),
+                ("footer", " Sort"),
             ]
         )
         return urwid.Frame(
@@ -343,6 +360,70 @@ class TerminalLayoutView:
         )
         if rows:
             self.container_rows.set_focus(min(focus, len(rows) - 1))
+
+    def _render_container_footer(self, state: UISessionState) -> None:
+        """Show the active container sort field and direction."""
+        sort_field = state.container_sort_field
+        sort_markup: list[MarkupSegment] = [
+            ("muted", "Sort: "),
+            ("value", sort_field.value),
+        ]
+        if sort_field != ContainerSortField.DOCKER_ORDER:
+            direction = (
+                " descending" if state.container_sort_descending else " ascending"
+            )
+            sort_markup.append(("muted", direction))
+        self.container_sort_text.set_text(sort_markup)
+
+    def _render_container_sort_menu(self, state: UISessionState) -> None:
+        """Show or hide the container sorting overlay from current UI state."""
+        if not state.is_container_sort_menu_open:
+            self.layout.original_widget = self._main_layout
+            return
+
+        menu_rows: list[urwid.Widget] = []
+        for sort_field in ContainerSortField:
+            is_selected = sort_field == state.container_sort_menu_field
+            prefix = "> " if is_selected else "  "
+            style = "sort_menu_selected" if is_selected else "sort_menu"
+            menu_rows.append(
+                urwid.AttrMap(
+                    urwid.Text(f"{prefix}{sort_field.value}", wrap="clip"),
+                    style,
+                )
+            )
+
+        if state.container_sort_menu_field == ContainerSortField.DOCKER_ORDER:
+            direction = "Not applicable"
+        else:
+            direction = (
+                "Descending" if state.container_sort_menu_descending else "Ascending"
+            )
+        menu_rows.extend(
+            [
+                urwid.Divider("─"),
+                urwid.Text([("muted", "Direction: "), ("value", direction)]),
+                urwid.Divider("─"),
+                urwid.Text("Up/Down Field   Left/Right Direction", wrap="clip"),
+                urwid.Text("Enter Apply     Esc Cancel", wrap="clip"),
+            ]
+        )
+        menu = urwid.AttrMap(
+            urwid.LineBox(
+                urwid.Filler(urwid.Pile(menu_rows), valign="top"),
+                title="Sort Containers",
+                title_attr="sort_menu_title",
+            ),
+            "sort_menu",
+        )
+        self.layout.original_widget = urwid.Overlay(
+            menu,
+            self._main_layout,
+            align="center",
+            width=48,
+            valign="middle",
+            height=12,
+        )
 
     def _render_detail_header(self, state: UISessionState) -> None:
         """Update the container title, tab names, and current search text."""

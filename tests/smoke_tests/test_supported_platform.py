@@ -55,6 +55,8 @@ class SmokeTestContainerDataSource(ContainerDataSource):
                 container_id="smoke-container-id",
                 name="edm-smoke-container",
                 status="running",
+                image_name="python:3.12",
+                created_at="2026-01-01T12:00:00Z",
             )
         ]
 

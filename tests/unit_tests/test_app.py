@@ -73,6 +73,7 @@ def test_root_widget_forwards_keypress_to_app(edm_app_setup) -> None:
     edm_app_setup.app.handle_keyboard_input = Mock(return_value="unhandled")
     root = _KeyboardRoutingWidget(edm_app_setup.app)
 
+    assert root.selectable()
     assert root.keypress((80, 24), "x") == "unhandled"
     edm_app_setup.app.handle_keyboard_input.assert_called_once_with("x", (80, 24))
 

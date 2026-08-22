@@ -62,6 +62,8 @@ def test_container_models_store_summary_and_process_data() -> None:
         container_id="abc",
         name="web",
         status="running",
+        image_name="nginx:latest",
+        created_at="2026-01-01T12:00:00Z",
     )
     process_list = ContainerProcessTable(
         columns=("PID", "CMD"),

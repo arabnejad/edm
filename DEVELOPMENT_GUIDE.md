@@ -25,6 +25,7 @@ src/
 
     core/
       config.py                   AppConfig values and validation
+      container_sorting.py       Container sort fields and ordering
       containers.py               Container and process data classes
       content_cache.py            Size-limited tab text cache
       log_text.py                 Log trimming and duplicate-line handling
@@ -201,13 +202,29 @@ flowchart LR
 `KeyboardController` handles simple key behavior directly, such as entering
 search mode or changing which panel has keyboard focus. It calls
 `UIController` for actions that need several steps, such as moving to another
-container, switching tabs, or scrolling detail text.
+container, sorting containers, switching tabs, or scrolling detail text.
 
 The controller returns a `KeyAction`:
 
 - `NONE`: nothing visible changed.
 - `RENDER`: draw the screen again and check whether background work is due.
 - `QUIT`: leave the terminal application.
+
+### Container Sorting
+
+The menu and its keyboard controls are documented in
+[Container Sorting](README.md#container-sorting). Sorting uses a small Urwid
+overlay rather than opening another terminal window.
+
+`KeyboardController` gives the menu first chance to handle keys while it is
+open. `UIController` keeps the menu's temporary field and direction separate
+from the active sort, so `Esc` can cancel without changing the list.
+
+When `Enter` applies the choice, `UIController` saves the selected container
+ID, sorts the latest list received from Docker, and finds that ID's new index.
+The selected container and its loaded tab therefore stay unchanged. Each later
+container refresh is sorted before it is displayed. `Docker order` uses an
+unchanged copy of the latest list received from Docker.
 
 ## Background Work
 
@@ -365,6 +382,11 @@ Important fields are:
 | --- | --- |
 | `running_containers` | Containers currently shown in the left panel |
 | `selected_container_index` | Selected position in that list |
+| `container_sort_field` | Sort field currently applied to the container list |
+| `container_sort_descending` | Whether the active sort runs in descending order |
+| `is_container_sort_menu_open` | Whether the sorting overlay is visible |
+| `container_sort_menu_field` | Field currently highlighted in the sorting overlay |
+| `container_sort_menu_descending` | Direction currently selected in the sorting overlay |
 | `active_detail_tab_name` | Logs, Env, Config, or Top |
 | `active_focus_area` | Panel that receives navigation keys |
 | `detail_selected_line_index` | Selected line in the detail panel |
@@ -435,6 +457,8 @@ environment keys, structured values, search matches, and errors.
 | `AppConfig` | Stores validated refresh, log, cache, timeout, worker, and color settings |
 | `AppConfigStore` | Loads, checks, and rewrites `config.json` |
 | `ContainerSummary` | Stores the container fields shown in the left panel |
+| `ContainerSortField` | Names the choices shown in the container sorting menu |
+| `sort_container_summaries` | Returns a sorted copy of the latest Docker container list |
 | `ContainerProcessTable` | Stores process column names and rows from Docker top |
 | `TabName` | Names the four detail tabs |
 | `FocusArea` | Names the container and detail keyboard focus areas |

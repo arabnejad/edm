@@ -3,6 +3,7 @@ from __future__ import annotations
 import urwid
 
 from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.container_sorting import ContainerSortField
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.ui_session_state import FocusArea, UISessionState
 from easy_docker_manager.ui.terminal_layout import (
@@ -58,6 +59,41 @@ def test_render_shows_empty_container_state() -> None:
     assert view.container_rows[0].get_text()[0] == "No running containers."
     assert view.container_title_text.get_text()[0] == "Container: none selected"
     assert view.detail_status_text.get_text()[0] == "No running containers."
+    assert view.container_sort_text.get_text()[0] == "Sort: Docker order"
+
+
+def test_render_shows_and_hides_container_sort_menu() -> None:
+    view = TerminalLayoutView(AppConfig())
+    state = UISessionState(
+        is_container_sort_menu_open=True,
+        container_sort_menu_field=ContainerSortField.IMAGE,
+        container_sort_menu_descending=True,
+    )
+
+    view.render(state, ["Select a running container."], lambda line: line)
+
+    assert isinstance(view.layout.original_widget, urwid.Overlay)
+    rendered_text = b"\n".join(view.layout.render((120, 40)).text).decode()
+    assert "Sort Containers" in rendered_text
+    assert "> Image" in rendered_text
+    assert "Direction: Descending" in rendered_text
+    assert "Enter Apply" in rendered_text
+
+    state.is_container_sort_menu_open = False
+    view.render(state, ["Select a running container."], lambda line: line)
+    assert view.layout.original_widget is view._main_layout
+
+
+def test_container_footer_shows_active_sort_direction() -> None:
+    view = TerminalLayoutView(AppConfig())
+    state = UISessionState(
+        container_sort_field=ContainerSortField.CREATED_AT,
+        container_sort_descending=True,
+    )
+
+    view.render(state, ["Select a running container."], lambda line: line)
+
+    assert view.container_sort_text.get_text()[0] == "Sort: Creation time descending"
 
 
 def test_render_updates_container_header_tabs_search_and_focus(
