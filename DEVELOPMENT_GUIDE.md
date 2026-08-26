@@ -15,10 +15,9 @@ src/
       app.py                      Application startup, event handling, shutdown
       runtime_factory.py          Creates and connects runtime objects
       background_notifier.py      Reports finished work to the UI thread
-      background_task_runner.py   Runs blocking work in worker threads
-      background_task_result_handler.py
-                                  Applies finished work to UI state
-      scheduler.py                Starts refresh, tab, and log work when needed
+      background_executor.py      Runs blocking functions in worker threads
+      docker_manager.py
+                                  Requests container data and stores results
 
     config/
       app_config_store.py         Loads and rewrites config.json
@@ -27,17 +26,17 @@ src/
       config.py                   AppConfig values and validation
       container_sorting.py       Container sort fields and ordering
       containers.py               Container and process data classes
-      content_cache.py            Size-limited tab text cache
+      tab_content_cache.py        Size-limited tab text cache
       log_text.py                 Log trimming and duplicate-line handling
       tabs.py                     Detail tab names
       ui_session_state.py         State for the current terminal session
 
     docker/
-      base.py                     ContainerDataSource interface and EDM errors
+      container_client.py         DockerContainerClient interface and EDM errors
       client_factory.py           Creates the local Docker SDK client
       container_mapper.py         Converts Docker objects to EDM data
       error_mapping.py            Converts Docker SDK errors to EDM errors
-      local.py                    Reads data from the local Docker daemon
+      local_container_client.py   Sends requests to the local Docker daemon
       log_availability.py         Checks whether Docker can read container logs
 
     tabs/
@@ -45,10 +44,14 @@ src/
       tab_data_loader.py          Loads text for Logs, Env, Config, and Top
 
     ui/
+      running_container_list_panel.py
+                                  Builds the running-container list panel
+      container_sort_menu.py      Builds the container sorting menu
+      container_details_panel.py Builds the selected container details panel
       formatting.py               Filters lines and adds terminal colors
       keyboard_controller.py      Maps keypresses to actions
-      terminal_layout.py          Builds and updates Urwid widgets
-      ui_controller.py            Coordinates navigation, loading, and drawing
+      terminal_layout.py          Combines panels, popups, and the footer
+      ui_controller.py            Handles navigation, search, and drawing
 
     logging/
       app_logging.py              Configures EDM application logging
@@ -61,42 +64,58 @@ tests/
 
 ## Main Parts
 
+The colors show who owns each part:
+
+- Blue nodes are code developed in EDM.
+- Yellow nodes are third-party Python packages used by EDM.
+- Gray nodes are people or systems outside the application.
+
+Read the diagram from top to bottom. User input enters through `EDMApp`. The
+flow then branches toward screen updates or Docker requests. Finished Docker
+work returns to `EDMApp` through `BackgroundNotifier`.
+
 ```mermaid
-flowchart LR
-    User((User))
+flowchart TD
+    User(("👤 User"))
     App[EDMApp]
     Keyboard[KeyboardController]
     UI[UIController]
     State[(UISessionState)]
-    Scheduler[BackgroundTaskScheduler]
-    Runner[BackgroundTaskRunner]
+    DockerManager[DockerManager]
+    Executor[BackgroundExecutor]
     Notifier[BackgroundNotifier]
-    Handler[BackgroundTaskResultHandler]
     Loader[TabDataLoader]
-    Source[LocalContainerDataSource]
-    Docker[(Local Docker daemon)]
+    Client[LocalDockerContainerClient]
+    DockerSDK[Docker SDK for Python]
+    Docker[(🐳 Local Docker daemon)]
     Formatter[DetailTabTextFormatter]
     View[TerminalLayoutView]
-    Terminal[Terminal screen]
+    Urwid[Urwid]
+    Terminal[🖥️ User's terminal window]
 
-    User --> App
-    App --> Keyboard
-    Keyboard --> UI
-    UI --> State
-    UI --> Scheduler
-    Scheduler --> Runner
-    Runner --> Loader
-    Runner --> Source
-    Loader --> Source
-    Source --> Docker
-    Runner --> Notifier
-    Notifier --> App
-    App --> Handler
-    Handler --> State
-    Handler --> UI
+    User --> App --> Keyboard --> UI
+
     UI --> Formatter
-    UI --> View
-    View --> Terminal
+    UI --> View --> Urwid --> Terminal
+    UI --> State
+
+    App --> DockerManager
+    UI --> DockerManager
+    DockerManager --> State
+    DockerManager --> Executor
+    Executor --> Loader --> Client
+    Executor --> Client
+    Client --> DockerSDK --> Docker
+
+    Executor --> Notifier --> App
+
+    classDef edm fill:#ddf4ff,stroke:#0969da,color:#1f2328
+    classDef thirdParty fill:#fff8c5,stroke:#9a6700,color:#1f2328
+    classDef external fill:#f6f8fa,stroke:#57606a,color:#1f2328
+
+    class App,Keyboard,UI,State,DockerManager,Executor,Notifier,Loader,Client,Formatter,View edm
+    class DockerSDK,Urwid thirdParty
+    class User,Docker,Terminal external
 ```
 
 The main responsibilities are:
@@ -104,13 +123,16 @@ The main responsibilities are:
 - `EDMApp` starts and stops the terminal application. It also receives
   keypresses and finished background work.
 - `KeyboardController` decides what a key means.
-- `UIController` changes selections, switches tabs, requests missing data, and
-  prepares the screen for drawing.
-- `BackgroundTaskScheduler` decides when a Docker request should start.
-- `BackgroundTaskRunner` runs Docker requests outside the UI thread.
-- `BackgroundTaskResultHandler` stores finished results in session state.
-- `TerminalLayoutView` owns and updates the Urwid widgets.
-- `LocalContainerDataSource` is the only class that calls the Docker SDK.
+- `UIController` changes selections, switches tabs, handles menus and search,
+  and prepares the screen for drawing.
+- `DockerManager` decides what container data is needed, requests
+  it, and stores each finished result in session state.
+- `BackgroundExecutor` runs blocking functions outside the UI thread.
+- `TerminalLayoutView` combines the two panels, popups, and shortcut footer.
+  Together, these visible parts are called the terminal view.
+- `RunningContainerListPanel` and `SelectedContainerDetailsPanel` update their
+  own Urwid widgets.
+- `LocalDockerContainerClient` is the only class that calls the Docker SDK.
 
 ## Startup
 
@@ -143,10 +165,11 @@ performs three steps:
 2. Load `AppConfig` from `config.json`.
 3. Create `EDMApp` and call `run()`.
 
-`EDMApp` uses `EDMRuntimeFactory` to create the state, Docker data source,
-background services, controllers, formatter, and terminal view. Keeping this
-setup in one factory makes the application constructor smaller and allows a
-different data source or runtime factory to be supplied when needed.
+`EDMApp` uses `EDMRuntimeFactory` to create the state, Docker client,
+background executor, Docker manager, controllers, formatter, and terminal
+view. Keeping this setup in one factory makes the application constructor
+smaller and allows a different Docker client or runtime factory to be supplied
+when needed.
 
 When the terminal application stops, `EDMApp` stops notifications, waits for
 worker threads to finish, and then closes the Docker client.
@@ -214,49 +237,58 @@ The controller returns a `KeyAction`:
 
 The menu and its keyboard controls are documented in
 [Container Sorting](README.md#container-sorting). Sorting uses a small Urwid
-overlay rather than opening another terminal window.
+popup rather than opening another terminal window.
 
 `KeyboardController` gives the menu first chance to handle keys while it is
-open. `UIController` keeps the menu's temporary field and direction separate
-from the active sort, so `Esc` can cancel without changing the list.
+open. `UISessionState.container_sort_menu_state` holds a `ContainerSortMenuState` with
+the choices currently shown in the menu. The active sort is not changed
+until the user presses `Enter`, so `Esc` can cancel without changing the list.
 
-When `Enter` applies the choice, `UIController` saves the selected container
-ID, sorts the latest list received from Docker, and finds that ID's new index.
-The selected container and its loaded tab therefore stay unchanged. Each later
-container refresh is sorted before it is displayed. `Docker order` uses an
-unchanged copy of the latest list received from Docker.
+When `Enter` applies the choice, `DockerManager` sorts the latest
+list received from Docker and finds the selected container's new position.
+The same container and loaded tab stay selected. Later refreshes use the same
+sort. `Docker order` restores an unchanged copy of the latest list received
+from Docker.
 
 ## Background Work
 
 Docker requests can be slow, so they run in worker threads. Urwid widgets and
 `UISessionState` are changed only on the UI thread.
 
-Read this diagram from top to bottom. The worker thread only reads Docker data.
-The UI thread decides what to request and applies the result.
+Two objects handle this work:
+
+- `DockerManager` owns the request from start to finish. It decides
+  when to start it and provides the function that will handle its result.
+- `BackgroundExecutor` runs the blocking function in a worker thread. It does
+  not know whether the function is refreshing containers, loading a tab, or
+  polling logs.
+
+Read this diagram from top to bottom. The worker thread only calls Docker. All
+state changes happen later on the UI thread.
 
 ```mermaid
 flowchart TD
     subgraph UI[UI thread]
-        Check[1. A timer, keypress, or selection change<br/>asks the scheduler for needed work]
-        Choose[2. Scheduler chooses a container refresh,<br/>tab load, or log update]
-        Submit[3. Runner submits the work to its thread pool]
-        Receive[8. EDMApp removes finished tasks from the queue]
-        Current{9. Is this still the latest task<br/>of its type?}
-        Discard[Ignore the old result]
-        Apply[10. Result handler stores the data or error<br/>in session state or the tab cache]
-        Schedule[11. Check for more due work and<br/>set the next timer]
-        Changed{12. Did the visible screen change?}
-        Draw[13. TerminalLayoutView redraws the screen]
+        Check[1. A timer or UI action asks<br/>DockerManager to check which<br/>Docker data needs updating]
+        Choose[2. DockerManager starts<br/>a container refresh, tab load,<br/>or log poll]
+        Submit[3. BackgroundExecutor submits<br/>the Docker function and its<br/>completion callback]
+        Receive[8. EDMApp takes completed<br/>callbacks from the executor queue]
+        Current{9. Does this Future still<br/>belong to the active request?}
+        Discard[Ignore the old completion]
+        Apply[10. DockerManager reads<br/>the Future and updates<br/>the UI session state]
+        Schedule[11. Start the next request<br/>when it is due and schedule<br/>the next timer]
+        Changed{12. Did visible state change?}
+        Draw[13. Draw the current state]
         Keep[Keep the current screen]
     end
 
     subgraph Worker[Worker thread]
         Request[4. Run the Docker request]
-        Finish[5. Save the returned data or exception<br/>in the task's Future object]
-        Queue[6. Add a CompletedTask to the result queue]
+        Finish[5. Store returned data or<br/>an exception in the Future]
+        Queue[6. Put its completion callback<br/>in the executor queue]
     end
 
-    Notify[7. BackgroundNotifier tells EDMApp<br/>that a result is ready]
+    Notify[7. BackgroundNotifier<br/>wakes EDMApp]
 
     Check --> Choose --> Submit --> Request
     Request --> Finish --> Queue --> Notify --> Receive
@@ -268,65 +300,56 @@ flowchart TD
     Changed -- No --> Keep
 ```
 
-### Scheduler
+### Docker Manager
 
-`BackgroundTaskScheduler` manages three kinds of work:
+`DockerManager` keeps one active `Future` for each request type:
 
-| Task kind | Work |
+| Request | What it reads |
 | --- | --- |
-| `REFRESH` | Read the current list of running containers |
-| `FETCH_TAB_CONTENT` | Load or refresh content for Logs, Env, Config, or Top |
-| `FETCH_LOG_UPDATES` | Ask Docker for newer log lines |
+| Container refresh | The current running-container list |
+| Selected tab load | The full text for the selected Logs, Env, Config, or Top tab |
+| Log poll | New log lines for one container |
 
-The scheduler keeps one current `Future` for each task kind. A `Future` is the
-Python object that represents work running in a worker thread. Keeping it lets
-the scheduler avoid duplicate requests and recognize an old result that should
-no longer update the screen.
+A `Future` is Python's handle for work running in another thread. Keeping the
+active Future prevents duplicate requests. A completion callback also checks
+that it received the same Future before changing state, so an old request
+cannot overwrite a newer result.
 
-A Docker request that has already started cannot be cancelled. If the user
-selects another container or tab while a tab request is running, the old
-request finishes first. Its result can still be cached, and the currently
-selected tab is requested immediately afterward.
+A Docker request that has started cannot be stopped. If the user changes
+container or tab while a tab load is running, the old request finishes first.
+Its text is cached under the container and tab that requested it. The
+DockerManager then starts a load for the current selection.
 
-The scheduler stores the start time of each successful log request. Docker
-receives that time as the next `since` value, so it returns logs written from
-that point onward. A failed request does not update the saved time, which keeps
-the next request from skipping logs.
+Each successful log request saves the time at which it started. The next Docker
+request uses that time as its `since_timestamp`, which asks for lines written
+from that point onward. A failed request keeps the old timestamp so a retry
+does not skip output. Docker can repeat lines where two requests meet;
+`count_repeated_lines_between_batches()` removes that repeated section before
+new lines are added to the cache.
 
-While Env, Config, or Top is visible, the scheduler reloads that tab using
-`tab_refresh_interval`. It does not refresh hidden tabs. Logs uses its separate
-incremental polling path so EDM only requests new log lines.
+Env, Config, and Top reload while they are visible, using
+`tab_refresh_interval`. Hidden tabs are left alone. Logs has a separate polling
+path that asks only for newer lines.
 
-### Runner And Notifier
+### Background Executor And Notifier
 
-`BackgroundTaskRunner` uses a thread pool. When a worker finishes, it puts a
-`CompletedTask` in a queue and calls the notifier. The task contains:
+`BackgroundExecutor.submit()` receives three things:
 
-- its `TaskKind`
-- the finished `Future`, which contains the result or exception
-- optional context that says where a tab or log result belongs
+1. The blocking function to run.
+2. The arguments for that function.
+3. An `on_complete` callback that knows how to handle its Future.
 
-On Unix-like systems, `PipeBackgroundNotifier` uses Urwid's `watch_pipe` to
-notify the UI immediately. On Windows, `PollingBackgroundNotifier` checks for
-finished work every 0.2 seconds with a repeating Urwid timer. In both cases,
-`EDMApp` handles the result on the UI thread.
+For example, a container refresh submits
+`DockerContainerClient.list_running_containers` together with
+`DockerManager._apply_running_container_list_refresh_result`. The first
+function runs in a worker. The second function runs later on the UI thread.
 
-### Result Handler
-
-`BackgroundTaskResultHandler` first asks the scheduler whether the completed
-task is still current. If it is, the handler reads its result and updates
-`UISessionState`:
-
-- `REFRESH` replaces the running-container list. A failure keeps the old list
-  visible and shows an error in the status line.
-- `FETCH_TAB_CONTENT` stores the result under the container and tab that made
-  the request. The user may be looking at another tab by then; the result is
-  still cached for later use.
-- `FETCH_LOG_UPDATES` adds new lines to the correct container's Logs cache. The
-  saved Docker `since` time changes only after a successful request.
-
-Docker may repeat lines where two requests meet. `count_line_overlap()` finds
-the repeated end and start, and the handler adds only the new lines.
+When a worker finishes, the executor puts its completion callback in a queue
+and calls `BackgroundNotifier`. On Unix-like systems,
+`PipeBackgroundNotifier` wakes Urwid through `watch_pipe`. On Windows,
+`PollingBackgroundNotifier` checks for queued work every 0.2 seconds. Both
+paths cause `EDMApp` to take the callbacks from the queue and run them on the
+UI thread.
 
 ## Loading A Detail Tab
 
@@ -336,45 +359,44 @@ flowchart TD
     Key[Create ContainerTabKey]
     Cached{Text already cached?}
     Show[Use cached text]
-    Submit[Schedule FETCH_TAB_CONTENT]
+    Submit[DockerManager submits a tab load]
     Loader[TabDataLoader]
-    Provider{Choose provider by TabName}
-    Logs[LogsTabDataProvider]
-    Env[EnvTabDataProvider]
-    Config[ConfigTabDataProvider]
-    Top[TopTabDataProvider]
-    Source[ContainerDataSource]
-    Handler[BackgroundTaskResultHandler]
-    Cache[(LRUTabContentCache)]
+    Choose{Check TabName}
+    Logs[Load recent logs]
+    Env[Load and sort environment variables]
+    Config[Load and format inspection data]
+    Top[Load and format the process table]
+    Client[DockerContainerClient]
+    Complete[DockerManager stores the result]
+    Cache[(TabContentCache)]
     Format[DetailTabTextFormatter]
     Draw[TerminalLayoutView]
 
     Selection --> Key --> Cached
     Cached -- yes --> Show --> Format --> Draw
-    Cached -- no --> Submit --> Loader --> Provider
-    Provider --> Logs --> Source
-    Provider --> Env --> Source
-    Provider --> Config --> Source
-    Provider --> Top --> Source
-    Source --> Handler --> Cache --> Format --> Draw
+    Cached -- no --> Submit --> Loader --> Choose
+    Choose --> Logs --> Client
+    Choose --> Env --> Client
+    Choose --> Config --> Client
+    Choose --> Top --> Client
+    Client --> Complete --> Cache --> Format --> Draw
 ```
 
-`TabDataLoader` maps each `TabName` to a `TabDataProvider`:
+`TabDataLoader.load_tab_text()` checks the requested `TabName` and calls one
+small private method. Logs loads the first group of recent lines. Env sorts
+environment variables by name. Config sends Docker inspection data to
+`format_container_config()`. Top turns Docker's process columns and rows into
+text.
 
-- `LogsTabDataProvider` loads the first group of recent log lines. Later log
-  updates use the scheduler's separate polling path.
-- `EnvTabDataProvider` sorts environment variables and displays their values.
-- `ConfigTabDataProvider` loads container and image inspection data, then sends
-  it to `format_container_config()`.
-- `TopTabDataProvider` turns Docker's process columns and rows into text.
-
-Providers return text or let a Docker error continue to the result handler.
-They do not change session state or draw widgets.
+The loader returns text or lets a Docker error continue to DockerManager. It
+does not change session state, update the cache, or draw widgets. Later log
+polls do not use `TabDataLoader`; DockerManager requests those lines directly
+because they must be merged into existing log text.
 
 ## State And Cache
 
 `UISessionState` holds the changing data for one run of EDM. Controllers and
-the result handler update it; the terminal view reads it when drawing.
+`DockerManager` update it. The terminal views only read it.
 
 Important fields are:
 
@@ -384,9 +406,7 @@ Important fields are:
 | `selected_container_index` | Selected position in that list |
 | `container_sort_field` | Sort field currently applied to the container list |
 | `container_sort_descending` | Whether the active sort runs in descending order |
-| `is_container_sort_menu_open` | Whether the sorting overlay is visible |
-| `container_sort_menu_field` | Field currently highlighted in the sorting overlay |
-| `container_sort_menu_descending` | Direction currently selected in the sorting overlay |
+| `container_sort_menu_state` | Temporary choices in the open sort menu, or `None` when it is closed |
 | `active_detail_tab_name` | Logs, Env, Config, or Top |
 | `active_focus_area` | Panel that receives navigation keys |
 | `detail_selected_line_index` | Selected line in the detail panel |
@@ -402,7 +422,7 @@ Important fields are:
 text, search queries, and loading errors so each container tab keeps its own
 data.
 
-`LRUTabContentCache` has two limits:
+`TabContentCache` has two limits:
 
 - `content_cache_size` limits the number of cached tabs.
 - `content_cache_max_bytes` limits the combined UTF-8 size of cached text.
@@ -413,8 +433,9 @@ container refresh.
 
 ## Display And Search
 
-`UIController.get_visible_detail_lines()` chooses what the detail panel should
-show: a loading message, an error, an empty-state message, or loaded text.
+`UIController.get_active_detail_tab_display_lines()` chooses what the detail
+panel should show: a loading message, an error, an empty-state message, or
+loaded text.
 
 `DetailTabTextFormatter` then applies the active search:
 
@@ -440,12 +461,8 @@ environment keys, structured values, search matches, and errors.
 | `_KeyboardRoutingWidget` | Passes terminal keypresses to `EDMApp` |
 | `EDMRuntimeFactory` | Creates and connects the objects used by `EDMApp` |
 | `EDMRuntime` | Holds the objects that `EDMApp` uses directly |
-| `BackgroundTaskScheduler` | Starts refresh, tab-load, and log-update work when needed |
-| `BackgroundTaskRunner` | Runs blocking functions in worker threads |
-| `CompletedTask` | Carries one finished task to the UI thread |
-| `DetailTaskContext` | Remembers the container tab for a tab-load result |
-| `LogTaskContext` | Remembers how and where to store a log update |
-| `BackgroundTaskResultHandler` | Stores finished results and reports visible changes |
+| `DockerManager` | Starts container requests and stores their finished results |
+| `BackgroundExecutor` | Runs blocking functions and queues their completion callbacks |
 | `BackgroundNotifier` | Defines how finished work is reported to `EDMApp` |
 | `PipeBackgroundNotifier` | Provides immediate notification on Unix-like systems |
 | `PollingBackgroundNotifier` | Checks for notification every 0.2 seconds on Windows |
@@ -458,30 +475,25 @@ environment keys, structured values, search matches, and errors.
 | `AppConfigStore` | Loads, checks, and rewrites `config.json` |
 | `ContainerSummary` | Stores the container fields shown in the left panel |
 | `ContainerSortField` | Names the choices shown in the container sorting menu |
-| `sort_container_summaries` | Returns a sorted copy of the latest Docker container list |
+| `get_container_list_in_requested_order` | Returns a sorted copy of the latest Docker container list |
 | `ContainerProcessTable` | Stores process column names and rows from Docker top |
 | `TabName` | Names the four detail tabs |
 | `FocusArea` | Names the container and detail keyboard focus areas |
 | `UISessionState` | Stores changing data for the current UI session |
 | `ContainerTabKey` | Identifies one tab for one container |
-| `LRUTabContentCache` | Keeps recently used tab text within count and byte limits |
+| `TabContentCache` | Keeps recently used tab text within count and byte limits |
 
 ### Docker And Tabs
 
 | Class or module | What it does |
 | --- | --- |
-| `ContainerDataSource` | Defines the container data EDM needs |
-| `LocalContainerDataSource` | Implements that interface with the local Docker SDK |
+| `DockerContainerClient` | Defines the container data EDM needs |
+| `LocalDockerContainerClient` | Implements that interface with the local Docker SDK |
 | `FailedDockerRequestType` | Identifies the Docker request that failed |
 | Docker error classes | Describe missing containers, failed refreshes, failed requests, and unreadable logs |
 | `create_docker_client` | Creates a local Docker SDK client and rejects remote `DOCKER_HOST` transports |
 | `to_container_summary` | Converts a Docker container object to `ContainerSummary` |
-| `TabDataLoader` | Chooses the provider for a requested tab |
-| `TabDataProvider` | Defines how one tab loads its text |
-| `LogsTabDataProvider` | Loads the first recent log text |
-| `EnvTabDataProvider` | Loads and sorts environment text |
-| `ConfigTabDataProvider` | Loads and formats inspection data |
-| `TopTabDataProvider` | Loads and formats process data |
+| `TabDataLoader` | Loads and formats the full text for a requested detail tab |
 
 ### UI
 
@@ -489,8 +501,12 @@ environment keys, structured values, search matches, and errors.
 | --- | --- |
 | `KeyboardController` | Turns keypresses into state and navigation actions |
 | `KeyAction` | Tells `EDMApp` to do nothing, redraw, or quit |
-| `UIController` | Coordinates navigation, data requests, formatting, and drawing |
-| `TerminalLayoutView` | Owns the terminal layout and its Urwid widgets |
+| `UIController` | Handles navigation, search, menu choices, and drawing |
+| `TerminalLayoutView` | Combines the panels, active popup, and shortcut footer |
+| `RunningContainerListPanel` | Owns the running-container list and its header, footer, and border |
+| `SelectedContainerDetailsPanel` | Owns the selected container's tabs, rows, status, border, and row cache |
+| `ContainerSortMenuState` | Holds choices being edited in the sort menu |
+| `build_container_sort_popup_menu` | Builds the sort popup menu over the main layout |
 | `FocusableDetailLine` | Lets keyboard navigation select one line of detail text |
 | `DetailTabTextFormatter` | Applies search behavior and requests line colors |
 | `LogRegexLineFilter` | Filters Logs while leaving other tab lines in place |
@@ -499,11 +515,11 @@ environment keys, structured values, search matches, and errors.
 ## Adding A Detail Tab
 
 1. Add the new value to `TabName`.
-2. Add a `TabDataProvider` in `tabs/tab_data_loader.py`.
-3. Register it in `TabDataLoader._providers_by_tab`.
-4. Add formatting rules only if the tab needs different colors or search
+2. Add a private loading method in `TabDataLoader` and call it from
+   `load_tab_text()` for the new value.
+3. Add formatting rules only if the tab needs different colors or search
    behavior.
-5. Check tab switching, loading, empty content, errors, and search behavior.
+4. Check tab switching, loading, empty content, errors, and search behavior.
 
 ## Adding A Config Setting
 
@@ -682,12 +698,3 @@ Use dedicated demo containers. Before committing the GIF, check every frame
 for passwords, tokens, internal hostnames, private URLs, and sensitive log or
 container data.
 
-## Code Boundaries
-
-- Keep Docker SDK calls behind `ContainerDataSource`.
-- Keep Urwid widget creation and updates in `TerminalLayoutView`.
-- Keep changing session data in `UISessionState`.
-- Run blocking Docker work through `BackgroundTaskRunner`.
-- Let providers load text; let the result handler update state.
-- Use `AppConfig` defaults as the supported config-file fields.
-- Trim large logs before caching and drawing them.
