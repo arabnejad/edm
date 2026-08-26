@@ -1,10 +1,14 @@
-"""Store the UI information used during one run of EDM.
+"""Store everything that can change while EDM is running.
 
 A UI session starts when EDM opens and ends when the application exits. This
-module records the running containers, current selection, keyboard focus,
-loaded tab text, search queries, and loading errors. Controllers update this
-information after user input or completed background work. The terminal view
-reads it when drawing the screen.
+state holds the running containers, selected container, active tab, keyboard
+focus, loaded tab text, search queries, open popup, status messages, and load
+errors.
+
+UIController changes this state in response to keyboard input. DockerManager
+stores container lists, tab content, log updates, and errors after Docker
+requests finish. The terminal views read the current state when drawing the
+screen.
 """
 
 from __future__ import annotations
@@ -14,10 +18,13 @@ from enum import Enum
 from typing import Optional
 
 from easy_docker_manager.core.config import AppConfig
-from easy_docker_manager.core.container_sorting import ContainerSortField
+from easy_docker_manager.core.container_sorting import (
+    ContainerSortField,
+    ContainerSortMenuState,
+)
 from easy_docker_manager.core.containers import ContainerSummary
-from easy_docker_manager.core.content_cache import ContainerTabKey, LRUTabContentCache
-from easy_docker_manager.core.tabs import TabName
+from easy_docker_manager.core.tab_content_cache import TabContentCache
+from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 
 
 class FocusArea(str, Enum):
@@ -27,10 +34,10 @@ class FocusArea(str, Enum):
     DETAIL = "detail"
 
 
-def _create_default_tab_content_cache() -> LRUTabContentCache:
+def _create_default_tab_content_cache() -> TabContentCache:
     """Create a cache from AppConfig defaults for standalone UI state."""
     app_config = AppConfig()
-    return LRUTabContentCache(
+    return TabContentCache(
         max_entries=app_config.content_cache_size,
         max_total_bytes=app_config.content_cache_max_bytes,
     )
@@ -40,9 +47,10 @@ def _create_default_tab_content_cache() -> LRUTabContentCache:
 class UISessionState:
     """Keep the current selection, focus, search, and loaded tab text.
 
-    Controllers update this object after keyboard input or completed background
-    work. It contains no Urwid widgets and makes no Docker calls. The terminal
-    view reads this same object during each redraw.
+    UI controllers update this object after keyboard input, and
+    DockerManager updates it after Docker work finishes. It contains
+    no Urwid widgets and makes no Docker calls. The terminal views read this
+    same object during each redraw.
     """
 
     # Running container summaries displayed in the left panel.
@@ -52,10 +60,8 @@ class UISessionState:
     # Sort order currently applied to the container list.
     container_sort_field: ContainerSortField = ContainerSortField.DOCKER_ORDER
     container_sort_descending: bool = False
-    # Temporary choices shown while the container sorting menu is open.
-    is_container_sort_menu_open: bool = False
-    container_sort_menu_field: ContainerSortField = ContainerSortField.DOCKER_ORDER
-    container_sort_menu_descending: bool = False
+    # Temporary choices in the container sort menu. None means the menu is closed.
+    container_sort_menu_state: Optional[ContainerSortMenuState] = None
     # Detail tab currently displayed in the right panel.
     active_detail_tab_name: TabName = TabName.LOGS
     # Which panel receives keyboard input.
@@ -69,7 +75,7 @@ class UISessionState:
     # Whether printable keyboard input is editing the active search query.
     is_search_active: bool = False
     # Loaded tab text keyed by container and detail tab.
-    tab_content_cache: LRUTabContentCache = field(
+    tab_content_cache: TabContentCache = field(
         default_factory=_create_default_tab_content_cache
     )
     # Search text keyed independently for each container and detail tab.
@@ -116,8 +122,14 @@ class UISessionState:
                 return index
         return None
 
-    def keep_detail_selection_in_bounds(self, line_count: int) -> None:
-        """Keep the selected detail line within the available line range."""
+    def keep_selected_detail_line_within_available_range(self, line_count: int) -> None:
+        """Keep the selected detail line at a valid index.
+
+        The available range starts at index 0 and ends at line_count - 1. For
+        example, three displayed lines have valid indexes 0, 1, and 2.
+        UIController calls this after detail content changes and after keyboard
+        navigation. When no lines are available, the selected index resets to 0.
+        """
         if line_count <= 0:
             self.detail_selected_line_index = 0
             return
@@ -130,7 +142,9 @@ class UISessionState:
         running_container_ids: set[str],
     ) -> None:
         """Remove saved UI data for containers that are no longer running."""
-        self.tab_content_cache.remove_stopped_container_entries(running_container_ids)
+        self.tab_content_cache.remove_cached_tab_content_for_stopped_containers(
+            running_container_ids
+        )
         self.tab_search_queries = {
             key: query
             for key, query in self.tab_search_queries.items()

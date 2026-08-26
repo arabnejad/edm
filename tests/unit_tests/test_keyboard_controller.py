@@ -5,6 +5,10 @@ from unittest.mock import Mock
 
 import pytest
 
+from easy_docker_manager.core.container_sorting import (
+    ContainerSortField,
+    ContainerSortMenuState,
+)
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.ui_session_state import FocusArea, UISessionState
 from easy_docker_manager.ui.keyboard_controller import KeyAction, KeyboardController
@@ -55,18 +59,18 @@ def test_arrow_keys_move_the_active_panel_selection(
 ) -> None:
     state = UISessionState()
     test_setup = keyboard_controller_factory(state)
-    test_setup.ui_controller.move_container_selection.return_value = True
+    test_setup.ui_controller.move_selected_container_index.return_value = True
 
     assert test_setup.keyboard_controller.handle_keypress("down") == KeyAction.RENDER
-    test_setup.ui_controller.move_container_selection.assert_called_once_with(1)
+    test_setup.ui_controller.move_selected_container_index.assert_called_once_with(1)
 
     state.active_focus_area = FocusArea.DETAIL
-    test_setup.ui_controller.move_detail_selection.return_value = True
+    test_setup.ui_controller.move_selected_detail_line.return_value = True
     assert (
         test_setup.keyboard_controller.handle_keypress("up", (80, 24))
         == KeyAction.RENDER
     )
-    test_setup.ui_controller.move_detail_selection.assert_called_once_with(
+    test_setup.ui_controller.move_selected_detail_line.assert_called_once_with(
         "up", (80, 24)
     )
 
@@ -75,15 +79,19 @@ def test_bracket_keys_switch_tabs_in_both_directions(
     keyboard_controller_factory,
 ) -> None:
     test_setup = keyboard_controller_factory(UISessionState())
-    test_setup.ui_controller.switch_detail_tab.return_value = True
+    test_setup.ui_controller.switch_active_detail_tab.return_value = True
 
     assert test_setup.keyboard_controller.handle_keypress("[") == KeyAction.RENDER
     assert test_setup.keyboard_controller.handle_keypress("]") == KeyAction.RENDER
-    assert test_setup.ui_controller.switch_detail_tab.call_args_list[0].args == (-1,)
-    assert test_setup.ui_controller.switch_detail_tab.call_args_list[1].args == (1,)
+    assert test_setup.ui_controller.switch_active_detail_tab.call_args_list[0].args == (
+        -1,
+    )
+    assert test_setup.ui_controller.switch_active_detail_tab.call_args_list[1].args == (
+        1,
+    )
 
 
-def test_sort_key_opens_menu_only_from_container_panel(
+def test_sort_key_opens_menu_only_from_running_container_list_panel(
     keyboard_controller_factory,
 ) -> None:
     state = UISessionState()
@@ -114,7 +122,12 @@ def test_sort_menu_routes_its_keyboard_controls(
     controller_method: str,
     expected_arguments: tuple[object, ...],
 ) -> None:
-    state = UISessionState(is_container_sort_menu_open=True)
+    state = UISessionState(
+        container_sort_menu_state=ContainerSortMenuState(
+            selected_sort_field=ContainerSortField.DOCKER_ORDER,
+            sort_descending=False,
+        )
+    )
     test_setup = keyboard_controller_factory(state)
     method = getattr(test_setup.ui_controller, controller_method)
     method.return_value = True
@@ -129,7 +142,12 @@ def test_sort_menu_routes_its_keyboard_controls(
 
 
 def test_sort_menu_ignores_unrelated_keys(keyboard_controller_factory) -> None:
-    state = UISessionState(is_container_sort_menu_open=True)
+    state = UISessionState(
+        container_sort_menu_state=ContainerSortMenuState(
+            selected_sort_field=ContainerSortField.DOCKER_ORDER,
+            sort_descending=False,
+        )
+    )
     test_setup = keyboard_controller_factory(state)
 
     assert test_setup.keyboard_controller.handle_keypress("q") == KeyAction.NONE
@@ -203,25 +221,25 @@ def test_search_navigation_moves_detail_without_changing_query(
     test_setup = keyboard_controller_factory(state)
     test_setup.keyboard_controller.handle_keypress("/")
     test_setup.keyboard_controller.handle_keypress("x")
-    test_setup.ui_controller.move_detail_selection.return_value = True
+    test_setup.ui_controller.move_selected_detail_line.return_value = True
 
     assert (
         test_setup.keyboard_controller.handle_keypress("page down", (80, 24))
         == KeyAction.RENDER
     )
-    test_setup.ui_controller.move_detail_selection.assert_called_once_with(
+    test_setup.ui_controller.move_selected_detail_line.assert_called_once_with(
         "page down",
         (80, 24),
     )
     assert next(iter(state.tab_search_queries.values())) == "x"
 
 
-def test_page_navigation_is_ignored_while_container_panel_is_active(
+def test_page_navigation_is_ignored_while_running_container_list_panel_is_active(
     keyboard_controller_factory,
 ) -> None:
     test_setup = keyboard_controller_factory(UISessionState())
     assert test_setup.keyboard_controller.handle_keypress("page down") == KeyAction.NONE
-    test_setup.ui_controller.move_detail_selection.assert_not_called()
+    test_setup.ui_controller.move_selected_detail_line.assert_not_called()
 
 
 def test_unknown_key_does_nothing(keyboard_controller_factory) -> None:

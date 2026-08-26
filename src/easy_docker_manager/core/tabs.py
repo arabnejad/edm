@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 
 
@@ -14,4 +15,17 @@ class TabName(str, Enum):
     TOP = "Top"
 
 
-__all__ = ["TabName"]
+@dataclass(frozen=True)
+class ContainerTabKey:
+    """Identify one container and one of its detail tabs.
+
+    EDM uses this object as a dictionary key for loaded text, search queries,
+    loading errors, and background requests. It is frozen so its hash cannot
+    change after storage, which keeps later lookups and removals reliable.
+    """
+
+    container_id: str
+    tab_name: TabName
+
+
+__all__ = ["ContainerTabKey", "TabName"]

@@ -24,7 +24,7 @@ from easy_docker_manager.app.background_notifier import (
 from easy_docker_manager.config.app_config_store import default_config_path
 from easy_docker_manager.constants import APP_NAME
 from easy_docker_manager.core import AppConfig, ContainerProcessTable, ContainerSummary
-from easy_docker_manager.docker.base import ContainerDataSource
+from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.logging.app_logging import default_log_file_path
 
 pytestmark = pytest.mark.smoke
@@ -41,7 +41,7 @@ def _run_installed_command(command: list[str]) -> subprocess.CompletedProcess[st
     )
 
 
-class SmokeTestContainerDataSource(ContainerDataSource):
+class SmokeTestDockerContainerClient(DockerContainerClient):
     """Provide predictable container data without requiring a Docker daemon."""
 
     def __init__(self) -> None:
@@ -60,7 +60,7 @@ class SmokeTestContainerDataSource(ContainerDataSource):
             )
         ]
 
-    def get_logs(
+    def get_container_logs(
         self,
         container_id: str,
         tail_lines: Union[int, str] = 100,
@@ -68,13 +68,16 @@ class SmokeTestContainerDataSource(ContainerDataSource):
     ) -> str:
         return "INFO Starting smoke-test service\n" "INFO Smoke-test service is ready"
 
-    def get_environment_variables(self, container_id: str) -> dict[str, str]:
+    def get_container_environment_variables(
+        self,
+        container_id: str,
+    ) -> dict[str, str]:
         return {
             "APP_ENV": "smoke-test",
             "LOG_LEVEL": "INFO",
         }
 
-    def get_docker_inspection_data(self, container_id: str) -> dict[str, Any]:
+    def get_container_inspection_data(self, container_id: str) -> dict[str, Any]:
         return {
             "container": {
                 "Id": "smoke-container-id",
@@ -106,7 +109,10 @@ class SmokeTestContainerDataSource(ContainerDataSource):
             },
         }
 
-    def get_process_list(self, container_id: str) -> ContainerProcessTable:
+    def get_container_top_process_table(
+        self,
+        container_id: str,
+    ) -> ContainerProcessTable:
         return ContainerProcessTable(
             columns=("PID", "USER", "COMMAND"),
             rows=(
@@ -252,15 +258,15 @@ def test_background_notifier_matches_the_operating_system() -> None:
 
 
 def test_application_completes_basic_startup_and_shutdown(monkeypatch) -> None:
-    container_data_source = SmokeTestContainerDataSource()
+    docker_container_client = SmokeTestDockerContainerClient()
     monkeypatch.setattr(app_module.urwid, "MainLoop", SmokeTestMainLoop)
     app = app_module.EDMApp(
         app_config=AppConfig(),
-        container_data_source=container_data_source,
+        docker_container_client=docker_container_client,
     )
 
     app.run()
 
     assert isinstance(app.ui_event_loop, SmokeTestMainLoop)
-    assert container_data_source.list_request_count == 1
-    assert container_data_source.closed is True
+    assert docker_container_client.list_request_count == 1
+    assert docker_container_client.closed is True

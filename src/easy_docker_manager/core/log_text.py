@@ -7,7 +7,7 @@ from collections.abc import Sequence
 MIN_LOG_LINE_CHARS = 32
 
 
-def count_line_overlap(
+def count_repeated_lines_between_batches(
     existing_lines: Sequence[str],
     incoming_lines: Sequence[str],
 ) -> int:
@@ -50,17 +50,19 @@ def count_line_overlap(
     return prefix_lengths[-1]
 
 
-def trim_log_text(content: str, *, max_lines: int, max_line_chars: int) -> str:
-    """Limit log text by total lines and characters per line.
+def apply_limits_to_log_content(
+    content: str, *, max_lines: int, max_line_chars: int
+) -> str:
+    """Apply line count and line length limits to log content.
 
     Even a response containing only a few recent log lines can include a very
-    long JSON or stack-trace line. The scheduler and result handler call this
-    before caching text so the newest lines remain visible without slowing the
-    terminal UI.
+    long JSON or stack-trace line. The tab loader and DockerManager call
+    this before caching logs, which keeps the newest lines visible without
+    making the terminal UI handle very large rows.
 
     For example:
 
-        trim_log_text("old\nnew", max_lines=1, max_line_chars=100)
+        apply_limits_to_log_content("old\nnew", max_lines=1, max_line_chars=100)
 
     returns "new" because only the newest line is kept.
     """
@@ -68,11 +70,12 @@ def trim_log_text(content: str, *, max_lines: int, max_line_chars: int) -> str:
     if len(lines) > max_lines:
         lines = lines[-max_lines:]
     return "\n".join(
-        trim_log_line(line, max_line_chars=max_line_chars) for line in lines
+        apply_character_limit_to_log_line(line, max_line_chars=max_line_chars)
+        for line in lines
     )
 
 
-def trim_log_line(line: str, *, max_line_chars: int) -> str:
+def apply_character_limit_to_log_line(line: str, *, max_line_chars: int) -> str:
     """Shorten one log line and show how many characters were removed."""
     if max_line_chars <= 0:
         raise ValueError("max_line_chars must be positive")
@@ -97,7 +100,7 @@ def trim_log_line(line: str, *, max_line_chars: int) -> str:
 
 __all__ = [
     "MIN_LOG_LINE_CHARS",
-    "count_line_overlap",
-    "trim_log_line",
-    "trim_log_text",
+    "apply_character_limit_to_log_line",
+    "apply_limits_to_log_content",
+    "count_repeated_lines_between_batches",
 ]

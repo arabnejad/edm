@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from easy_docker_manager.core.container_sorting import ContainerSortField
-from easy_docker_manager.core.content_cache import ContainerTabKey
-from easy_docker_manager.core.tabs import TabName
+from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.ui_session_state import FocusArea, UISessionState
 
 
@@ -16,7 +15,7 @@ def test_state_defaults_describe_the_initial_screen() -> None:
     assert state.status_message == "Loading containers..."
     assert state.container_sort_field == ContainerSortField.DOCKER_ORDER
     assert not state.container_sort_descending
-    assert not state.is_container_sort_menu_open
+    assert state.container_sort_menu_state is None
 
 
 def test_selected_container_properties_require_a_valid_index(
@@ -54,17 +53,17 @@ def test_find_running_container_index_returns_matching_position(
     assert state.find_running_container_index(None) is None
 
 
-def test_detail_selection_is_kept_inside_the_line_range() -> None:
+def test_selected_detail_line_is_kept_within_available_range() -> None:
     state = UISessionState(detail_selected_line_index=10)
-    state.keep_detail_selection_in_bounds(3)
+    state.keep_selected_detail_line_within_available_range(3)
     assert state.detail_selected_line_index == 2
 
     state.detail_selected_line_index = -5
-    state.keep_detail_selection_in_bounds(3)
+    state.keep_selected_detail_line_within_available_range(3)
     assert state.detail_selected_line_index == 0
 
     state.detail_selected_line_index = 2
-    state.keep_detail_selection_in_bounds(0)
+    state.keep_selected_detail_line_within_available_range(0)
     assert state.detail_selected_line_index == 0
 
 

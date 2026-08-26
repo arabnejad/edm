@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 
 from easy_docker_manager.core.containers import ContainerSummary
@@ -17,16 +18,29 @@ class ContainerSortField(str, Enum):
     CREATED_AT = "Creation time"
 
 
-def sort_container_summaries(
+@dataclass
+class ContainerSortMenuState:
+    """Keep the choices being edited in the container sorting menu.
+
+    UIController creates this object when the menu opens. The choices stay
+    separate from the active container order until the user presses Enter.
+    Pressing Esc discards this object and leaves the current order unchanged.
+    """
+
+    selected_sort_field: ContainerSortField
+    sort_descending: bool
+
+
+def get_container_list_in_requested_order(
     containers: list[ContainerSummary],
     sort_field: ContainerSortField,
     descending: bool,
 ) -> list[ContainerSummary]:
     """Return containers in the requested order without changing the input list.
 
-    UIController calls this after Docker refreshes the container list and when
-    the user applies a choice from the sorting menu. Missing image or creation
-    values stay at the end of the list in either direction.
+    DockerManager calls this after Docker refreshes the container
+    list and when the user applies a choice from the sorting menu. An empty
+    image name or creation time stays at the end in either direction.
     """
     if sort_field == ContainerSortField.DOCKER_ORDER:
         return list(containers)
@@ -68,4 +82,8 @@ def _container_sort_value(
     return ""
 
 
-__all__ = ["ContainerSortField", "sort_container_summaries"]
+__all__ = [
+    "ContainerSortField",
+    "ContainerSortMenuState",
+    "get_container_list_in_requested_order",
+]

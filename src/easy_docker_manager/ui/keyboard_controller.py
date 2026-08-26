@@ -35,7 +35,7 @@ class KeyboardController:
         terminal_size: Optional[tuple[int, ...]] = None,
     ) -> KeyAction:
         """Handle one keypress and tell EDMApp whether to redraw or quit."""
-        if self.state.is_container_sort_menu_open:
+        if self.state.container_sort_menu_state is not None:
             return self._handle_container_sort_menu_keypress(key)
         if self.state.is_search_active:
             return (
@@ -61,38 +61,40 @@ class KeyboardController:
             if self.state.active_focus_area == FocusArea.DETAIL:
                 return (
                     KeyAction.RENDER
-                    if self.ui_controller.move_detail_selection("up", terminal_size)
+                    if self.ui_controller.move_selected_detail_line("up", terminal_size)
                     else KeyAction.NONE
                 )
             else:
                 return (
                     KeyAction.RENDER
-                    if self.ui_controller.move_container_selection(-1)
+                    if self.ui_controller.move_selected_container_index(-1)
                     else KeyAction.NONE
                 )
         elif key == "down":
             if self.state.active_focus_area == FocusArea.DETAIL:
                 return (
                     KeyAction.RENDER
-                    if self.ui_controller.move_detail_selection("down", terminal_size)
+                    if self.ui_controller.move_selected_detail_line(
+                        "down", terminal_size
+                    )
                     else KeyAction.NONE
                 )
             else:
                 return (
                     KeyAction.RENDER
-                    if self.ui_controller.move_container_selection(1)
+                    if self.ui_controller.move_selected_container_index(1)
                     else KeyAction.NONE
                 )
         elif key == "[":
             return (
                 KeyAction.RENDER
-                if self.ui_controller.switch_detail_tab(-1)
+                if self.ui_controller.switch_active_detail_tab(-1)
                 else KeyAction.NONE
             )
         elif key == "]":
             return (
                 KeyAction.RENDER
-                if self.ui_controller.switch_detail_tab(1)
+                if self.ui_controller.switch_active_detail_tab(1)
                 else KeyAction.NONE
             )
         elif key == "/":
@@ -111,13 +113,13 @@ class KeyboardController:
         ):
             return (
                 KeyAction.RENDER
-                if self.ui_controller.move_detail_selection(key, terminal_size)
+                if self.ui_controller.move_selected_detail_line(key, terminal_size)
                 else KeyAction.NONE
             )
         return KeyAction.NONE
 
     def _handle_container_sort_menu_keypress(self, key: str) -> KeyAction:
-        """Handle navigation, apply, and cancel keys while sorting is open."""
+        """Handle navigation, apply, and cancel keys in the sorting menu."""
         changed = False
         if key == "up":
             changed = self.ui_controller.move_container_sort_menu_selection(-1)
@@ -153,13 +155,13 @@ class KeyboardController:
             focus_changed = self.state.active_focus_area != FocusArea.DETAIL
             self.state.active_focus_area = FocusArea.DETAIL
             return (
-                self.ui_controller.move_detail_selection(key, terminal_size)
+                self.ui_controller.move_selected_detail_line(key, terminal_size)
                 or focus_changed
             )
         if key == "[":
-            return self.ui_controller.switch_detail_tab(-1)
+            return self.ui_controller.switch_active_detail_tab(-1)
         if key == "]":
-            return self.ui_controller.switch_detail_tab(1)
+            return self.ui_controller.switch_active_detail_tab(1)
 
         if key == "esc":
             changed = (

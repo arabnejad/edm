@@ -1,9 +1,9 @@
-"""Define how EDM reads container data and reports Docker failures.
+"""Define the interface EDM uses to send container requests to Docker.
 
-ContainerDataSource lists the Docker information needed by the rest of the
-application, such as running containers, logs, environment variables, and
-processes. The error classes convert Docker SDK exceptions into specific EDM
-errors that the terminal UI knows how to display.
+DockerContainerClient defines the Docker operations available to the rest of
+the application. It currently lists running containers and loads their logs,
+environment variables, inspection data, and processes. The error classes turn
+Docker SDK failures into specific EDM errors that the terminal UI can display.
 """
 
 from __future__ import annotations
@@ -15,11 +15,11 @@ from typing import Any, Optional, Union
 from easy_docker_manager.core import ContainerProcessTable, ContainerSummary
 
 
-class DockerDataSourceError(RuntimeError):
-    """Base error for container data requests."""
+class DockerContainerClientError(RuntimeError):
+    """Base error for requests made through DockerContainerClient."""
 
 
-class ContainerNotFoundError(DockerDataSourceError):
+class ContainerNotFoundError(DockerContainerClientError):
     """Raised when Docker no longer has the requested container."""
 
     def __init__(self, container_id: str) -> None:
@@ -30,12 +30,12 @@ class ContainerNotFoundError(DockerDataSourceError):
 class FailedDockerRequestType(str, Enum):
     """Describe which Docker request failed.
 
-    LocalContainerDataSource passes one of these values from an except block to
+    LocalDockerContainerClient passes one of these values from an except block to
     raise_container_request_error. The value tells that function what the code
     was trying to load when Docker raised the exception.
 
-    For example, get_environment_variables passes LOAD_ENVIRONMENT after its
-    Docker call fails.
+    For example, get_container_environment_variables passes LOAD_ENVIRONMENT
+    after its Docker call fails.
     The error handler then:
 
     1. Raises ContainerNotFoundError if Docker cannot find the container.
@@ -52,7 +52,7 @@ class FailedDockerRequestType(str, Enum):
     LOAD_PROCESS_LIST = "Process list load"
 
 
-class DockerRequestFailedError(DockerDataSourceError):
+class DockerRequestFailedError(DockerContainerClientError):
     """Raised when Docker rejects or cannot complete a container request."""
 
     def __init__(
@@ -70,7 +70,7 @@ class DockerRequestFailedError(DockerDataSourceError):
         )
 
 
-class LogsUnavailableError(DockerDataSourceError):
+class LogsUnavailableError(DockerContainerClientError):
     """Raised when Docker cannot read logs for the configured logging driver."""
 
     def __init__(self, driver: str) -> None:
@@ -78,7 +78,7 @@ class LogsUnavailableError(DockerDataSourceError):
         super().__init__(f"Logs unavailable for Docker logging driver '{driver}'")
 
 
-class ContainerRefreshError(DockerDataSourceError):
+class ContainerRefreshError(DockerContainerClientError):
     """Raised when a container refresh fails before a valid list is available."""
 
 
@@ -89,11 +89,13 @@ class ContainerLogFetchError(DockerRequestFailedError):
         super().__init__(FailedDockerRequestType.FETCH_LOGS, container_id, reason)
 
 
-class ContainerDataSource(ABC):
-    """Provide the container data needed by the application.
+class DockerContainerClient(ABC):
+    """Define the Docker container operations available to EDM.
 
-    The scheduler and tab loaders use this interface instead of calling the
-    Docker SDK directly. This keeps Docker details out of the UI code.
+    DockerManager and TabDataLoader call this interface instead of using the
+    Docker SDK directly. LocalDockerContainerClient provides the production
+    implementation. Tests can provide a small fake or mock client without
+    connecting to Docker.
     """
 
     @abstractmethod
@@ -101,7 +103,7 @@ class ContainerDataSource(ABC):
         """Return running containers or raise ContainerRefreshError on failure."""
 
     @abstractmethod
-    def get_logs(
+    def get_container_logs(
         self,
         container_id: str,
         tail_lines: Union[int, str] = 100,
@@ -115,28 +117,34 @@ class ContainerDataSource(ABC):
         """
 
     @abstractmethod
-    def get_environment_variables(self, container_id: str) -> dict[str, str]:
-        """Return environment variables configured for a container."""
+    def get_container_environment_variables(
+        self,
+        container_id: str,
+    ) -> dict[str, str]:
+        """Return environment variables from the container's Docker configuration."""
 
     @abstractmethod
-    def get_docker_inspection_data(self, container_id: str) -> dict[str, Any]:
-        """Return Docker inspect/config data used by the Config tab."""
+    def get_container_inspection_data(self, container_id: str) -> dict[str, Any]:
+        """Return container inspection data and related image data when available."""
 
     @abstractmethod
-    def get_process_list(self, container_id: str) -> ContainerProcessTable:
-        """Return the process-list columns and rows for a container."""
+    def get_container_top_process_table(
+        self,
+        container_id: str,
+    ) -> ContainerProcessTable:
+        """Return the columns and process rows reported by Docker top."""
 
     @abstractmethod
     def close(self) -> None:
-        """Close any client or connection owned by the data source."""
+        """Close any Docker connection owned by this client."""
 
 
 __all__ = [
-    "ContainerDataSource",
+    "DockerContainerClient",
     "ContainerLogFetchError",
     "ContainerNotFoundError",
     "ContainerRefreshError",
-    "DockerDataSourceError",
+    "DockerContainerClientError",
     "DockerRequestFailedError",
     "FailedDockerRequestType",
     "LogsUnavailableError",

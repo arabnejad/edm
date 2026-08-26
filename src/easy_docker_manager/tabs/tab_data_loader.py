@@ -2,119 +2,80 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-
 from easy_docker_manager.core import AppConfig, ContainerProcessTable
-from easy_docker_manager.core.log_text import trim_log_text
+from easy_docker_manager.core.log_text import apply_limits_to_log_content
 from easy_docker_manager.core.tabs import TabName
-from easy_docker_manager.docker.base import ContainerDataSource, LogsUnavailableError
+from easy_docker_manager.docker.container_client import (
+    DockerContainerClient,
+    LogsUnavailableError,
+)
 from easy_docker_manager.tabs.config_tab_formatter import format_container_config
 
 
-class TabDataProvider(ABC):
-    """Load the text for one detail tab: Logs, Env, Config, or Top.
+class TabDataLoader:
+    """Load display text for a container's Logs, Env, Config, or Top tab.
 
-    TabDataLoader calls the matching provider on a worker thread whenever the
-    scheduler needs content for a selected container tab.
+    DockerManager calls this on a worker thread. The loader reads
+    one kind of Docker data and converts it to the text shown in that tab. It
+    does not update UI state or caches.
     """
 
-    @abstractmethod
-    def load_text(self, container_id: str) -> str:
-        """Load the text shown for one container."""
-
-
-class LogsTabDataProvider(TabDataProvider):
-    """Load the first block of text shown in the Logs tab."""
-
     def __init__(
-        self, container_data_source: ContainerDataSource, app_config: AppConfig
+        self,
+        docker_container_client: DockerContainerClient,
+        app_config: AppConfig,
     ) -> None:
-        self.container_data_source = container_data_source
+        self.docker_container_client = docker_container_client
         self.app_config = app_config
 
-    def load_text(self, container_id: str) -> str:
-        """Load the configured number of recent lines for the Logs tab.
+    def load_tab_text(self, container_id: str, tab_name: TabName) -> str:
+        """Load and format the text for one container tab."""
+        if tab_name == TabName.LOGS:
+            return self._load_initial_container_logs_tab_text(container_id)
+        if tab_name == TabName.ENV:
+            return self._load_container_environment_tab_text(container_id)
+        if tab_name == TabName.CONFIG:
+            return self._load_container_config_tab_text(container_id)
+        if tab_name == TabName.TOP:
+            return self._load_container_top_tab_text(container_id)
+        raise ValueError(f"Unsupported tab: {tab_name!r}")
 
-        The scheduler uses this only for the first load. Later log updates use
-        the separate incremental polling path.
-        """
-        content = self.container_data_source.get_logs(
-            container_id, self.app_config.log_tail
+    def _load_initial_container_logs_tab_text(self, container_id: str) -> str:
+        """Load and limit the text shown when the container's Logs tab opens."""
+        content = self.docker_container_client.get_container_logs(
+            container_id,
+            self.app_config.log_tail,
         )
-        return trim_log_text(
+        return apply_limits_to_log_content(
             content,
             max_lines=self.app_config.max_log_lines,
             max_line_chars=self.app_config.max_log_line_chars,
         )
 
-
-class EnvTabDataProvider(TabDataProvider):
-    """Load and sort the environment values shown in the Env tab."""
-
-    def __init__(self, container_data_source: ContainerDataSource) -> None:
-        self.container_data_source = container_data_source
-
-    def load_text(self, container_id: str) -> str:
-        """Load environment variables and sort them by name for display."""
-        environment_variables = self.container_data_source.get_environment_variables(
-            container_id
+    def _load_container_environment_tab_text(self, container_id: str) -> str:
+        """Load, sort, and format text for the container's Env tab."""
+        environment_variables = (
+            self.docker_container_client.get_container_environment_variables(
+                container_id
+            )
         )
-        if not environment_variables:
-            return ""
         return "\n".join(
             f"{name}={value}" for name, value in sorted(environment_variables.items())
         )
 
-
-class ConfigTabDataProvider(TabDataProvider):
-    """Load Docker inspection data and format the Config tab."""
-
-    def __init__(self, container_data_source: ContainerDataSource) -> None:
-        self.container_data_source = container_data_source
-
-    def load_text(self, container_id: str) -> str:
-        """Load and group the container configuration for display."""
-        config_data = self.container_data_source.get_docker_inspection_data(
+    def _load_container_config_tab_text(self, container_id: str) -> str:
+        """Load inspection data and format text for the container's Config tab."""
+        inspection_data = self.docker_container_client.get_container_inspection_data(
             container_id
         )
-        return format_container_config(config_data)
+        return format_container_config(inspection_data)
 
-
-class TopTabDataProvider(TabDataProvider):
-    """Load and format the container process list for the Top tab."""
-
-    def __init__(self, container_data_source: ContainerDataSource) -> None:
-        self.container_data_source = container_data_source
-
-    def load_text(self, container_id: str) -> str:
-        """Load the container process list and convert its rows to text."""
-        processes = self.container_data_source.get_process_list(container_id)
-        return _format_process_list(processes)
-
-
-class TabDataLoader:
-    """Choose the provider that loads a requested container tab.
-
-    The scheduler calls this on a worker thread. It maps each TabName to a
-    TabDataProvider and returns text only; it does not update UI state or caches.
-    """
-
-    def __init__(
-        self,
-        container_data_source: ContainerDataSource,
-        app_config: AppConfig,
-    ) -> None:
-        """Create the provider used for each supported tab."""
-        self._providers_by_tab: dict[TabName, TabDataProvider] = {
-            TabName.LOGS: LogsTabDataProvider(container_data_source, app_config),
-            TabName.ENV: EnvTabDataProvider(container_data_source),
-            TabName.CONFIG: ConfigTabDataProvider(container_data_source),
-            TabName.TOP: TopTabDataProvider(container_data_source),
-        }
-
-    def load_tab_text(self, container_id: str, tab_name: TabName) -> str:
-        """Use the tab's provider to load text for one container."""
-        return self._providers_by_tab[tab_name].load_text(container_id)
+    def _load_container_top_tab_text(self, container_id: str) -> str:
+        """Load Docker's process table and format text for the container's Top tab."""
+        process_table = self.docker_container_client.get_container_top_process_table(
+            container_id
+        )
+        return _format_process_list(process_table)
 
 
 def _format_process_list(processes: ContainerProcessTable) -> str:
@@ -124,22 +85,19 @@ def _format_process_list(processes: ContainerProcessTable) -> str:
     return "\n".join(lines)
 
 
-def format_logs_unavailable_message(exc: LogsUnavailableError) -> str:
+def build_logs_unavailable_error_message(
+    logs_unavailable_error: LogsUnavailableError,
+) -> str:
     """Build the message shown when Docker cannot read a container's logs."""
     return (
         "Logs unavailable: this container uses Docker logging "
-        f"driver '{exc.driver}', so Docker cannot read logs for it. "
+        f"driver '{logs_unavailable_error.driver}', so Docker cannot read logs for it. "
         "Enable a readable logging driver such as 'json-file', 'local', "
         "or 'journald' to view logs here."
     )
 
 
 __all__ = [
-    "ConfigTabDataProvider",
-    "EnvTabDataProvider",
-    "LogsTabDataProvider",
-    "TabDataProvider",
     "TabDataLoader",
-    "TopTabDataProvider",
-    "format_logs_unavailable_message",
+    "build_logs_unavailable_error_message",
 ]

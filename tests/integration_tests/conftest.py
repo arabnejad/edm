@@ -12,7 +12,7 @@ from docker.errors import DockerException, NotFound
 from docker.models.containers import Container
 
 from easy_docker_manager.docker.client_factory import create_docker_client
-from easy_docker_manager.docker.local import LocalContainerDataSource
+from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
 from tests.integration_tests.docker_test_setup import DockerTestSetup
 
 CONTAINER_IMAGE = os.getenv("EDM_INTEGRATION_TEST_IMAGE", "alpine:3.20")
@@ -74,15 +74,15 @@ def docker_test_setup(
 
 
 @pytest.fixture
-def local_container_data_source() -> Iterator[LocalContainerDataSource]:
-    """Create the production data source with its own real Docker client."""
-    container_data_source = LocalContainerDataSource(
+def local_docker_container_client() -> Iterator[LocalDockerContainerClient]:
+    """Create the production container client with its own Docker connection."""
+    docker_container_client = LocalDockerContainerClient(
         create_client=lambda: create_docker_client(request_timeout=10.0)
     )
     try:
-        yield container_data_source
+        yield docker_container_client
     finally:
-        container_data_source.close()
+        docker_container_client.close()
 
 
 def _wait_for_container(container: Container) -> None:

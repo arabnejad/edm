@@ -9,14 +9,11 @@ import urwid
 
 from easy_docker_manager.app import app as app_module
 from easy_docker_manager.app.app import EDMApp, _KeyboardRoutingWidget
+from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.app.background_notifier import BackgroundNotifier
-from easy_docker_manager.app.background_task_result_handler import (
-    BackgroundTaskResultHandler,
-)
-from easy_docker_manager.app.background_task_runner import BackgroundTaskRunner
+from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.app.runtime_factory import EDMRuntimeFactory
-from easy_docker_manager.app.scheduler import BackgroundTaskScheduler
-from easy_docker_manager.docker.base import ContainerDataSource
+from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.ui.keyboard_controller import KeyAction, KeyboardController
 from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
 from easy_docker_manager.ui.ui_controller import UIController
@@ -34,15 +31,16 @@ class EDMAppTestSetup:
 def edm_app_setup() -> EDMAppTestSetup:
     terminal_layout_view = Mock(spec=TerminalLayoutView)
     terminal_layout_view.layout = urwid.Text("layout")
-    terminal_layout_view.build_palette.return_value = [("test", "white", "black")]
+    terminal_layout_view.build_urwid_style_palette.return_value = [
+        ("test", "white", "black")
+    ]
     runtime = SimpleNamespace(
-        container_data_source=Mock(spec=ContainerDataSource),
-        task_runner=Mock(spec=BackgroundTaskRunner),
+        docker_container_client=Mock(spec=DockerContainerClient),
+        background_executor=Mock(spec=BackgroundExecutor),
         terminal_layout_view=terminal_layout_view,
-        scheduler=Mock(spec=BackgroundTaskScheduler),
+        docker_manager=Mock(spec=DockerManager),
         ui_controller=Mock(spec=UIController),
         keyboard_controller=Mock(spec=KeyboardController),
-        background_task_result_handler=Mock(spec=BackgroundTaskResultHandler),
     )
     runtime_factory = Mock(spec=EDMRuntimeFactory)
     runtime_factory.create_runtime.return_value = runtime
@@ -84,13 +82,14 @@ def test_keyboard_render_action_redraws_and_checks_background_work(
     edm_app_setup.runtime.keyboard_controller.handle_keypress.return_value = (
         KeyAction.RENDER
     )
-    edm_app_setup.app._schedule_next_background_check = Mock()
+    edm_app_setup.app._schedule_next_docker_data_refresh_check = Mock()
 
     assert edm_app_setup.app.handle_keyboard_input("down", (80, 24)) is None
 
-    edm_app_setup.runtime.ui_controller.render_current_state.assert_called_once_with()
-    edm_app_setup.runtime.scheduler.schedule_next_tasks.assert_called_once_with()
-    edm_app_setup.app._schedule_next_background_check.assert_called_once_with()
+    edm_app_setup.runtime.ui_controller.update_terminal_view.assert_called_once_with()
+    docker_manager = edm_app_setup.runtime.docker_manager
+    docker_manager.refresh_docker_data_if_needed.assert_called_once_with()
+    edm_app_setup.app._schedule_next_docker_data_refresh_check.assert_called_once_with()
 
 
 def test_keyboard_no_action_does_not_redraw(edm_app_setup) -> None:
@@ -100,7 +99,7 @@ def test_keyboard_no_action_does_not_redraw(edm_app_setup) -> None:
 
     edm_app_setup.app.handle_keyboard_input("unknown")
 
-    edm_app_setup.runtime.ui_controller.render_current_state.assert_not_called()
+    edm_app_setup.runtime.ui_controller.update_terminal_view.assert_not_called()
 
 
 def test_keyboard_quit_action_exits_main_loop(edm_app_setup) -> None:
@@ -115,47 +114,49 @@ def test_keyboard_quit_action_exits_main_loop(edm_app_setup) -> None:
 def test_background_check_starts_due_work_and_schedules_the_next_check(
     edm_app_setup,
 ) -> None:
-    edm_app_setup.app._background_check_timer_handle = "old"
-    edm_app_setup.app._schedule_next_background_check = Mock()
+    edm_app_setup.app._pending_docker_data_refresh_timer = "old"
+    edm_app_setup.app._schedule_next_docker_data_refresh_check = Mock()
 
-    edm_app_setup.app._schedule_next_background_tasks(Mock())
+    edm_app_setup.app._run_scheduled_docker_data_refresh_check(Mock())
 
-    assert edm_app_setup.app._background_check_timer_handle is None
-    edm_app_setup.runtime.scheduler.schedule_next_tasks.assert_called_once_with()
-    edm_app_setup.app._schedule_next_background_check.assert_called_once_with()
+    assert edm_app_setup.app._pending_docker_data_refresh_timer is None
+    docker_manager = edm_app_setup.runtime.docker_manager
+    docker_manager.refresh_docker_data_if_needed.assert_called_once_with()
+    edm_app_setup.app._schedule_next_docker_data_refresh_check.assert_called_once_with()
 
 
-def test_completed_tasks_are_handled_and_visible_changes_redraw(
+def test_completion_callbacks_run_and_visible_changes_redraw(
     edm_app_setup,
 ) -> None:
-    first_completed_task = object()
-    second_completed_task = object()
-    edm_app_setup.runtime.task_runner.pop_all_completed_tasks.return_value = [
-        first_completed_task,
-        second_completed_task,
+    first_completion = Mock(return_value=False)
+    second_completion = Mock(return_value=True)
+    executor = edm_app_setup.runtime.background_executor
+    executor.get_and_remove_all_ui_completion_callbacks.return_value = [
+        first_completion,
+        second_completion,
     ]
-    result_handler = edm_app_setup.runtime.background_task_result_handler
-    result_handler.handle_completed_task.side_effect = [False, True]
-    edm_app_setup.app._schedule_next_background_check = Mock()
+    edm_app_setup.app._schedule_next_docker_data_refresh_check = Mock()
 
     edm_app_setup.app._process_completed_background_tasks(b"x")
 
-    assert result_handler.handle_completed_task.call_count == 2
-    edm_app_setup.runtime.scheduler.schedule_next_tasks.assert_called_once_with()
-    edm_app_setup.runtime.ui_controller.render_current_state.assert_called_once_with()
+    first_completion.assert_called_once_with()
+    second_completion.assert_called_once_with()
+    docker_manager = edm_app_setup.runtime.docker_manager
+    docker_manager.refresh_docker_data_if_needed.assert_called_once_with()
+    edm_app_setup.runtime.ui_controller.update_terminal_view.assert_called_once_with()
 
 
-def test_completed_tasks_do_not_redraw_when_nothing_visible_changed(
+def test_completion_callbacks_do_not_redraw_when_nothing_visible_changed(
     edm_app_setup,
 ) -> None:
-    edm_app_setup.runtime.task_runner.pop_all_completed_tasks.return_value = [object()]
-    result_handler = edm_app_setup.runtime.background_task_result_handler
-    result_handler.handle_completed_task.return_value = False
-    edm_app_setup.app._schedule_next_background_check = Mock()
+    completion = Mock(return_value=False)
+    executor = edm_app_setup.runtime.background_executor
+    executor.get_and_remove_all_ui_completion_callbacks.return_value = [completion]
+    edm_app_setup.app._schedule_next_docker_data_refresh_check = Mock()
 
     edm_app_setup.app._process_completed_background_tasks(b"")
 
-    edm_app_setup.runtime.ui_controller.render_current_state.assert_not_called()
+    edm_app_setup.runtime.ui_controller.update_terminal_view.assert_not_called()
 
 
 class FakeUrwidMainLoop:
@@ -175,33 +176,33 @@ def test_schedule_next_check_replaces_the_existing_scheduled_check(
     fake_urwid_main_loop: FakeUrwidMainLoop,
 ) -> None:
     edm_app_setup.app.ui_event_loop = fake_urwid_main_loop
-    edm_app_setup.app._background_check_timer_handle = "old"
-    scheduler = edm_app_setup.runtime.scheduler
-    scheduler.seconds_until_next_task_check.return_value = 0.75
+    edm_app_setup.app._pending_docker_data_refresh_timer = "old"
+    docker_manager = edm_app_setup.runtime.docker_manager
+    docker_manager.get_next_docker_data_refresh_delay.return_value = 0.75
 
-    edm_app_setup.app._schedule_next_background_check()
+    edm_app_setup.app._schedule_next_docker_data_refresh_check()
 
     fake_urwid_main_loop.remove_alarm.assert_called_once_with("old")
     fake_urwid_main_loop.set_alarm_in.assert_called_once_with(
         0.75,
-        edm_app_setup.app._schedule_next_background_tasks,
+        edm_app_setup.app._run_scheduled_docker_data_refresh_check,
     )
-    assert edm_app_setup.app._background_check_timer_handle == "timer"
+    assert edm_app_setup.app._pending_docker_data_refresh_timer == "timer"
 
 
 def test_schedule_next_check_uses_explicit_delay_after_ui_loop_starts(
     edm_app_setup,
     fake_urwid_main_loop: FakeUrwidMainLoop,
 ) -> None:
-    edm_app_setup.app._schedule_next_background_check(delay=0)
-    scheduler = edm_app_setup.runtime.scheduler
-    scheduler.seconds_until_next_task_check.assert_not_called()
+    edm_app_setup.app._schedule_next_docker_data_refresh_check(delay=0)
+    docker_manager = edm_app_setup.runtime.docker_manager
+    docker_manager.get_next_docker_data_refresh_delay.assert_not_called()
 
     edm_app_setup.app.ui_event_loop = fake_urwid_main_loop
-    edm_app_setup.app._schedule_next_background_check(delay=0)
+    edm_app_setup.app._schedule_next_docker_data_refresh_check(delay=0)
     fake_urwid_main_loop.set_alarm_in.assert_called_once_with(
         0,
-        edm_app_setup.app._schedule_next_background_tasks,
+        edm_app_setup.app._run_scheduled_docker_data_refresh_check,
     )
 
 
@@ -223,16 +224,18 @@ def test_run_starts_ui_and_closes_resources(
         edm_app_setup.app._process_completed_background_tasks,
     )
     runtime = edm_app_setup.runtime
-    runtime.scheduler.schedule_container_refresh.assert_called_once_with(force=True)
-    runtime.ui_controller.render_current_state.assert_called_once_with()
+    runtime.docker_manager.start_running_container_list_refresh.assert_called_once_with(
+        force=True
+    )
+    runtime.ui_controller.update_terminal_view.assert_called_once_with()
     fake_urwid_main_loop.set_alarm_in.assert_called_once_with(
         0,
-        edm_app_setup.app._schedule_next_background_tasks,
+        edm_app_setup.app._run_scheduled_docker_data_refresh_check,
     )
     fake_urwid_main_loop.run.assert_called_once_with()
     edm_app_setup.background_notifier.stop.assert_called_once_with()
-    runtime.task_runner.shutdown.assert_called_once_with(wait=True)
-    runtime.container_data_source.close.assert_called_once_with()
+    runtime.background_executor.shutdown.assert_called_once_with(wait=True)
+    runtime.docker_container_client.close.assert_called_once_with()
 
 
 def test_run_still_cleans_up_when_main_loop_fails(
@@ -252,5 +255,5 @@ def test_run_still_cleans_up_when_main_loop_fails(
 
     runtime = edm_app_setup.runtime
     edm_app_setup.background_notifier.stop.assert_called_once_with()
-    runtime.task_runner.shutdown.assert_called_once_with(wait=True)
-    runtime.container_data_source.close.assert_called_once_with()
+    runtime.background_executor.shutdown.assert_called_once_with(wait=True)
+    runtime.docker_container_client.close.assert_called_once_with()

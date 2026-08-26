@@ -7,10 +7,10 @@ import pytest
 from docker.errors import DockerException, NotFound
 
 from easy_docker_manager.docker import client_factory
-from easy_docker_manager.docker.base import (
-    ContainerDataSource,
+from easy_docker_manager.docker.container_client import (
     ContainerLogFetchError,
     ContainerNotFoundError,
+    DockerContainerClient,
     DockerRequestFailedError,
     FailedDockerRequestType,
     LogsUnavailableError,
@@ -18,15 +18,14 @@ from easy_docker_manager.docker.base import (
 from easy_docker_manager.docker.container_mapper import to_container_summary
 from easy_docker_manager.docker.error_mapping import raise_container_request_error
 from easy_docker_manager.docker.log_availability import (
-    get_container_log_driver,
-    get_unreadable_log_driver,
-    is_unsupported_log_error,
+    docker_error_indicates_logs_are_unavailable,
+    get_container_logging_driver_name,
 )
 
 
-def test_container_data_source_is_abstract() -> None:
+def test_docker_container_client_is_abstract() -> None:
     with pytest.raises(TypeError):
-        ContainerDataSource()  # type: ignore[abstract]
+        DockerContainerClient()  # type: ignore[abstract]
 
 
 def test_create_docker_client_passes_the_timeout(monkeypatch) -> None:
@@ -179,19 +178,18 @@ def test_error_mapping_raises_general_request_error() -> None:
     )
 
 
-def test_log_driver_helpers_read_the_inspection_data() -> None:
+def test_container_logging_driver_name_is_read_from_inspection_data() -> None:
     container = SimpleNamespace(attrs={"HostConfig": {"LogConfig": {"Type": "none"}}})
 
-    assert get_container_log_driver(container) == "none"
-    assert get_unreadable_log_driver(container) == "none"
-    assert get_container_log_driver(None) == "unknown"
+    assert get_container_logging_driver_name(container) == "none"
+    assert get_container_logging_driver_name(None) == "unknown"
 
 
-def test_readable_log_driver_is_not_rejected_early() -> None:
+def test_container_logging_driver_name_returns_readable_driver_name() -> None:
     container = SimpleNamespace(
         attrs={"HostConfig": {"LogConfig": {"Type": "json-file"}}}
     )
-    assert get_unreadable_log_driver(container) is None
+    assert get_container_logging_driver_name(container) == "json-file"
 
 
 @pytest.mark.parametrize(
@@ -202,9 +200,11 @@ def test_readable_log_driver_is_not_rejected_early() -> None:
         "logs are not available for this container",
     ],
 )
-def test_unsupported_log_error_recognizes_docker_messages(message: str) -> None:
-    assert is_unsupported_log_error(RuntimeError(message))
+def test_docker_error_indicates_when_logs_are_unavailable(message: str) -> None:
+    assert docker_error_indicates_logs_are_unavailable(RuntimeError(message))
 
 
-def test_unrelated_log_error_is_not_classified_as_unsupported() -> None:
-    assert not is_unsupported_log_error(RuntimeError("connection reset"))
+def test_unrelated_docker_error_does_not_indicate_logs_are_unavailable() -> None:
+    assert not docker_error_indicates_logs_are_unavailable(
+        RuntimeError("connection reset")
+    )
