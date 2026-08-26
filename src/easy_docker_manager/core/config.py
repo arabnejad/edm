@@ -11,10 +11,10 @@ from easy_docker_manager.core.log_text import MIN_LOG_LINE_CHARS
 class AppConfig:
     """Settings loaded at startup for the UI and background work.
 
-    The same configuration object is shared by the scheduler, data loaders,
-    cache, and UI. It is frozen so one component cannot change a setting while
-    the others are still using the original value. To change configuration,
-    create a new AppConfig and restart the application.
+    EDM reads these settings when it creates the Docker client, worker pool,
+    cache, data loaders, and terminal UI. AppConfig cannot be changed after it
+    is created because EDM does not apply configuration changes while it is
+    running. Edit the configuration file and restart EDM to use new settings.
     """
 
     refresh_interval: float = 2.0

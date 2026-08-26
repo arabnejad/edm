@@ -1,28 +1,14 @@
-"""Bounded cache for loaded tab content."""
+"""Cache loaded tab content within configured entry and byte limits."""
 
 from __future__ import annotations
 
 from collections import OrderedDict
-from dataclasses import dataclass
 from typing import Optional
 
-from easy_docker_manager.core.tabs import TabName
+from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 
 
-@dataclass(frozen=True)
-class ContainerTabKey:
-    """Identify one container and one of its detail tabs.
-
-    This object is used as a key in caches and dictionaries. It is frozen so
-    its hash cannot change after an entry has been stored, which keeps later
-    lookups and removals reliable.
-    """
-
-    container_id: str
-    tab_name: TabName
-
-
-class LRUTabContentCache:
+class TabContentCache:
     """Keep recently viewed tab text within count and byte limits.
 
     Logs and Docker inspection data can be large. When either limit is exceeded,
@@ -53,7 +39,7 @@ class LRUTabContentCache:
         return value
 
     def __setitem__(self, key: ContainerTabKey, value: str) -> None:
-        fitted_value = self._fit_value_to_byte_limit(key, value)
+        fitted_value = self._apply_cache_byte_limit_to_tab_content(key, value)
         previous_value = self._entries.pop(key, None)
         if previous_value is not None:
             self._total_size_bytes -= self._utf8_size(previous_value)
@@ -61,7 +47,7 @@ class LRUTabContentCache:
         self._entries[key] = fitted_value
         self._total_size_bytes += self._utf8_size(fitted_value)
         self._entries.move_to_end(key)
-        self._remove_oldest_entries_until_limits_met()
+        self._enforce_cache_limits()
 
     def get(self, key: ContainerTabKey, default: Optional[str] = None) -> Optional[str]:
         """Return cached text and mark that entry as recently used."""
@@ -74,7 +60,7 @@ class LRUTabContentCache:
         """Return the UTF-8 byte count tracked for all cached text."""
         return self._total_size_bytes
 
-    def remove_stopped_container_entries(
+    def remove_cached_tab_content_for_stopped_containers(
         self,
         running_container_ids: set[str],
     ) -> None:
@@ -96,7 +82,7 @@ class LRUTabContentCache:
     def __len__(self) -> int:
         return len(self._entries)
 
-    def _remove_oldest_entries_until_limits_met(self) -> None:
+    def _enforce_cache_limits(self) -> None:
         """Remove the oldest entries until both cache limits are met."""
         while (
             len(self._entries) > self.max_entries
@@ -105,7 +91,11 @@ class LRUTabContentCache:
             _, removed_value = self._entries.popitem(last=False)
             self._total_size_bytes -= self._utf8_size(removed_value)
 
-    def _fit_value_to_byte_limit(self, key: ContainerTabKey, value: str) -> str:
+    def _apply_cache_byte_limit_to_tab_content(
+        self,
+        key: ContainerTabKey,
+        value: str,
+    ) -> str:
         """Trim one value when it exceeds the cache's total byte limit."""
         encoded = value.encode("utf-8", errors="replace")
         if len(encoded) <= self.max_total_bytes:
@@ -126,4 +116,4 @@ class LRUTabContentCache:
         return len(value.encode("utf-8", errors="replace"))
 
 
-__all__ = ["ContainerTabKey", "LRUTabContentCache"]
+__all__ = ["TabContentCache"]

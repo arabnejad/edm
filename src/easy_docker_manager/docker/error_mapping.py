@@ -6,7 +6,7 @@ from typing import NoReturn
 
 from docker.errors import NotFound
 
-from easy_docker_manager.docker.base import (
+from easy_docker_manager.docker.container_client import (
     ContainerLogFetchError,
     ContainerNotFoundError,
     DockerRequestFailedError,

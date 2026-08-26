@@ -1,6 +1,6 @@
-"""Read container information from Docker running on this computer.
+"""Send container requests to Docker running on this computer.
 
-LocalContainerDataSource connects to the local Docker daemon through the
+LocalDockerContainerClient connects to the local Docker daemon through the
 Docker Python SDK. It lists running containers and loads their logs,
 environment variables, inspection data, and process lists. The connection is
 created when the first request is made and reused while EDM is running. EDMApp
@@ -18,26 +18,25 @@ import docker
 from docker.errors import DockerException, NotFound
 
 from easy_docker_manager.core import ContainerProcessTable, ContainerSummary
-from easy_docker_manager.docker.base import (
-    ContainerDataSource,
+from easy_docker_manager.docker.container_client import (
     ContainerNotFoundError,
     ContainerRefreshError,
+    DockerContainerClient,
     FailedDockerRequestType,
     LogsUnavailableError,
 )
 from easy_docker_manager.docker.container_mapper import to_container_summary
 from easy_docker_manager.docker.error_mapping import raise_container_request_error
 from easy_docker_manager.docker.log_availability import (
-    get_container_log_driver,
-    get_unreadable_log_driver,
-    is_unsupported_log_error,
+    docker_error_indicates_logs_are_unavailable,
+    get_container_logging_driver_name,
 )
 
 logger = logging.getLogger(__name__)
 
 
-class LocalContainerDataSource(ContainerDataSource):
-    """Provide EDM with data from the local Docker daemon (Docker Python SDK)."""
+class LocalDockerContainerClient(DockerContainerClient):
+    """Perform EDM's container requests through the local Docker daemon."""
 
     def __init__(
         self,
@@ -76,7 +75,7 @@ class LocalContainerDataSource(ContainerDataSource):
                 logger.warning("Skipping container summary: %s", exc)
         return container_summaries
 
-    def get_logs(
+    def get_container_logs(
         self,
         container_id: str,
         tail_lines: Union[int, str] = 100,
@@ -86,9 +85,10 @@ class LocalContainerDataSource(ContainerDataSource):
         container = None
         try:
             container = self._get_or_create_docker_client().containers.get(container_id)
-            unreadable_driver = get_unreadable_log_driver(container)
-            if unreadable_driver:
-                raise LogsUnavailableError(unreadable_driver)
+            logging_driver_name = get_container_logging_driver_name(container)
+            # Docker's "none" logging driver discards standard output and error.
+            if logging_driver_name == "none":
+                raise LogsUnavailableError(logging_driver_name)
 
             log_options: dict[str, Any] = {"tail": tail_lines, "timestamps": True}
             if since_timestamp is not None:
@@ -100,10 +100,12 @@ class LocalContainerDataSource(ContainerDataSource):
         except NotFound as exc:
             raise ContainerNotFoundError(container_id) from exc
         except Exception as exc:
-            if is_unsupported_log_error(exc):
-                driver = get_container_log_driver(container)
-                logger.info("Logs unavailable for logging driver %s", driver)
-                raise LogsUnavailableError(driver) from exc
+            if docker_error_indicates_logs_are_unavailable(exc):
+                logging_driver_name = get_container_logging_driver_name(container)
+                logger.info(
+                    "Logs unavailable for logging driver %s", logging_driver_name
+                )
+                raise LogsUnavailableError(logging_driver_name) from exc
             logger.warning(
                 "Error fetching logs for container %s: %s", container_id, exc
             )
@@ -113,7 +115,10 @@ class LocalContainerDataSource(ContainerDataSource):
                 exc,
             )
 
-    def get_environment_variables(self, container_id: str) -> dict[str, str]:
+    def get_container_environment_variables(
+        self,
+        container_id: str,
+    ) -> dict[str, str]:
         """Return the environment variables stored in Docker inspection data."""
         try:
             container = self._get_or_create_docker_client().containers.get(container_id)
@@ -132,12 +137,14 @@ class LocalContainerDataSource(ContainerDataSource):
                 exc,
             )
 
-    def get_docker_inspection_data(self, container_id: str) -> dict[str, Any]:
+    def get_container_inspection_data(self, container_id: str) -> dict[str, Any]:
         """Return container inspection data and any available image data."""
         try:
             container = self._get_or_create_docker_client().containers.get(container_id)
             container_attrs = container.attrs
-            image_attrs = self._load_container_image_inspection_data(container_attrs)
+            image_attrs = self._load_image_inspection_data_for_container(
+                container_attrs
+            )
             return {
                 "container": container_attrs,
                 "image": image_attrs,
@@ -150,8 +157,11 @@ class LocalContainerDataSource(ContainerDataSource):
                 exc,
             )
 
-    def get_process_list(self, container_id: str) -> ContainerProcessTable:
-        """Return the columns and process rows from Docker's top command."""
+    def get_container_top_process_table(
+        self,
+        container_id: str,
+    ) -> ContainerProcessTable:
+        """Run Docker top for one container and return its columns and rows."""
         try:
             container = self._get_or_create_docker_client().containers.get(container_id)
             top_data = container.top()
@@ -186,8 +196,8 @@ class LocalContainerDataSource(ContainerDataSource):
     def _decode_log_chunk(chunk: Union[bytes, str]) -> str:
         """Return a Docker log response as a Python string.
 
-        get_logs() calls this because the Docker SDK may return bytes or a
-        string. Byte responses are decoded as UTF-8. Any invalid bytes are
+        get_container_logs() calls this because the Docker SDK may return bytes
+        or a string. Byte responses are decoded as UTF-8. Any invalid bytes are
         replaced instead of raising an error, so malformed log output does not
         stop the Logs tab from loading.
         """
@@ -195,7 +205,7 @@ class LocalContainerDataSource(ContainerDataSource):
             return chunk.decode("utf-8", errors="replace")
         return chunk
 
-    def _load_container_image_inspection_data(
+    def _load_image_inspection_data_for_container(
         self,
         container_attrs: dict[str, Any],
     ) -> dict[str, Any]:
@@ -219,4 +229,4 @@ class LocalContainerDataSource(ContainerDataSource):
             return {}
 
 
-__all__ = ["LocalContainerDataSource"]
+__all__ = ["LocalDockerContainerClient"]

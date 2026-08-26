@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from easy_docker_manager.docker.local import LocalContainerDataSource
+from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
 from tests.integration_tests.docker_test_setup import DockerTestSetup
 
 pytestmark = pytest.mark.integration
@@ -10,9 +10,9 @@ pytestmark = pytest.mark.integration
 
 def test_running_container_is_returned_by_container_listing(
     docker_test_setup: DockerTestSetup,
-    local_container_data_source: LocalContainerDataSource,
+    local_docker_container_client: LocalDockerContainerClient,
 ) -> None:
-    running_containers = local_container_data_source.list_running_containers()
+    running_containers = local_docker_container_client.list_running_containers()
 
     matching_container = None
     for container in running_containers:
@@ -27,9 +27,9 @@ def test_running_container_is_returned_by_container_listing(
 
 def test_container_logs_are_read_from_docker(
     docker_test_setup: DockerTestSetup,
-    local_container_data_source: LocalContainerDataSource,
+    local_docker_container_client: LocalDockerContainerClient,
 ) -> None:
-    log_text = local_container_data_source.get_logs(
+    log_text = local_docker_container_client.get_container_logs(
         docker_test_setup.container.id,
         tail_lines=20,
     )
@@ -39,10 +39,12 @@ def test_container_logs_are_read_from_docker(
 
 def test_container_environment_variables_are_read_from_inspection_data(
     docker_test_setup: DockerTestSetup,
-    local_container_data_source: LocalContainerDataSource,
+    local_docker_container_client: LocalDockerContainerClient,
 ) -> None:
-    environment_variables = local_container_data_source.get_environment_variables(
-        docker_test_setup.container.id
+    environment_variables = (
+        local_docker_container_client.get_container_environment_variables(
+            docker_test_setup.container.id
+        )
     )
 
     for variable_name, expected_value in docker_test_setup.environment.items():
@@ -51,9 +53,9 @@ def test_container_environment_variables_are_read_from_inspection_data(
 
 def test_container_and_image_inspection_data_are_returned(
     docker_test_setup: DockerTestSetup,
-    local_container_data_source: LocalContainerDataSource,
+    local_docker_container_client: LocalDockerContainerClient,
 ) -> None:
-    inspection_data = local_container_data_source.get_docker_inspection_data(
+    inspection_data = local_docker_container_client.get_container_inspection_data(
         docker_test_setup.container.id
     )
 
@@ -67,9 +69,9 @@ def test_container_and_image_inspection_data_are_returned(
 
 def test_container_process_information_is_returned(
     docker_test_setup: DockerTestSetup,
-    local_container_data_source: LocalContainerDataSource,
+    local_docker_container_client: LocalDockerContainerClient,
 ) -> None:
-    process_table = local_container_data_source.get_process_list(
+    process_table = local_docker_container_client.get_container_top_process_table(
         docker_test_setup.container.id
     )
 

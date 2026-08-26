@@ -5,9 +5,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from easy_docker_manager.core import ContainerSummary
-from easy_docker_manager.core.container_sorting import ContainerSortField
-from easy_docker_manager.core.content_cache import ContainerTabKey
+from easy_docker_manager.core.container_sorting import (
+    ContainerSortField,
+    ContainerSortMenuState,
+)
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.ui_session_state import UISessionState
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
@@ -18,47 +19,48 @@ from easy_docker_manager.ui.ui_controller import UIController
 class UIControllerTestSetup:
     controller: UIController
     terminal_layout_view: Mock
-    scheduler: Mock
+    docker_manager: Mock
 
 
 @pytest.fixture
 def controller_factory():
     def create_controller(state: UISessionState):
         terminal_layout_view = Mock()
-        scheduler = Mock()
-        scheduler.schedule_selected_tab_load.return_value = True
+        docker_manager = Mock()
         ui_controller = UIController(
             state,
             terminal_layout_view,
             DetailTabTextFormatter(),
-            scheduler,
+            docker_manager,
         )
         return UIControllerTestSetup(
             controller=ui_controller,
             terminal_layout_view=terminal_layout_view,
-            scheduler=scheduler,
+            docker_manager=docker_manager,
         )
 
     return create_controller
 
 
-def test_visible_lines_return_messages_for_each_empty_or_error_state(
+def test_active_detail_tab_display_lines_show_empty_and_error_messages(
     controller_factory,
     container_summary_factory,
 ) -> None:
     state = UISessionState()
     test_setup = controller_factory(state)
     controller = test_setup.controller
-    assert controller.get_visible_detail_lines() == ["Select a running container."]
+    assert controller.get_active_detail_tab_display_lines() == [
+        "Select a running container."
+    ]
 
     state.running_containers = [container_summary_factory()]
     state.selected_container_index = 0
     container_tab_key = state.selected_container_tab_key
     assert container_tab_key is not None
-    assert controller.get_visible_detail_lines() == ["Loading..."]
+    assert controller.get_active_detail_tab_display_lines() == ["Loading..."]
 
     state.tab_load_errors[container_tab_key] = "failed"
-    assert controller.get_visible_detail_lines() == ["failed"]
+    assert controller.get_active_detail_tab_display_lines() == ["failed"]
     state.tab_load_errors.clear()
 
     for tab, message in [
@@ -71,10 +73,10 @@ def test_visible_lines_return_messages_for_each_empty_or_error_state(
         tab_key = state.selected_container_tab_key
         assert tab_key is not None
         state.tab_content_cache[tab_key] = ""
-        assert controller.get_visible_detail_lines() == [message]
+        assert controller.get_active_detail_tab_display_lines() == [message]
 
 
-def test_visible_log_lines_use_the_saved_query(
+def test_active_log_tab_display_lines_use_the_saved_query(
     controller_factory,
     session_state_factory,
 ) -> None:
@@ -85,7 +87,9 @@ def test_visible_log_lines_use_the_saved_query(
     state.tab_search_queries[container_tab_key] = "ERROR"
     test_setup = controller_factory(state)
 
-    assert test_setup.controller.get_visible_detail_lines() == ["ERROR failed"]
+    assert test_setup.controller.get_active_detail_tab_display_lines() == [
+        "ERROR failed"
+    ]
 
 
 def test_render_passes_lines_and_error_state_to_the_view(
@@ -98,7 +102,7 @@ def test_render_passes_lines_and_error_state_to_the_view(
     state.tab_load_errors[container_tab_key] = "failed"
     test_setup = controller_factory(state)
 
-    test_setup.controller.render_current_state()
+    test_setup.controller.update_terminal_view()
 
     rendered_state, lines, line_markup = (
         test_setup.terminal_layout_view.render.call_args.args
@@ -119,7 +123,7 @@ def test_render_passes_lines_and_error_state_to_the_view(
         ("page down", 0, 3),
     ],
 )
-def test_move_detail_selection(
+def test_move_selected_detail_line(
     navigation_key: str,
     starting_line: int,
     expected_line: int,
@@ -133,7 +137,7 @@ def test_move_detail_selection(
     state.detail_selected_line_index = starting_line
     test_setup = controller_factory(state)
 
-    selection_changed = test_setup.controller.move_detail_selection(
+    selection_changed = test_setup.controller.move_selected_detail_line(
         navigation_key,
         terminal_size=(80, 10),
     )
@@ -154,11 +158,11 @@ def test_moving_up_in_logs_disables_tail_following(
     state.detail_selected_line_index = 1
     test_setup = controller_factory(state)
 
-    assert test_setup.controller.move_detail_selection("up")
+    assert test_setup.controller.move_selected_detail_line("up")
     assert not state.follow_log_tail
 
 
-def test_select_last_detail_line_moves_focus(
+def test_move_selection_to_last_detail_line_moves_focus(
     controller_factory,
     session_state_factory,
 ) -> None:
@@ -168,12 +172,12 @@ def test_select_last_detail_line_moves_focus(
     state.tab_content_cache[container_tab_key] = "A\nB\nC"
     test_setup = controller_factory(state)
 
-    assert test_setup.controller.select_last_detail_line()
+    assert test_setup.controller.move_selection_to_last_detail_line()
     assert state.detail_selected_line_index == 2
     test_setup.terminal_layout_view.focus_detail_line.assert_called_once_with(2)
 
 
-def test_move_container_selection_loads_the_new_container(
+def test_move_selected_container_index_loads_the_new_container(
     controller_factory,
     container_summary_factory,
 ) -> None:
@@ -186,10 +190,10 @@ def test_move_container_selection_loads_the_new_container(
     )
     test_setup = controller_factory(state)
 
-    assert test_setup.controller.move_container_selection(1)
+    assert test_setup.controller.move_selected_container_index(1)
     assert state.selected_container_id == "two"
-    test_setup.scheduler.reset_log_poll_schedule.assert_called_once_with()
-    test_setup.scheduler.schedule_selected_tab_load.assert_called_once_with(force=True)
+    docker_manager = test_setup.docker_manager
+    docker_manager.prepare_selected_container_details.assert_called_once_with()
 
 
 def test_container_selection_does_not_move_outside_bounds(
@@ -199,11 +203,12 @@ def test_container_selection_does_not_move_outside_bounds(
     state = session_state_factory()
     test_setup = controller_factory(state)
 
-    assert not test_setup.controller.move_container_selection(-1)
-    test_setup.scheduler.schedule_selected_tab_load.assert_not_called()
+    assert not test_setup.controller.move_selected_container_index(-1)
+    docker_manager = test_setup.docker_manager
+    docker_manager.prepare_selected_container_details.assert_not_called()
 
 
-def test_sort_menu_applies_name_order_and_preserves_selected_container(
+def test_sort_menu_applies_the_selected_field_and_direction(
     controller_factory,
     container_summary_factory,
 ) -> None:
@@ -218,17 +223,18 @@ def test_sort_menu_applies_name_order_and_preserves_selected_container(
 
     assert test_setup.controller.open_container_sort_menu()
     assert test_setup.controller.move_container_sort_menu_selection(1)
-    assert state.container_sort_menu_field == ContainerSortField.NAME
+    assert isinstance(state.container_sort_menu_state, ContainerSortMenuState)
+    assert (
+        state.container_sort_menu_state.selected_sort_field == ContainerSortField.NAME
+    )
+    assert test_setup.controller.set_container_sort_menu_direction(descending=True)
     assert test_setup.controller.apply_container_sort_menu()
 
-    assert [container.container_id for container in state.running_containers] == [
-        "a",
-        "z",
-    ]
-    assert state.selected_container_id == "z"
-    assert state.selected_container_index == 1
-    assert not state.is_container_sort_menu_open
-    test_setup.scheduler.schedule_selected_tab_load.assert_not_called()
+    assert state.container_sort_field == ContainerSortField.NAME
+    assert state.container_sort_descending
+    assert state.container_sort_menu_state is None
+    docker_manager = test_setup.docker_manager
+    docker_manager.apply_container_sort_to_current_list.assert_called_once_with()
 
 
 def test_sort_menu_can_cancel_and_reject_unavailable_movements(
@@ -250,39 +256,17 @@ def test_sort_menu_can_cancel_and_reject_unavailable_movements(
     assert state.container_sort_field == ContainerSortField.DOCKER_ORDER
 
 
-def test_sort_menu_sets_direction_and_restores_docker_order(
-    controller_factory,
-    container_summary_factory,
-) -> None:
-    state = UISessionState(
-        running_containers=[
-            container_summary_factory("z", name="Zulu"),
-            container_summary_factory("a", name="alpha"),
-        ],
-        selected_container_index=0,
-    )
+def test_docker_order_ignores_direction_in_the_sort_menu(controller_factory) -> None:
+    state = UISessionState()
     test_setup = controller_factory(state)
-    test_setup.controller.open_container_sort_menu()
-    test_setup.controller.move_container_sort_menu_selection(1)
 
-    assert test_setup.controller.set_container_sort_menu_direction(descending=True)
+    test_setup.controller.open_container_sort_menu()
     assert not test_setup.controller.set_container_sort_menu_direction(descending=True)
     assert test_setup.controller.apply_container_sort_menu()
-    assert state.container_sort_descending
-
-    test_setup.controller.open_container_sort_menu()
-    assert test_setup.controller.move_container_sort_menu_selection(-1)
-    assert test_setup.controller.apply_container_sort_menu()
-
-    assert [container.container_id for container in state.running_containers] == [
-        "z",
-        "a",
-    ]
-    assert state.container_sort_field == ContainerSortField.DOCKER_ORDER
     assert not state.container_sort_descending
 
 
-def test_switch_detail_tab_resets_navigation_and_requests_content(
+def test_switch_active_detail_tab_changes_tab_and_notifies_docker_manager(
     controller_factory,
     session_state_factory,
 ) -> None:
@@ -290,118 +274,21 @@ def test_switch_detail_tab_resets_navigation_and_requests_content(
     state.detail_selected_line_index = 5
     test_setup = controller_factory(state)
 
-    assert test_setup.controller.switch_detail_tab(1)
+    assert test_setup.controller.switch_active_detail_tab(1)
     assert state.active_detail_tab_name == TabName.ENV
-    assert state.detail_selected_line_index == 0
-    assert not state.follow_log_tail
-    test_setup.scheduler.reset_log_poll_schedule.assert_called_once_with()
-    test_setup.scheduler.schedule_selected_tab_load.assert_called_once_with(force=False)
+    docker_manager = test_setup.docker_manager
+    docker_manager.prepare_active_detail_tab.assert_called_once_with()
 
 
-def test_switch_to_cached_tab_updates_status(
+def test_switch_active_detail_tab_wraps_from_top_to_logs(
     controller_factory,
     session_state_factory,
 ) -> None:
-    state = session_state_factory(tab=TabName.LOGS)
-    env_key = ContainerTabKey("container-1", TabName.ENV)
-    state.tab_content_cache[env_key] = "A=1"
+    state = session_state_factory(tab=TabName.TOP)
     test_setup = controller_factory(state)
 
-    test_setup.controller.switch_detail_tab(1)
+    test_setup.controller.switch_active_detail_tab(1)
 
-    assert state.status_message == "Loaded Env"
-
-
-def test_update_running_containers_selects_first_and_loads_it(
-    controller_factory,
-    container_summary_factory,
-) -> None:
-    state = UISessionState()
-    test_setup = controller_factory(state)
-    containers = [
-        container_summary_factory("one"),
-        container_summary_factory("two"),
-    ]
-
-    assert test_setup.controller.update_running_containers(containers)
-    assert state.selected_container_index == 0
-    assert state.status_message == "2 running containers"
-    test_setup.scheduler.remove_stopped_container_log_tracking.assert_called_once_with(
-        {"one", "two"}
-    )
-    test_setup.scheduler.schedule_selected_tab_load.assert_called_once_with(force=True)
-
-
-def test_update_running_containers_preserves_selection_by_id(
-    controller_factory,
-    container_summary_factory,
-) -> None:
-    state = UISessionState(
-        running_containers=[
-            container_summary_factory("one"),
-            container_summary_factory("two"),
-        ],
-        selected_container_index=1,
-    )
-    test_setup = controller_factory(state)
-    refreshed = [
-        ContainerSummary(
-            "two",
-            "two-new",
-            "running",
-            "python:3.12",
-            "2026-01-01T12:00:00Z",
-        ),
-        container_summary_factory("three"),
-    ]
-
-    assert test_setup.controller.update_running_containers(refreshed)
-    assert state.selected_container_id == "two"
-    test_setup.scheduler.schedule_selected_tab_load.assert_not_called()
-
-
-def test_container_refresh_reapplies_the_active_sort(
-    controller_factory,
-    container_summary_factory,
-) -> None:
-    state = UISessionState(
-        container_sort_field=ContainerSortField.IMAGE,
-        container_sort_descending=True,
-    )
-    test_setup = controller_factory(state)
-    refreshed = [
-        container_summary_factory("nginx", image_name="nginx:latest"),
-        container_summary_factory("redis", image_name="redis:7"),
-    ]
-
-    assert test_setup.controller.update_running_containers(refreshed)
-
-    assert [container.container_id for container in state.running_containers] == [
-        "redis",
-        "nginx",
-    ]
-
-
-def test_unchanged_refresh_clears_old_error_status(
-    controller_factory,
-    session_state_factory,
-) -> None:
-    state = session_state_factory()
-    state.status_message = "Container refresh failed: offline"
-    test_setup = controller_factory(state)
-
-    assert test_setup.controller.update_running_containers(
-        list(state.running_containers)
-    )
-    assert state.status_message == "1 running containers"
-
-
-def test_repeated_empty_refresh_does_not_request_another_redraw(
-    controller_factory,
-) -> None:
-    state = UISessionState()
-    test_setup = controller_factory(state)
-
-    assert test_setup.controller.update_running_containers([])
-    assert state.status_message == "No running containers."
-    assert not test_setup.controller.update_running_containers([])
+    assert state.active_detail_tab_name == TabName.LOGS
+    docker_manager = test_setup.docker_manager
+    docker_manager.prepare_active_detail_tab.assert_called_once_with()

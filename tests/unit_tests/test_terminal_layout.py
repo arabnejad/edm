@@ -3,13 +3,14 @@ from __future__ import annotations
 import urwid
 
 from easy_docker_manager.core import AppConfig
-from easy_docker_manager.core.container_sorting import ContainerSortField
+from easy_docker_manager.core.container_sorting import (
+    ContainerSortField,
+    ContainerSortMenuState,
+)
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.ui_session_state import FocusArea, UISessionState
-from easy_docker_manager.ui.terminal_layout import (
-    FocusableDetailLine,
-    TerminalLayoutView,
-)
+from easy_docker_manager.ui.container_details_panel import FocusableDetailLine
+from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
 
 
 def test_focusable_detail_line_accepts_focus_and_returns_unhandled_keys() -> None:
@@ -20,7 +21,7 @@ def test_focusable_detail_line_accepts_focus_and_returns_unhandled_keys() -> Non
 
 def test_layout_builds_all_named_palette_entries() -> None:
     view = TerminalLayoutView(AppConfig())
-    names = {entry[0] for entry in view.build_palette()}
+    names = {entry[0] for entry in view.build_urwid_style_palette()}
 
     assert view.layout is not None
     assert {
@@ -38,7 +39,7 @@ def test_no_color_palette_uses_terminal_defaults_and_keeps_selection_visible() -
     view = TerminalLayoutView(AppConfig(colors_enabled=False))
     palette = {
         name: (foreground, background)
-        for name, foreground, background in view.build_palette()
+        for name, foreground, background in view.build_urwid_style_palette()
     }
 
     assert {background for _foreground, background in palette.values()} == {"default"}
@@ -56,18 +57,29 @@ def test_render_shows_empty_container_state() -> None:
 
     view.render(state, ["Select a running container."], lambda line: line)
 
-    assert view.container_rows[0].get_text()[0] == "No running containers."
-    assert view.container_title_text.get_text()[0] == "Container: none selected"
-    assert view.detail_status_text.get_text()[0] == "No running containers."
-    assert view.container_sort_text.get_text()[0] == "Sort: Docker order"
+    running_container_list_panel = view.running_container_list_panel
+    details_panel = view.selected_container_details_panel
+    assert (
+        running_container_list_panel.container_rows[0].get_text()[0]
+        == "No running containers."
+    )
+    assert (
+        details_panel.container_title_text.get_text()[0] == "Container: none selected"
+    )
+    assert details_panel.detail_status_text.get_text()[0] == "No running containers."
+    assert (
+        running_container_list_panel.container_sort_text.get_text()[0]
+        == "Sort: Docker order"
+    )
 
 
 def test_render_shows_and_hides_container_sort_menu() -> None:
     view = TerminalLayoutView(AppConfig())
     state = UISessionState(
-        is_container_sort_menu_open=True,
-        container_sort_menu_field=ContainerSortField.IMAGE,
-        container_sort_menu_descending=True,
+        container_sort_menu_state=ContainerSortMenuState(
+            selected_sort_field=ContainerSortField.IMAGE,
+            sort_descending=True,
+        ),
     )
 
     view.render(state, ["Select a running container."], lambda line: line)
@@ -79,7 +91,7 @@ def test_render_shows_and_hides_container_sort_menu() -> None:
     assert "Direction: Descending" in rendered_text
     assert "Enter Apply" in rendered_text
 
-    state.is_container_sort_menu_open = False
+    state.container_sort_menu_state = None
     view.render(state, ["Select a running container."], lambda line: line)
     assert view.layout.original_widget is view._main_layout
 
@@ -93,7 +105,10 @@ def test_container_footer_shows_active_sort_direction() -> None:
 
     view.render(state, ["Select a running container."], lambda line: line)
 
-    assert view.container_sort_text.get_text()[0] == "Sort: Creation time descending"
+    assert (
+        view.running_container_list_panel.container_sort_text.get_text()[0]
+        == "Sort: Creation time descending"
+    )
 
 
 def test_render_updates_container_header_tabs_search_and_focus(
@@ -109,18 +124,18 @@ def test_render_updates_container_header_tabs_search_and_focus(
 
     view.render(state, ["PATH=/bin"], lambda line: [("value", line)])
 
-    selected_container = view.container_rows[0]
+    running_container_list_panel = view.running_container_list_panel
+    details_panel = view.selected_container_details_panel
+    selected_container = running_container_list_panel.container_rows[0]
     assert isinstance(selected_container, urwid.AttrMap)
     assert selected_container.original_widget.get_text()[0] == "> web (running)"
     assert selected_container.get_attr_map()[None] == "selected_inactive"
-    assert view.container_title_text.get_text()[0] == "Container: web"
-    assert "Env" in view.detail_tabs_text.get_text()[0]
-    assert view.search_query_text.get_text()[0] == "/PATH"
-    assert view.container_panel is not None
-    assert view.detail_panel is not None
-    assert view.container_panel.get_attr_map()[None] == "border_inactive"
-    assert view.detail_panel.get_attr_map()[None] == "border_active"
-    assert isinstance(view.detail_rows[0], urwid.AttrMap)
+    assert details_panel.container_title_text.get_text()[0] == "Container: web"
+    assert "Env" in details_panel.detail_tabs_text.get_text()[0]
+    assert details_panel.search_query_text.get_text()[0] == "/PATH"
+    assert running_container_list_panel.panel.get_attr_map()[None] == "border_inactive"
+    assert details_panel.panel.get_attr_map()[None] == "border_active"
+    assert isinstance(details_panel.detail_rows[0], urwid.AttrMap)
 
 
 def test_focus_detail_line_clamps_to_last_available_row(
@@ -132,58 +147,59 @@ def test_focus_detail_line_clamps_to_last_available_row(
 
     view.focus_detail_line(20)
 
-    assert view.detail_rows.focus == 1
+    assert view.selected_container_details_panel.detail_rows.focus == 1
 
 
-def test_detail_line_widgets_are_reused_for_unchanged_lines() -> None:
+def test_tab_display_lines_are_reused_when_content_is_unchanged() -> None:
     view = TerminalLayoutView(AppConfig())
+    details_panel = view.selected_container_details_panel
     detail_view_key = ("container", TabName.LOGS, "")
 
-    first_render = view._get_or_build_detail_line_widgets(
+    first_display_lines = details_panel._get_cached_or_build_tab_display_lines(
         ["A", "B"],
         detail_view_key,
         lambda line: line,
     )
-    repeated_render = view._get_or_build_detail_line_widgets(
+    cached_display_lines = details_panel._get_cached_or_build_tab_display_lines(
         ["A", "B"],
         detail_view_key,
         lambda line: line,
     )
 
-    assert repeated_render is first_render
+    assert cached_display_lines is first_display_lines
 
 
-def test_log_update_reuses_overlapping_rows_and_builds_new_rows() -> None:
+def test_log_update_reuses_overlapping_display_lines() -> None:
     view = TerminalLayoutView(AppConfig())
+    details_panel = view.selected_container_details_panel
     detail_view_key = ("container", TabName.LOGS, "")
-    first_render = view._get_or_build_detail_line_widgets(
+    first_display_lines = details_panel._get_cached_or_build_tab_display_lines(
         ["A", "B"],
         detail_view_key,
         lambda line: line,
     )
 
-    updated_render = view._get_or_build_detail_line_widgets(
+    updated_display_lines = details_panel._get_cached_or_build_tab_display_lines(
         ["B", "C"],
         detail_view_key,
         lambda line: line,
     )
 
-    assert updated_render[0] is first_render[1]
-    assert updated_render[1] is not first_render[0]
-    assert updated_render[1].get_text()[0] == "C"
+    assert updated_display_lines[0] is first_display_lines[1]
+    assert updated_display_lines[1] is not first_display_lines[0]
+    assert updated_display_lines[1].get_text()[0] == "C"
 
 
-def test_context_change_rebuilds_detail_rows() -> None:
+def test_context_change_rebuilds_tab_display_lines() -> None:
     view = TerminalLayoutView(AppConfig())
-    first_context_render = view._get_or_build_detail_line_widgets(
-        ["A"],
-        ("container", TabName.LOGS, ""),
-        lambda line: line,
+    details_panel = view.selected_container_details_panel
+    first_context_display_lines = details_panel._get_cached_or_build_tab_display_lines(
+        ["A"], ("container", TabName.LOGS, ""), lambda line: line
     )
-    changed_context_render = view._get_or_build_detail_line_widgets(
-        ["A"],
-        ("container", TabName.LOGS, "query"),
-        lambda line: line,
+    changed_context_display_lines = (
+        details_panel._get_cached_or_build_tab_display_lines(
+            ["A"], ("container", TabName.LOGS, "query"), lambda line: line
+        )
     )
 
-    assert changed_context_render[0] is not first_context_render[0]
+    assert changed_context_display_lines[0] is not first_context_display_lines[0]

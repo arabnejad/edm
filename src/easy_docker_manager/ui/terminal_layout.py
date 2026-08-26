@@ -1,91 +1,64 @@
-"""Build and redraw the Urwid terminal layout."""
+"""Join the terminal panels and popups into one Urwid layout."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Optional, Union
+from typing import Union
 
 import urwid
 
-from easy_docker_manager.core import AppConfig
-from easy_docker_manager.core.container_sorting import ContainerSortField
-from easy_docker_manager.core.log_text import count_line_overlap
-from easy_docker_manager.core.tabs import TabName
-from easy_docker_manager.core.ui_session_state import FocusArea, UISessionState
+from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.container_sorting import ContainerSortMenuState
+from easy_docker_manager.core.ui_session_state import UISessionState
+from easy_docker_manager.ui.container_details_panel import (
+    SelectedContainerDetailsPanel,
+)
+from easy_docker_manager.ui.container_sort_menu import (
+    build_container_sort_popup_menu,
+)
 from easy_docker_manager.ui.formatting import MarkupSegment
-
-
-class FocusableDetailLine(urwid.Text):
-    """Display one selectable line in the scrollable detail-text view.
-
-    The detail panel displays urwid.Text rows in a scrollable list. A normal
-    urwid.Text row cannot receive focus inside that list. EDM needs each detail
-    line to receive focus so keyboard navigation can select it, scroll it into
-    view, and apply the selected-line color. This subclass makes those text rows
-    focusable without changing how their text is displayed.
-    """
-
-    def selectable(self) -> bool:
-        """Tell the scrollable detail list that this row may receive focus.
-
-        Returning True does not mean the row is always selected. It means the
-        list may select this row when EDM moves the detail-line selection.
-        """
-        return True
-
-    def keypress(self, size: tuple[int, ...], key: str) -> Optional[str]:
-        """Leave the key unhandled so EDMApp can process it.
-
-        Urwid requires a selectable widget to implement keypress(). Returning
-        the unchanged key allows EDM's keyboard controller to handle navigation
-        and shortcuts.
-        """
-        return key
+from easy_docker_manager.ui.running_container_list_panel import (
+    RunningContainerListPanel,
+)
 
 
 class TerminalLayoutView:
-    """Build EDM's Urwid widgets and redraw them from UI state.
+    """Combine EDM's panels, footer, and active popup.
 
-    UIController passes the current UISessionState and prepared detail lines to
-    render(). This class updates the title, container list, tabs, detail rows,
-    status, footer, and borders. It does not load Docker data or change state.
-    Unchanged detail rows are reused to reduce rendering work.
+    UIController calls render() with the current session state and the lines to
+    display. RunningContainerListPanel updates the left side,
+    SelectedContainerDetailsPanel updates the right side, and this object
+    chooses whether the sorting menu should appear above them. Docker loading
+    and navigation stay outside this class.
     """
 
     def __init__(self, app_config: AppConfig) -> None:
-        """Create the widgets reused for every EDM redraw."""
         self.app_config = app_config
-        self.container_rows: urwid.SimpleFocusListWalker = urwid.SimpleFocusListWalker(
-            []
+        self.running_container_list_panel = RunningContainerListPanel(app_config)
+        self.selected_container_details_panel = SelectedContainerDetailsPanel()
+        self.shortcut_footer_text = urwid.Text(
+            self._build_keyboard_shortcut_footer_content(), wrap="clip"
         )
-        self.container_list_view = urwid.ListBox(self.container_rows)
-        self.container_title_text = urwid.Text(
-            "Container: none selected",
-            wrap="clip",
+
+        main_columns = urwid.Columns(
+            [
+                ("weight", 35, self.running_container_list_panel.widget),
+                ("weight", 65, self.selected_container_details_panel.widget),
+            ],
+            dividechars=1,
+            focus_column=0,
         )
-        self.detail_tabs_text = urwid.Text("", wrap="clip")
-        self.search_query_text = urwid.Text("", wrap="clip")
-        self.detail_rows: urwid.SimpleFocusListWalker = urwid.SimpleFocusListWalker([])
-        self.detail_text_view = urwid.ListBox(self.detail_rows)
-        self._cached_detail_view_key: Optional[tuple[Optional[str], TabName, str]] = (
-            None
+        self._main_layout = urwid.Frame(
+            main_columns,
+            footer=urwid.AttrMap(self.shortcut_footer_text, "footer"),
         )
-        self._cached_detail_lines: list[str] = []
-        self._cached_detail_line_widgets: list[FocusableDetailLine] = []
-        self.detail_status_text = urwid.Text("", wrap="clip")
-        self.container_sort_text = urwid.Text("", wrap="clip")
-        self.shortcut_footer_text = urwid.Text("", wrap="clip")
-        self.container_panel: Optional[urwid.AttrMap] = None
-        self.detail_panel: Optional[urwid.AttrMap] = None
-        self._main_layout = self._build_layout()
         self.layout = urwid.WidgetPlaceholder(self._main_layout)
 
-    def build_palette(self) -> list[tuple[str, str, str]]:
-        """Build the color or monochrome styles used by the terminal view.
+    def build_urwid_style_palette(self) -> list[tuple[str, str, str]]:
+        """Return the color styles passed to Urwid when EDM starts.
 
-        EDMApp passes these named styles to Urwid when the terminal interface
-        starts. In no-color mode, bold and reverse text keep focused items and
-        selected rows visible without using foreground or background colors.
+        No-color mode keeps selection visible with bold or reversed text while
+        leaving all foreground and background colors at the terminal default.
         """
         color_palette = [
             ("app_title", "light blue,bold", "default"),
@@ -121,7 +94,7 @@ class TerminalLayoutView:
             ("log_http", "light green", "default"),
             ("sort_menu", "light gray", "default"),
             ("sort_menu_title", "yellow,bold", "default"),
-            ("sort_menu_selected", "black,bold", "light cyan"),
+            ("sort_menu_selected", "white,bold", "light cyan"),
         ]
         if self.app_config.colors_enabled:
             return color_palette
@@ -149,16 +122,14 @@ class TerminalLayoutView:
             "log_error",
             "sort_menu_title",
         }
-
         monochrome_palette = []
-        for name, _foreground, _background in color_palette:
+        for style_name, _foreground, _background in color_palette:
             foreground = "default"
-            if name in standout_styles:
+            if style_name in standout_styles:
                 foreground = "default,standout"
-            elif name in bold_styles:
+            elif style_name in bold_styles:
                 foreground = "default,bold"
-            monochrome_palette.append((name, foreground, "default"))
-
+            monochrome_palette.append((style_name, foreground, "default"))
         return monochrome_palette
 
     def render(
@@ -167,378 +138,47 @@ class TerminalLayoutView:
         detail_lines: list[str],
         format_detail_line: Callable[[str], Union[str, list[MarkupSegment]]],
     ) -> None:
-        """Redraw the screen from current UI state and prepared detail lines."""
-        self._update_panel_border_styles(state)
-        self._render_container_list(state)
-        self._render_container_footer(state)
-        self._render_detail_header(state)
-        self._render_detail_lines(state, detail_lines, format_detail_line)
-        self.detail_status_text.set_text(state.status_message)
-        self._render_container_sort_menu(state)
-
-    def focus_detail_line(self, index: int) -> None:
-        """Move focus to an available row in the scrollable detail list."""
-        if self.detail_rows:
-            self.detail_rows.set_focus(min(index, len(self.detail_rows) - 1))
-
-    def _build_layout(self) -> urwid.Widget:
-        """Build the container pane, detail pane, and shortcut footer."""
-        container_header = urwid.Pile(
-            [
-                (
-                    "pack",
-                    urwid.Text(
-                        [
-                            ("accent", "* "),
-                            ("host", "localhost"),
-                            ("status_ok", " (active)"),
-                        ],
-                        wrap="clip",
-                    ),
-                ),
-                ("pack", urwid.AttrMap(urwid.Divider("─"), "muted")),
-            ]
-        )
-        container_footer = urwid.Pile(
-            [
-                urwid.Text(
-                    [
-                        ("muted", "Refresh "),
-                        ("value", f"{self.app_config.refresh_interval:g}s"),
-                        ("muted", " | Logs "),
-                        ("value", f"{self.app_config.log_tail}"),
-                        ("muted", " lines"),
-                    ],
-                    wrap="clip",
-                ),
-                self.container_sort_text,
-            ]
-        )
-        container_frame = urwid.Frame(
-            self.container_list_view,
-            header=container_header,
-            footer=urwid.AttrMap(container_footer, "status"),
-        )
-        container_column = urwid.Pile(
-            [
-                ("pack", self._build_title_panel()),
-                (
-                    "weight",
-                    1,
-                    self._build_focusable_panel(
-                        container_frame,
-                        FocusArea.CONTAINERS,
-                    ),
-                ),
-            ]
-        )
-
-        detail_header = urwid.Pile(
-            [
-                (
-                    "pack",
-                    urwid.AttrMap(self.container_title_text, "panel_header"),
-                ),
-                ("pack", urwid.Text("", wrap="clip")),
-                ("pack", self.detail_tabs_text),
-                ("pack", self.search_query_text),
-            ]
-        )
-        detail_frame = urwid.Frame(
-            self.detail_text_view,
-            header=detail_header,
-            footer=urwid.AttrMap(self.detail_status_text, "status"),
-        )
-        main_columns = urwid.Columns(
-            [
-                ("weight", 35, container_column),
-                (
-                    "weight",
-                    65,
-                    self._build_focusable_panel(
-                        detail_frame,
-                        FocusArea.DETAIL,
-                    ),
-                ),
-            ],
-            dividechars=1,
-            focus_column=0,
-        )
-        self.shortcut_footer_text.set_text(
-            [
-                ("shortcut_key", " q "),
-                ("footer", " Quit  "),
-                ("shortcut_key", " Enter "),
-                ("footer", " Detail  "),
-                ("shortcut_key", " Esc "),
-                ("footer", " Containers  "),
-                ("shortcut_key", " [ "),
-                ("footer", " Previous Tab  "),
-                ("shortcut_key", " ] "),
-                ("footer", " Next Tab  "),
-                ("shortcut_key", " / "),
-                ("footer", " Search  "),
-                ("shortcut_key", " s "),
-                ("footer", " Sort"),
-            ]
-        )
-        return urwid.Frame(
-            main_columns,
-            footer=urwid.AttrMap(self.shortcut_footer_text, "footer"),
-        )
-
-    def _build_title_panel(self) -> urwid.Widget:
-        """Build the title box shown above the container list."""
-        title = urwid.AttrMap(
-            urwid.Text("Easy Docker Manager", align="center", wrap="clip"),
-            "app_title",
-        )
-        return urwid.AttrMap(urwid.LineBox(title), "title_border")
-
-    def _build_focusable_panel(
-        self,
-        body: urwid.Widget,
-        focus_area: FocusArea,
-    ) -> urwid.Widget:
-        """Add a border and save it so focus can change its color."""
-        panel = urwid.AttrMap(urwid.LineBox(body), "border_inactive")
-        if focus_area == FocusArea.CONTAINERS:
-            self.container_panel = panel
-        else:
-            self.detail_panel = panel
-        return panel
-
-    def _update_panel_border_styles(self, state: UISessionState) -> None:
-        """Use the active border color on the pane that owns keyboard focus."""
-        container_border_style = (
-            "border_active"
-            if state.active_focus_area == FocusArea.CONTAINERS
-            else "border_inactive"
-        )
-        detail_border_style = (
-            "border_active"
-            if state.active_focus_area == FocusArea.DETAIL
-            else "border_inactive"
-        )
-        if self.container_panel is not None:
-            self.container_panel.set_attr_map({None: container_border_style})
-        if self.detail_panel is not None:
-            self.detail_panel.set_attr_map({None: detail_border_style})
-
-    def _render_container_list(self, state: UISessionState) -> None:
-        """Rebuild the container rows and restore the current selection."""
-        rows: list[urwid.Widget] = []
-        for index, container in enumerate(state.running_containers):
-            if index == state.selected_container_index:
-                text = f"> {container.name} ({container.status})"
-                attr = (
-                    "selected"
-                    if state.active_focus_area == FocusArea.CONTAINERS
-                    else "selected_inactive"
-                )
-                widget: urwid.Widget = urwid.AttrMap(
-                    urwid.Text(text, wrap="clip"),
-                    attr,
-                )
-            else:
-                row_markup: list[MarkupSegment] = [
-                    ("muted", "  "),
-                    ("container", container.name),
-                    ("muted", " ("),
-                    ("container_status", container.status),
-                    ("muted", ")"),
-                ]
-                widget = urwid.Text(row_markup, wrap="clip")
-            rows.append(widget)
-        if not rows:
-            rows.append(urwid.Text(("muted", "No running containers."), wrap="clip"))
-        self.container_rows[:] = rows
-        focus = (
-            state.selected_container_index
-            if state.selected_container_index is not None
-            else 0
-        )
-        if rows:
-            self.container_rows.set_focus(min(focus, len(rows) - 1))
-
-    def _render_container_footer(self, state: UISessionState) -> None:
-        """Show the active container sort field and direction."""
-        sort_field = state.container_sort_field
-        sort_markup: list[MarkupSegment] = [
-            ("muted", "Sort: "),
-            ("value", sort_field.value),
-        ]
-        if sort_field != ContainerSortField.DOCKER_ORDER:
-            direction = (
-                " descending" if state.container_sort_descending else " ascending"
-            )
-            sort_markup.append(("muted", direction))
-        self.container_sort_text.set_text(sort_markup)
-
-    def _render_container_sort_menu(self, state: UISessionState) -> None:
-        """Show or hide the container sorting overlay from current UI state."""
-        if not state.is_container_sort_menu_open:
-            self.layout.original_widget = self._main_layout
-            return
-
-        menu_rows: list[urwid.Widget] = []
-        for sort_field in ContainerSortField:
-            is_selected = sort_field == state.container_sort_menu_field
-            prefix = "> " if is_selected else "  "
-            style = "sort_menu_selected" if is_selected else "sort_menu"
-            menu_rows.append(
-                urwid.AttrMap(
-                    urwid.Text(f"{prefix}{sort_field.value}", wrap="clip"),
-                    style,
-                )
-            )
-
-        if state.container_sort_menu_field == ContainerSortField.DOCKER_ORDER:
-            direction = "Not applicable"
-        else:
-            direction = (
-                "Descending" if state.container_sort_menu_descending else "Ascending"
-            )
-        menu_rows.extend(
-            [
-                urwid.Divider("─"),
-                urwid.Text([("muted", "Direction: "), ("value", direction)]),
-                urwid.Divider("─"),
-                urwid.Text("Up/Down Field   Left/Right Direction", wrap="clip"),
-                urwid.Text("Enter Apply     Esc Cancel", wrap="clip"),
-            ]
-        )
-        menu = urwid.AttrMap(
-            urwid.LineBox(
-                urwid.Filler(urwid.Pile(menu_rows), valign="top"),
-                title="Sort Containers",
-                title_attr="sort_menu_title",
-            ),
-            "sort_menu",
-        )
-        self.layout.original_widget = urwid.Overlay(
-            menu,
-            self._main_layout,
-            align="center",
-            width=48,
-            valign="middle",
-            height=12,
-        )
-
-    def _render_detail_header(self, state: UISessionState) -> None:
-        """Update the container title, tab names, and current search text."""
-        container_name = (
-            state.selected_container_summary.name
-            if state.selected_container_summary
-            else "none selected"
-        )
-        self.container_title_text.set_text(
-            [("accent", "Container: "), ("title", container_name)]
-        )
-
-        tab_markup: list[MarkupSegment] = [("muted", " ")]
-        for tab in TabName:
-            label = f" {tab.value.title()} "
-            if tab == state.active_detail_tab_name:
-                tab_markup.extend([("active_detail_tab", label), ("muted", " ")])
-            else:
-                tab_markup.extend([("tab", label), ("muted", " ")])
-        self.detail_tabs_text.set_text(tab_markup)
-
-        container_tab_key = state.selected_container_tab_key
-        query = (
-            state.tab_search_queries.get(container_tab_key, "")
-            if container_tab_key is not None
-            else ""
-        )
-        if state.is_search_active:
-            self.search_query_text.set_text([("key", "/"), ("selected", query)])
-        elif query:
-            self.search_query_text.set_text([("muted", "/"), ("value", query)])
-        else:
-            self.search_query_text.set_text(("muted", ""))
-
-    def _render_detail_lines(
-        self,
-        state: UISessionState,
-        lines: list[str],
-        format_detail_line: Callable[[str], Union[str, list[MarkupSegment]]],
-    ) -> None:
-        """Show the prepared detail rows and highlight the selected one."""
-        container_tab_key = state.selected_container_tab_key
-        query = (
-            state.tab_search_queries.get(container_tab_key, "")
-            if container_tab_key is not None
-            else ""
-        )
-        detail_view_key = (
-            state.selected_container_id,
-            state.active_detail_tab_name,
-            query,
-        )
-        detail_line_widgets = self._get_or_build_detail_line_widgets(
-            lines or [""],
-            detail_view_key,
+        """Update both panels and show the active popup, if there is one."""
+        self.running_container_list_panel.render(state)
+        self.selected_container_details_panel.render(
+            state,
+            detail_lines,
             format_detail_line,
         )
-        rows: list[urwid.Widget] = list(detail_line_widgets)
-        selected_index = min(state.detail_selected_line_index, len(rows) - 1)
-        if state.active_focus_area == FocusArea.DETAIL:
-            rows[selected_index] = urwid.AttrMap(
-                rows[selected_index],
-                "detail_selected",
+
+        if isinstance(state.container_sort_menu_state, ContainerSortMenuState):
+            self.layout.original_widget = build_container_sort_popup_menu(
+                state.container_sort_menu_state,
+                self._main_layout,
             )
-        self.detail_rows[:] = rows
-        self.detail_rows.set_focus(selected_index)
-
-    def _get_or_build_detail_line_widgets(
-        self,
-        lines: list[str],
-        detail_view_key: tuple[Optional[str], TabName, str],
-        format_detail_line: Callable[[str], Union[str, list[MarkupSegment]]],
-    ) -> list[FocusableDetailLine]:
-        """Reuse existing row widgets when their text and formatting still match.
-
-        A container, tab, or search-query change rebuilds every row. During log
-        updates, rows that are still present are reused and widgets are created
-        only for new lines.
-        """
-        if (
-            detail_view_key == self._cached_detail_view_key
-            and lines == self._cached_detail_lines
-        ):
-            return self._cached_detail_line_widgets
-
-        if detail_view_key != self._cached_detail_view_key:
-            detail_line_widgets = [
-                self._build_detail_line_widget(line, format_detail_line)
-                for line in lines
-            ]
         else:
-            overlap = count_line_overlap(self._cached_detail_lines, lines)
-            retained_line_widgets = (
-                self._cached_detail_line_widgets[-overlap:] if overlap else []
-            )
-            detail_line_widgets = [
-                *retained_line_widgets,
-                *(
-                    self._build_detail_line_widget(line, format_detail_line)
-                    for line in lines[overlap:]
-                ),
-            ]
+            self.layout.original_widget = self._main_layout
 
-        self._cached_detail_view_key = detail_view_key
-        self._cached_detail_lines = list(lines)
-        self._cached_detail_line_widgets = detail_line_widgets
-        return detail_line_widgets
+    def focus_detail_line(self, line_index: int) -> None:
+        """Keep the requested detail line visible in the right panel."""
+        self.selected_container_details_panel.move_focus_to_selected_detail_line(
+            line_index
+        )
 
     @staticmethod
-    def _build_detail_line_widget(
-        line: str,
-        format_detail_line: Callable[[str], Union[str, list[MarkupSegment]]],
-    ) -> FocusableDetailLine:
-        """Build one focusable detail row from prepared line markup."""
-        return FocusableDetailLine(format_detail_line(line), wrap="any")
+    def _build_keyboard_shortcut_footer_content() -> list[MarkupSegment]:
+        """Return the key labels shown across the bottom of the screen."""
+        return [
+            ("shortcut_key", " q "),
+            ("footer", " Quit  "),
+            ("shortcut_key", " Enter "),
+            ("footer", " Detail  "),
+            ("shortcut_key", " Esc "),
+            ("footer", " Containers  "),
+            ("shortcut_key", " [ "),
+            ("footer", " Previous Tab  "),
+            ("shortcut_key", " ] "),
+            ("footer", " Next Tab  "),
+            ("shortcut_key", " / "),
+            ("footer", " Search  "),
+            ("shortcut_key", " s "),
+            ("footer", " Sort"),
+        ]
 
 
-__all__ = ["FocusableDetailLine", "TerminalLayoutView"]
+__all__ = ["TerminalLayoutView"]

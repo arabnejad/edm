@@ -6,112 +6,111 @@ import pytest
 
 from easy_docker_manager.core import AppConfig, ContainerProcessTable
 from easy_docker_manager.core.tabs import TabName
-from easy_docker_manager.docker.base import ContainerDataSource, LogsUnavailableError
+from easy_docker_manager.docker.container_client import (
+    DockerContainerClient,
+    LogsUnavailableError,
+)
 from easy_docker_manager.tabs.tab_data_loader import (
-    ConfigTabDataProvider,
-    EnvTabDataProvider,
-    LogsTabDataProvider,
     TabDataLoader,
-    TabDataProvider,
-    TopTabDataProvider,
-    format_logs_unavailable_message,
+    build_logs_unavailable_error_message,
 )
 
 
 @pytest.fixture
-def container_data_source() -> Mock:
-    return Mock(spec=ContainerDataSource)
+def docker_container_client() -> Mock:
+    return Mock(spec=DockerContainerClient)
 
 
-def test_tab_data_provider_is_abstract() -> None:
-    with pytest.raises(TypeError):
-        TabDataProvider()  # type: ignore[abstract]
+@pytest.fixture
+def tab_data_loader(docker_container_client: Mock) -> TabDataLoader:
+    return TabDataLoader(
+        docker_container_client,
+        AppConfig(log_tail=2, max_log_lines=2, max_log_line_chars=32),
+    )
 
 
-def test_logs_provider_applies_fetch_and_display_limits(
-    container_data_source: Mock,
+def test_logs_are_loaded_with_the_configured_display_limits(
+    docker_container_client: Mock,
+    tab_data_loader: TabDataLoader,
 ) -> None:
-    container_data_source.get_logs.return_value = f"old\n{'1' * 50}\nnew"
-    config = AppConfig(log_tail=2, max_log_lines=2, max_log_line_chars=32)
+    docker_container_client.get_container_logs.return_value = f"old\n{'1' * 50}\nnew"
 
-    result = LogsTabDataProvider(container_data_source, config).load_text("abc")
+    result = tab_data_loader.load_tab_text("abc", TabName.LOGS)
 
-    container_data_source.get_logs.assert_called_once_with("abc", 2)
+    docker_container_client.get_container_logs.assert_called_once_with("abc", 2)
     assert result.splitlines()[-1] == "new"
     assert "old" not in result
 
 
-def test_env_provider_sorts_and_shows_all_variable_values(
-    container_data_source: Mock,
+def test_environment_variables_are_sorted_and_all_values_are_shown(
+    docker_container_client: Mock,
+    tab_data_loader: TabDataLoader,
 ) -> None:
-    container_data_source.get_environment_variables.return_value = {
+    docker_container_client.get_container_environment_variables.return_value = {
         "Z": "last",
         "API_KEY": "secret",
         "A": "first",
     }
 
-    result = EnvTabDataProvider(container_data_source).load_text("abc")
+    result = tab_data_loader.load_tab_text("abc", TabName.ENV)
 
     assert result.splitlines() == ["A=first", "API_KEY=secret", "Z=last"]
 
 
-def test_env_provider_handles_empty_data(
-    container_data_source: Mock,
+def test_empty_environment_returns_empty_text(
+    docker_container_client: Mock,
+    tab_data_loader: TabDataLoader,
 ) -> None:
-    container_data_source.get_environment_variables.return_value = {}
-    assert EnvTabDataProvider(container_data_source).load_text("abc") == ""
+    docker_container_client.get_container_environment_variables.return_value = {}
+    assert tab_data_loader.load_tab_text("abc", TabName.ENV) == ""
 
 
-def test_config_provider_formats_docker_inspection_data(
-    container_data_source: Mock,
+def test_container_inspection_data_is_formatted_for_the_config_tab(
+    docker_container_client: Mock,
+    tab_data_loader: TabDataLoader,
 ) -> None:
-    container_data_source.get_docker_inspection_data.return_value = {
+    docker_container_client.get_container_inspection_data.return_value = {
         "container": {"Name": "/web", "Id": "abcdef"}
     }
 
-    result = ConfigTabDataProvider(container_data_source).load_text("abc")
+    result = tab_data_loader.load_tab_text("abc", TabName.CONFIG)
 
     assert "== Identity ==" in result
     assert "web" in result
 
 
-def test_top_provider_formats_process_columns_and_rows(
-    container_data_source: Mock,
+def test_process_columns_and_rows_are_formatted_for_the_top_tab(
+    docker_container_client: Mock,
+    tab_data_loader: TabDataLoader,
 ) -> None:
-    container_data_source.get_process_list.return_value = ContainerProcessTable(
-        columns=("PID", "CMD"),
-        rows=(("1", "python"), ("2", "worker")),
+    docker_container_client.get_container_top_process_table.return_value = (
+        ContainerProcessTable(
+            columns=("PID", "CMD"),
+            rows=(("1", "python"), ("2", "worker")),
+        )
     )
 
-    result = TopTabDataProvider(container_data_source).load_text("abc")
+    result = tab_data_loader.load_tab_text("abc", TabName.TOP)
 
     assert result == "PID CMD\n1 python\n2 worker"
 
 
-def test_top_provider_returns_empty_text_for_empty_process_list(
-    container_data_source: Mock,
+def test_empty_process_table_returns_empty_text(
+    docker_container_client: Mock,
+    tab_data_loader: TabDataLoader,
 ) -> None:
-    container_data_source.get_process_list.return_value = ContainerProcessTable((), ())
-    assert TopTabDataProvider(container_data_source).load_text("abc") == ""
+    docker_container_client.get_container_top_process_table.return_value = (
+        ContainerProcessTable((), ())
+    )
+    assert tab_data_loader.load_tab_text("abc", TabName.TOP) == ""
 
 
-@pytest.mark.parametrize("tab", list(TabName))
-def test_tab_data_loader_routes_each_tab_to_its_provider(
-    tab: TabName,
-    container_data_source: Mock,
-) -> None:
-    container_data_source.get_logs.return_value = "logs"
-    container_data_source.get_environment_variables.return_value = {"A": "1"}
-    container_data_source.get_docker_inspection_data.return_value = {"container": {}}
-    container_data_source.get_process_list.return_value = ContainerProcessTable((), ())
-    tab_data_loader = TabDataLoader(container_data_source, AppConfig())
-
-    result = tab_data_loader.load_tab_text("abc", tab)
-
-    assert isinstance(result, str)
+def test_unknown_tab_is_rejected(tab_data_loader: TabDataLoader) -> None:
+    with pytest.raises(ValueError, match="Unsupported tab"):
+        tab_data_loader.load_tab_text("abc", object())  # type: ignore[arg-type]
 
 
 def test_logs_unavailable_message_names_driver_and_solution() -> None:
-    message = format_logs_unavailable_message(LogsUnavailableError("none"))
+    message = build_logs_unavailable_error_message(LogsUnavailableError("none"))
     assert "driver 'none'" in message
     assert "json-file" in message

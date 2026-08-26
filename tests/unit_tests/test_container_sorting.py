@@ -4,7 +4,7 @@ import pytest
 
 from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
-    sort_container_summaries,
+    get_container_list_in_requested_order,
 )
 from easy_docker_manager.core.containers import ContainerSummary
 
@@ -75,7 +75,7 @@ def test_container_sorting_orders_each_field_in_both_directions(
     descending: bool,
     expected_ids: list[str],
 ) -> None:
-    sorted_containers = sort_container_summaries(
+    sorted_containers = get_container_list_in_requested_order(
         containers_for_sorting,
         sort_field,
         descending,
@@ -87,7 +87,7 @@ def test_container_sorting_orders_each_field_in_both_directions(
 def test_docker_order_returns_a_copy_without_reordering(
     containers_for_sorting: list[ContainerSummary],
 ) -> None:
-    sorted_containers = sort_container_summaries(
+    sorted_containers = get_container_list_in_requested_order(
         containers_for_sorting,
         ContainerSortField.DOCKER_ORDER,
         descending=True,
