@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import urwid
 
-from easy_docker_manager.core.tab_export import (
+from easy_docker_manager.tab_export.definitions import (
     TabExportMenuField,
     TabExportMenuState,
     TabExportPhase,

@@ -8,17 +8,17 @@ from unittest.mock import Mock
 import pytest
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
-from easy_docker_manager.core.tab_export import (
+from easy_docker_manager.core.tabs import TabName
+from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.tab_export.definitions import (
     TabExportMenuField,
     TabExportPhase,
     TabExportScope,
 )
-from easy_docker_manager.core.tabs import TabName
-from easy_docker_manager.core.terminal_session_state import TerminalSessionState
-from easy_docker_manager.tabs.tab_content_exporter import (
+from easy_docker_manager.tab_export.writer import (
     ExportTargetExistsError,
-    TabContentExporter,
     TabExportError,
+    TabExportWriter,
 )
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.tab_export_controller import TabExportController
@@ -28,7 +28,7 @@ from easy_docker_manager.ui.tab_export_controller import TabExportController
 class TabExportControllerTestSetup:
     controller: TabExportController
     background_executor: Mock
-    tab_content_exporter: Mock
+    tab_export_writer: Mock
     export_future: Future
 
 
@@ -36,20 +36,20 @@ class TabExportControllerTestSetup:
 def tab_export_controller_factory(tmp_path: Path):
     def create_controller(state: TerminalSessionState) -> TabExportControllerTestSetup:
         background_executor = Mock(spec=BackgroundExecutor)
-        tab_content_exporter = Mock(spec=TabContentExporter)
+        tab_export_writer = Mock(spec=TabExportWriter)
         export_future: Future = Future()
         background_executor.submit.return_value = export_future
         controller = TabExportController(
             state,
             DetailTabTextFormatter(),
             background_executor,
-            tab_content_exporter,
+            tab_export_writer,
             tmp_path,
         )
         return TabExportControllerTestSetup(
             controller,
             background_executor,
-            tab_content_exporter,
+            tab_export_writer,
             export_future,
         )
 
@@ -120,7 +120,7 @@ def test_current_view_export_uses_filtered_log_lines(
     worker_function, export_request = (
         test_setup.background_executor.submit.call_args.args
     )
-    assert worker_function is test_setup.tab_content_exporter.export_text
+    assert worker_function is test_setup.tab_export_writer.export_text
     assert export_request.target_path == tmp_path / "visible.log"
     assert export_request.content == "ERROR failed"
     assert not export_request.overwrite

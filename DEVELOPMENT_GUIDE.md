@@ -26,11 +26,10 @@ src/
       config.py                   AppConfig values and validation
       container_sorting.py       Container sort fields and ordering
       containers.py               Container and process data classes
-      tab_export.py               Export menu choices and file-write request
       tab_content_cache.py        Size-limited tab text cache
       log_text.py                 Log trimming and duplicate-line handling
       tabs.py                     Detail tab names
-      terminal_session_state.py         State for the current terminal session
+      terminal_session_state.py   State for the current terminal session
 
     docker/
       container_client.py         DockerContainerClient interface and EDM errors
@@ -42,8 +41,11 @@ src/
 
     tabs/
       config_tab_formatter.py     Formats Docker inspection data
-      tab_content_exporter.py     Writes tab snapshots to UTF-8 text files
       tab_data_loader.py          Loads text for Logs, Env, Config, and Top
+
+    tab_export/
+      definitions.py              Export menu choices and file-write request
+      writer.py                   Writes tab snapshots to UTF-8 text files
 
     ui/
       running_container_list_panel.py
@@ -55,7 +57,7 @@ src/
       tab_export_controller.py    Handles the export workflow
       tab_export_menu.py          Builds the export popup menu
       terminal_layout.py          Combines panels, popups, and the footer
-      terminal_controller.py            Handles navigation, search, and drawing
+      terminal_controller.py      Handles navigation, search, and drawing
 
     logging/
       app_logging.py              Configures EDM application logging
@@ -94,7 +96,7 @@ flowchart TD
     DockerSDK[Docker SDK for Python]
     Docker[(🐳 Local Docker daemon)]
     Formatter[DetailTabTextFormatter]
-    Exporter[TabContentExporter]
+    Exporter[TabExportWriter]
     File[(📄 Exported text file)]
     View[TerminalLayoutView]
     Urwid[Urwid]
@@ -291,7 +293,7 @@ The workflow is:
 6. Current view applies the active Logs filter. Full loaded tab keeps all
    cached text. Searches on Env, Config, and Top do not remove lines.
 7. The controller creates a `TabExportRequest` containing that fixed text
-   snapshot and sends `TabContentExporter.export_text()` to
+   snapshot and sends `TabExportWriter.export_text()` to
    `BackgroundExecutor`.
 8. The completion callback closes the popup after success. If the path exists,
    it asks for confirmation. Other errors leave the popup open so the path can
@@ -393,7 +395,7 @@ For example, a container refresh submits
 `DockerContainerClient.list_running_containers` together with
 `DockerManager._apply_running_container_list_refresh_result`. The first
 function runs in a worker. The second function runs later on the UI thread.
-Tab export follows the same pattern with `TabContentExporter.export_text()` and
+Tab export follows the same pattern with `TabExportWriter.export_text()` and
 the completion method in `TabExportController`.
 
 When a worker finishes, the executor puts its completion callback in a queue
@@ -539,7 +541,7 @@ environment keys, structured values, search matches, and errors.
 | `TabExportPhase` | Says whether the export menu is being edited, writing a file, or confirming replacement |
 | `TabExportRequest` | Carries one fixed text snapshot to the file writer |
 
-### Docker And Tabs
+### Docker, Tabs, And Export
 
 | Class or module | What it does |
 | --- | --- |
@@ -550,7 +552,7 @@ environment keys, structured values, search matches, and errors.
 | `create_docker_client` | Creates a local Docker SDK client and rejects remote `DOCKER_HOST` transports |
 | `to_container_summary` | Converts a Docker container object to `ContainerSummary` |
 | `TabDataLoader` | Loads and formats the full text for a requested detail tab |
-| `TabContentExporter` | Writes a prepared tab snapshot without silently replacing a file |
+| `TabExportWriter` | Writes a prepared tab snapshot without silently replacing a file |
 
 ### UI
 

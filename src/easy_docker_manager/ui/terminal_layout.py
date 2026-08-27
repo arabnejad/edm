@@ -9,8 +9,8 @@ import urwid
 
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import ContainerSortMenuState
-from easy_docker_manager.core.tab_export import TabExportMenuState
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.tab_export.definitions import TabExportMenuState
 from easy_docker_manager.ui.container_details_panel import (
     SelectedContainerDetailsPanel,
 )

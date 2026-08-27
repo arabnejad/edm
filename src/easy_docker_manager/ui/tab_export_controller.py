@@ -11,19 +11,19 @@ from pathlib import Path
 from typing import Optional
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
-from easy_docker_manager.core.tab_export import (
+from easy_docker_manager.core.tabs import ContainerTabKey, TabName
+from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.tab_export.definitions import (
     TabExportMenuField,
     TabExportMenuState,
     TabExportPhase,
     TabExportRequest,
     TabExportScope,
 )
-from easy_docker_manager.core.tabs import ContainerTabKey, TabName
-from easy_docker_manager.core.terminal_session_state import TerminalSessionState
-from easy_docker_manager.tabs.tab_content_exporter import (
+from easy_docker_manager.tab_export.writer import (
     ExportTargetExistsError,
-    TabContentExporter,
     TabExportError,
+    TabExportWriter,
 )
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 
@@ -51,13 +51,13 @@ class TabExportController:
         state: TerminalSessionState,
         detail_tab_text_formatter: DetailTabTextFormatter,
         background_executor: BackgroundExecutor,
-        tab_content_exporter: TabContentExporter,
+        tab_export_writer: TabExportWriter,
         launch_directory: Path,
     ) -> None:
         self.state = state
         self.detail_tab_text_formatter = detail_tab_text_formatter
         self.background_executor = background_executor
-        self.tab_content_exporter = tab_content_exporter
+        self.tab_export_writer = tab_export_writer
         self.launch_directory = launch_directory.resolve()
         self._active_export_future: Optional[Future[Path]] = None
 
@@ -303,7 +303,7 @@ class TabExportController:
 
         try:
             self._active_export_future = self.background_executor.submit(
-                self.tab_content_exporter.export_text,
+                self.tab_export_writer.export_text,
                 request,
                 on_complete=partial(
                     self._apply_tab_export_result,

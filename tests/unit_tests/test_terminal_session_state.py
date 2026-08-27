@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from easy_docker_manager.core.container_sorting import ContainerSortField
-from easy_docker_manager.core.tab_export import TabExportMenuState
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
     TerminalSessionState,
 )
+from easy_docker_manager.tab_export.definitions import TabExportMenuState
 
 
 def test_state_defaults_describe_the_initial_screen() -> None:

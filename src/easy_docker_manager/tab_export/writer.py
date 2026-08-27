@@ -8,7 +8,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Optional
 
-from easy_docker_manager.core.tab_export import TabExportRequest
+from easy_docker_manager.tab_export.definitions import TabExportRequest
 
 
 class ExportTargetExistsError(Exception):
@@ -27,7 +27,7 @@ class TabExportError(Exception):
         super().__init__(reason)
 
 
-class TabContentExporter:
+class TabExportWriter:
     """Write tab text without replacing an existing file by accident.
 
     TabExportController sends export_text() to BackgroundExecutor after the
@@ -110,4 +110,4 @@ class TabContentExporter:
             raise TabExportError(target_path, str(exc)) from exc
 
 
-__all__ = ["ExportTargetExistsError", "TabContentExporter", "TabExportError"]
+__all__ = ["ExportTargetExistsError", "TabExportError", "TabExportWriter"]

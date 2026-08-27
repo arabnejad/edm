@@ -1,4 +1,4 @@
-"""Store the choices and text snapshot used by a tab export."""
+"""Define the shared data used throughout a tab export."""
 
 from __future__ import annotations
 

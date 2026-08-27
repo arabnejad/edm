@@ -24,8 +24,8 @@ from easy_docker_manager.core.container_sorting import (
 )
 from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.core.tab_content_cache import TabContentCache
-from easy_docker_manager.core.tab_export import TabExportMenuState
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
+from easy_docker_manager.tab_export.definitions import TabExportMenuState
 
 
 class FocusArea(str, Enum):

@@ -1,7 +1,7 @@
 """Build and connect the objects used by EDMApp.
 
 EDMApp uses this module during setup. The factory creates the shared session
-state, Docker access, background processing, controllers, tab exporter,
+state, Docker access, background processing, controllers, tab export writer,
 formatter, and terminal view. EDMRuntime returns the objects that EDMApp uses
 directly.
 """
@@ -22,7 +22,7 @@ from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.client_factory import create_docker_client
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
-from easy_docker_manager.tabs.tab_content_exporter import TabContentExporter
+from easy_docker_manager.tab_export.writer import TabExportWriter
 from easy_docker_manager.tabs.tab_data_loader import TabDataLoader
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.keyboard_controller import KeyboardController
@@ -47,7 +47,7 @@ class EDMRuntimeFactory:
     """Create and connect the default objects used by EDMApp.
 
     The factory creates the Docker client, session state, Docker manager,
-    background executor, controllers, tab exporter, formatter, and terminal
+    background executor, controllers, tab export writer, formatter, and terminal
     view. It connects them and returns EDMApp's direct dependencies in
     EDMRuntime. EDMApp can then focus on starting and stopping the terminal UI.
     """
@@ -106,7 +106,7 @@ class EDMRuntimeFactory:
             state,
             detail_tab_text_formatter,
             background_executor,
-            TabContentExporter(),
+            TabExportWriter(),
             self.launch_directory,
         )
         keyboard_controller = KeyboardController(
