@@ -222,7 +222,8 @@ choose one of these scopes:
 
 The suggested path starts in the directory where you launched EDM. Logs use a
 `.log` extension; the other tabs use `.txt`. Relative paths are also resolved
-from that launch directory.
+from that launch directory. When the path is inside your home directory, the
+File field shows the home directory as `~` to keep the path shorter.
 
 While File is selected, printable keys, including `q` and `Q`, edit the path.
 Use `Left` and `Right` to move its cursor, `Home` or `End` to jump to either
