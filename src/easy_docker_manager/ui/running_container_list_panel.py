@@ -12,6 +12,8 @@ from easy_docker_manager.core.terminal_session_state import (
 )
 from easy_docker_manager.ui.formatting import MarkupSegment
 
+GITHUB_REPOSITORY_TEXT = "github.com/arabnejad/edm"
+
 
 class RunningContainerListPanel:
     """Display the running-container list and its left-panel controls.
@@ -54,12 +56,35 @@ class RunningContainerListPanel:
         self.panel.set_attr_map({None: border_style})
 
     def _build_title_panel(self) -> urwid.Widget:
-        """Build the Easy Docker Manager title above the container list."""
-        title = urwid.AttrMap(
-            urwid.Text("Easy Docker Manager", align="center", wrap="clip"),
-            "app_title",
+        """Build the application title and repository link."""
+        title_content = urwid.Pile(
+            [
+                (
+                    "pack",
+                    urwid.AttrMap(
+                        urwid.Text(
+                            "Easy Docker Manager",
+                            align="center",
+                            wrap="clip",
+                        ),
+                        "app_title",
+                    ),
+                ),
+                ("pack", urwid.Text("")),
+                (
+                    "pack",
+                    urwid.AttrMap(
+                        urwid.Text(
+                            GITHUB_REPOSITORY_TEXT,
+                            align="center",
+                            wrap="clip",
+                        ),
+                        "repository_link",
+                    ),
+                ),
+            ]
         )
-        return urwid.AttrMap(urwid.LineBox(title), "title_border")
+        return urwid.AttrMap(urwid.LineBox(title_content), "title_border")
 
     def _build_container_frame(self) -> urwid.Widget:
         """Build the host details, list controls, container rows, and footer."""

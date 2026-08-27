@@ -64,6 +64,7 @@ class TerminalLayoutView:
         """
         color_palette = [
             ("app_title", "light blue,bold", "default"),
+            ("repository_link", "yellow,bold", "default"),
             ("footer", "light blue,bold", "default"),
             ("shortcut_key", "black,bold", "light green"),
             ("key", "yellow,bold", "default"),
