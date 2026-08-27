@@ -15,11 +15,11 @@ def create_docker_client(request_timeout: float) -> docker.DockerClient:
     """Create a Docker client for a local socket or Windows named pipe."""
     if request_timeout <= 0:
         raise ValueError("request_timeout must be positive")
-    _reject_remote_docker_endpoint(os.getenv("DOCKER_HOST"))
+    _validate_local_docker_endpoint(os.getenv("DOCKER_HOST"))
     return docker.from_env(timeout=request_timeout)
 
 
-def _reject_remote_docker_endpoint(docker_host: Optional[str]) -> None:
+def _validate_local_docker_endpoint(docker_host: Optional[str]) -> None:
     """Reject DOCKER_HOST values that connect through a remote transport."""
     if not docker_host:
         return

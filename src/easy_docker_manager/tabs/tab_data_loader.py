@@ -1,23 +1,26 @@
-"""Load and prepare text for each container detail tab."""
+"""Load Docker data and turn it into text for the four detail tabs."""
 
 from __future__ import annotations
 
-from easy_docker_manager.core import AppConfig, ContainerProcessTable
+from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.containers import ContainerProcessTable
 from easy_docker_manager.core.log_text import apply_limits_to_log_content
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.docker.container_client import (
+    ContainerLogsUnavailableError,
     DockerContainerClient,
-    LogsUnavailableError,
 )
-from easy_docker_manager.tabs.config_tab_formatter import format_container_config
+from easy_docker_manager.tabs.config_tab_formatter import (
+    format_container_inspection_data,
+)
 
 
-class TabDataLoader:
+class ContainerTabTextLoader:
     """Load display text for a container's Logs, Env, Config, or Top tab.
 
-    DockerManager calls this on a worker thread. The loader reads
-    one kind of Docker data and converts it to the text shown in that tab. It
-    does not update UI state or caches.
+    SelectedTabContentLoader runs this in a worker thread. It loads the Docker
+    data needed by the requested tab and returns the text shown in that tab.
+    This class does not update session state, caches, or Urwid widgets.
     """
 
     def __init__(
@@ -44,7 +47,7 @@ class TabDataLoader:
         """Load and limit the text shown when the container's Logs tab opens."""
         content = self.docker_container_client.get_container_logs(
             container_id,
-            self.app_config.log_tail,
+            self.app_config.initial_log_tail_lines,
         )
         return apply_limits_to_log_content(
             content,
@@ -68,17 +71,17 @@ class TabDataLoader:
         inspection_data = self.docker_container_client.get_container_inspection_data(
             container_id
         )
-        return format_container_config(inspection_data)
+        return format_container_inspection_data(inspection_data)
 
     def _load_container_top_tab_text(self, container_id: str) -> str:
         """Load Docker's process table and format text for the container's Top tab."""
         process_table = self.docker_container_client.get_container_top_process_table(
             container_id
         )
-        return _format_process_list(process_table)
+        return _format_process_table(process_table)
 
 
-def _format_process_list(processes: ContainerProcessTable) -> str:
+def _format_process_table(processes: ContainerProcessTable) -> str:
     """Join Docker process columns and rows into Top tab lines."""
     lines = [" ".join(processes.columns)] if processes.columns else []
     lines.extend(" ".join(row) for row in processes.rows)
@@ -86,18 +89,20 @@ def _format_process_list(processes: ContainerProcessTable) -> str:
 
 
 def build_logs_unavailable_error_message(
-    logs_unavailable_error: LogsUnavailableError,
+    logs_unavailable_error: ContainerLogsUnavailableError,
 ) -> str:
     """Build the message shown when Docker cannot read a container's logs."""
     return (
         "Logs unavailable: this container uses Docker logging "
-        f"driver '{logs_unavailable_error.driver}', so Docker cannot read logs for it. "
+        "driver "
+        f"'{logs_unavailable_error.logging_driver_name}', so Docker cannot read "
+        "logs for it. "
         "Enable a readable logging driver such as 'json-file', 'local', "
         "or 'journald' to view logs here."
     )
 
 
 __all__ = [
-    "TabDataLoader",
+    "ContainerTabTextLoader",
     "build_logs_unavailable_error_message",
 ]

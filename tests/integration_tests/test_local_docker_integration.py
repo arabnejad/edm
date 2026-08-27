@@ -3,13 +3,13 @@ from __future__ import annotations
 import pytest
 
 from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
-from tests.integration_tests.docker_test_setup import DockerTestSetup
+from tests.integration_tests.docker_test_setup import DockerIntegrationTestContainer
 
 pytestmark = pytest.mark.integration
 
 
 def test_running_container_is_returned_by_container_listing(
-    docker_test_setup: DockerTestSetup,
+    docker_test_setup: DockerIntegrationTestContainer,
     local_docker_container_client: LocalDockerContainerClient,
 ) -> None:
     running_containers = local_docker_container_client.list_running_containers()
@@ -26,7 +26,7 @@ def test_running_container_is_returned_by_container_listing(
 
 
 def test_container_logs_are_read_from_docker(
-    docker_test_setup: DockerTestSetup,
+    docker_test_setup: DockerIntegrationTestContainer,
     local_docker_container_client: LocalDockerContainerClient,
 ) -> None:
     log_text = local_docker_container_client.get_container_logs(
@@ -38,7 +38,7 @@ def test_container_logs_are_read_from_docker(
 
 
 def test_container_environment_variables_are_read_from_inspection_data(
-    docker_test_setup: DockerTestSetup,
+    docker_test_setup: DockerIntegrationTestContainer,
     local_docker_container_client: LocalDockerContainerClient,
 ) -> None:
     environment_variables = (
@@ -52,7 +52,7 @@ def test_container_environment_variables_are_read_from_inspection_data(
 
 
 def test_container_and_image_inspection_data_are_returned(
-    docker_test_setup: DockerTestSetup,
+    docker_test_setup: DockerIntegrationTestContainer,
     local_docker_container_client: LocalDockerContainerClient,
 ) -> None:
     inspection_data = local_docker_container_client.get_container_inspection_data(
@@ -68,7 +68,7 @@ def test_container_and_image_inspection_data_are_returned(
 
 
 def test_container_process_information_is_returned(
-    docker_test_setup: DockerTestSetup,
+    docker_test_setup: DockerIntegrationTestContainer,
     local_docker_container_client: LocalDockerContainerClient,
 ) -> None:
     process_table = local_docker_container_client.get_container_top_process_table(

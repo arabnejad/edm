@@ -1,4 +1,4 @@
-"""Manage the tab export menu and its background file write."""
+"""Handle export-menu input and save the selected tab in the background."""
 
 from __future__ import annotations
 
@@ -11,33 +11,33 @@ from pathlib import Path
 from typing import Optional
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
-from easy_docker_manager.core.tab_export import (
+from easy_docker_manager.core.tabs import ContainerTabKey, TabName
+from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.tab_export.definitions import (
     TabExportMenuField,
     TabExportMenuState,
     TabExportPhase,
     TabExportRequest,
     TabExportScope,
 )
-from easy_docker_manager.core.tabs import ContainerTabKey, TabName
-from easy_docker_manager.core.terminal_session_state import TerminalSessionState
-from easy_docker_manager.tabs.tab_content_exporter import (
-    ExportTargetExistsError,
-    TabContentExporter,
-    TabExportError,
+from easy_docker_manager.tab_export.writer import (
+    ExportFileAlreadyExistsError,
+    TabExportFileError,
+    TabExportWriter,
 )
-from easy_docker_manager.ui.formatting import DetailTabTextFormatter
+from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
 
 logger = logging.getLogger(__name__)
 
 
 class TabExportController:
-    """Handle the complete export workflow for the active container tab.
+    """Control the export menu and save a snapshot of the active tab.
 
     KeyboardController calls this object to open the export menu and passes all
-    menu keypresses to handle_menu_keypress(). This controller edits the menu,
-    copies the requested text from the existing tab cache, and sends only the
-    file write to BackgroundExecutor. It updates the menu on the UI thread when
-    writing finishes.
+    menu keypresses to handle_menu_keypress(). This class edits the menu, copies
+    the requested text from the tab cache, and sends the file write to
+    BackgroundExecutor. When the write finishes, it updates the menu on the UI
+    thread.
 
     Exporting never starts a new Docker request. It saves the content already
     loaded for the selected container and tab.
@@ -49,15 +49,15 @@ class TabExportController:
     def __init__(
         self,
         state: TerminalSessionState,
-        detail_tab_text_formatter: DetailTabTextFormatter,
+        tab_text_filter: TabTextFilter,
         background_executor: BackgroundExecutor,
-        tab_content_exporter: TabContentExporter,
+        tab_export_writer: TabExportWriter,
         launch_directory: Path,
     ) -> None:
         self.state = state
-        self.detail_tab_text_formatter = detail_tab_text_formatter
+        self.tab_text_filter = tab_text_filter
         self.background_executor = background_executor
-        self.tab_content_exporter = tab_content_exporter
+        self.tab_export_writer = tab_export_writer
         self.launch_directory = launch_directory.resolve()
         self._active_export_future: Optional[Future[Path]] = None
 
@@ -93,17 +93,17 @@ class TabExportController:
             container_tab_key=container_tab_key,
             container_name=selected_container.name,
             file_path=file_path,
-            path_cursor_index=len(file_path),
+            file_path_cursor_index=len(file_path),
         )
         return True
 
     def handle_menu_keypress(self, key: str) -> bool:
         """Handle one key while the export menu is open.
 
-        KeyboardController delegates every export-menu keypress here. The
+        KeyboardController passes every export-menu keypress here. The
         current menu phase decides whether the key edits the form, answers the
         overwrite question, or is ignored while the file is being written.
-        The return value tells EDM whether the visible menu changed.
+        It returns True when the visible menu changed and needs to be redrawn.
         """
         menu_state = self.state.tab_export_menu_state
         if menu_state is None or menu_state.phase == TabExportPhase.WRITING:
@@ -203,17 +203,17 @@ class TabExportController:
         ):
             return False
 
-        cursor_index = menu_state.path_cursor_index
+        cursor_index = menu_state.file_path_cursor_index
         if key == "left":
-            menu_state.path_cursor_index = max(0, cursor_index - 1)
+            menu_state.file_path_cursor_index = max(0, cursor_index - 1)
         elif key == "right":
-            menu_state.path_cursor_index = min(
+            menu_state.file_path_cursor_index = min(
                 len(menu_state.file_path), cursor_index + 1
             )
         elif key == "home":
-            menu_state.path_cursor_index = 0
+            menu_state.file_path_cursor_index = 0
         elif key == "end":
-            menu_state.path_cursor_index = len(menu_state.file_path)
+            menu_state.file_path_cursor_index = len(menu_state.file_path)
         elif key == "backspace":
             if cursor_index == 0:
                 return False
@@ -221,7 +221,7 @@ class TabExportController:
                 menu_state.file_path[: cursor_index - 1]
                 + menu_state.file_path[cursor_index:]
             )
-            menu_state.path_cursor_index -= 1
+            menu_state.file_path_cursor_index -= 1
         elif key == "delete":
             if cursor_index >= len(menu_state.file_path):
                 return False
@@ -241,7 +241,7 @@ class TabExportController:
                 + key
                 + menu_state.file_path[cursor_index:]
             )
-            menu_state.path_cursor_index += 1
+            menu_state.file_path_cursor_index += 1
         else:
             return False
 
@@ -286,15 +286,18 @@ class TabExportController:
             )
             return True
 
-        export_content = self._prepare_tab_export_content(menu_state, full_content)
+        tab_text_snapshot = self._build_export_text_snapshot(
+            menu_state,
+            full_content,
+        )
         request = TabExportRequest(
             target_path=target_path,
-            content=export_content,
-            overwrite=overwrite,
+            tab_text_snapshot=tab_text_snapshot,
+            allow_overwrite=overwrite,
         )
 
         menu_state.file_path = str(target_path)
-        menu_state.path_cursor_index = len(menu_state.file_path)
+        menu_state.file_path_cursor_index = len(menu_state.file_path)
         menu_state.error_message = ""
         menu_state.phase = TabExportPhase.WRITING
         self.state.status_message = (
@@ -303,7 +306,7 @@ class TabExportController:
 
         try:
             self._active_export_future = self.background_executor.submit(
-                self.tab_content_exporter.export_text,
+                self.tab_export_writer.export_text,
                 request,
                 on_complete=partial(
                     self._apply_tab_export_result,
@@ -334,17 +337,17 @@ class TabExportController:
         extension = ".log" if tab_name == TabName.LOGS else ".txt"
         return f"{safe_container_name}-{tab_name.value.lower()}-{timestamp}{extension}"
 
-    def _prepare_tab_export_content(
+    def _build_export_text_snapshot(
         self,
         menu_state: TabExportMenuState,
         full_content: str,
     ) -> str:
-        """Return the cached text snapshot selected by the export scope."""
+        """Copy the cached text selected by the export scope."""
         if menu_state.scope == TabExportScope.FULL_TAB:
             return full_content
 
         query = self.state.tab_search_queries.get(menu_state.container_tab_key, "")
-        visible_lines = self.detail_tab_text_formatter.prepare_visible_lines(
+        visible_lines = self.tab_text_filter.get_visible_lines(
             full_content,
             menu_state.container_tab_key.tab_name,
             query,
@@ -376,13 +379,13 @@ class TabExportController:
 
         try:
             saved_path = export_future.result()
-        except ExportTargetExistsError as exc:
+        except ExportFileAlreadyExistsError as exc:
             if is_matching_menu and menu_state is not None:
                 menu_state.phase = TabExportPhase.CONFIRMING_OVERWRITE
                 menu_state.error_message = ""
             self.state.status_message = f"File already exists: {exc.target_path}"
             return True
-        except TabExportError as exc:
+        except TabExportFileError as exc:
             logger.warning("Tab export failed for %s: %s", exc.target_path, exc)
             if is_matching_menu and menu_state is not None:
                 menu_state.phase = TabExportPhase.EDITING

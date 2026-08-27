@@ -7,20 +7,20 @@ from datetime import datetime
 from typing import Any
 
 
-def format_container_config(config_data: dict[str, Any]) -> str:
+def format_container_inspection_data(config_data: dict[str, Any]) -> str:
     """Build the grouped Config tab summary from Docker inspection data."""
     if not config_data:
         return ""
 
-    container = _as_dict(config_data.get("container") or config_data)
-    image = _as_dict(config_data.get("image"))
-    config = _as_dict(container.get("Config"))
-    host_config = _as_dict(container.get("HostConfig"))
-    state = _as_dict(container.get("State"))
-    network_settings = _as_dict(container.get("NetworkSettings"))
-    image_config = _as_dict(image.get("Config"))
-    image_rootfs = _as_dict(image.get("RootFS"))
-    labels = _as_dict(config.get("Labels"))
+    container = _get_dict_or_empty(config_data.get("container") or config_data)
+    image = _get_dict_or_empty(config_data.get("image"))
+    config = _get_dict_or_empty(container.get("Config"))
+    host_config = _get_dict_or_empty(container.get("HostConfig"))
+    state = _get_dict_or_empty(container.get("State"))
+    network_settings = _get_dict_or_empty(container.get("NetworkSettings"))
+    image_config = _get_dict_or_empty(image.get("Config"))
+    image_rootfs = _get_dict_or_empty(image.get("RootFS"))
+    labels = _get_dict_or_empty(config.get("Labels"))
 
     lines: list[str] = []
     _add_identity_section(lines, container, image, config)
@@ -58,11 +58,15 @@ def _add_state_section(
     container: dict[str, Any],
     state: dict[str, Any],
 ) -> None:
-    """Add runtime state and lifecycle fields."""
+    """Add current status, start time, finish time, and exit fields."""
     _add_section(lines, "State")
     _add_field(lines, "Status", state.get("Status"))
     _add_field(lines, "Running", state.get("Running"))
-    _add_field(lines, "Health", _as_dict(state.get("Health")).get("Status"))
+    _add_field(
+        lines,
+        "Health",
+        _get_dict_or_empty(state.get("Health")).get("Status"),
+    )
     _add_field(lines, "Started At", _format_timestamp(state.get("StartedAt")))
     _add_field(lines, "Finished At", _format_timestamp(state.get("FinishedAt")))
     _add_field(lines, "Restart Count", container.get("RestartCount"))
@@ -181,7 +185,7 @@ def _add_logging_section(
 ) -> None:
     """Add Docker logging driver and path fields."""
     _add_section(lines, "Logging")
-    log_config = _as_dict(host_config.get("LogConfig"))
+    log_config = _get_dict_or_empty(host_config.get("LogConfig"))
     _add_field(lines, "Driver", log_config.get("Type"))
     _add_field(lines, "Options", log_config.get("Config"))
     _add_field(lines, "Log Path", container.get("LogPath"))
@@ -226,7 +230,7 @@ def _add_field(lines: list[str], label: str, value: Any) -> None:
     lines.append(f"  {label:<14}: {_format_value(value)}")
 
 
-def _as_dict(value: Any) -> dict[str, Any]:
+def _get_dict_or_empty(value: Any) -> dict[str, Any]:
     """Return value when it is a dictionary, otherwise return an empty one."""
     return value if isinstance(value, dict) else {}
 
@@ -318,7 +322,7 @@ def _format_networks(value: Any) -> list[str]:
         return ["<none>"]
     rows: list[str] = []
     for name, data in sorted(value.items()):
-        details = _as_dict(data)
+        details = _get_dict_or_empty(data)
         parts = [name]
         if details.get("IPAddress"):
             parts.append(str(details["IPAddress"]))
@@ -333,9 +337,9 @@ def _format_networks(value: Any) -> list[str]:
 
 def _format_storage(value: Any) -> str:
     """Return a compact storage summary."""
-    storage = _as_dict(value)
-    rootfs = _as_dict(storage.get("RootFS"))
-    snapshot = _as_dict(rootfs.get("Snapshot"))
+    storage = _get_dict_or_empty(value)
+    rootfs = _get_dict_or_empty(storage.get("RootFS"))
+    snapshot = _get_dict_or_empty(rootfs.get("Snapshot"))
     return snapshot.get("Name") or _format_value(storage)
 
 
@@ -345,7 +349,7 @@ def _format_mounts(value: Any) -> str:
         return "<none>"
     mounts = []
     for mount in value:
-        data = _as_dict(mount)
+        data = _get_dict_or_empty(mount)
         source = data.get("Source") or "<anonymous>"
         destination = data.get("Destination") or "<unknown>"
         mode = data.get("Mode") or data.get("RW")
@@ -353,4 +357,4 @@ def _format_mounts(value: Any) -> str:
     return "; ".join(mounts)
 
 
-__all__ = ["format_container_config"]
+__all__ = ["format_container_inspection_data"]

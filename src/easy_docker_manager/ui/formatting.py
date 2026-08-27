@@ -1,4 +1,4 @@
-"""Choose visible detail lines and add their terminal colors."""
+"""Add terminal colors and search highlights to detail text."""
 
 from __future__ import annotations
 
@@ -8,50 +8,13 @@ from functools import lru_cache
 from typing import Optional, Union
 
 from easy_docker_manager.core.tabs import TabName
+from easy_docker_manager.tabs.tab_text_filter import compile_log_filter_regex
 
 MarkupSegment = Union[str, tuple[Hashable, str]]
 
-MAX_REGEX_QUERY_LENGTH = 200
-
-
-class LogRegexLineFilter:
-    """Filter Logs by regex without removing lines from other tabs."""
-
-    def __init__(self) -> None:
-        """Keep one recent result so an unchanged Logs view is cheap to redraw."""
-        self._last_content: Optional[str] = None
-        self._last_query: Optional[str] = None
-        self._last_filtered_lines: Optional[list[str]] = None
-
-    def filter_lines(self, content: str, tab: TabName, query: str) -> list[str]:
-        """Apply regex filtering to Logs and return all lines for other tabs."""
-        if not content:
-            return []
-
-        query = query.strip()
-        if tab != TabName.LOGS or not query:
-            return content.splitlines()
-
-        if (
-            content == self._last_content
-            and query == self._last_query
-            and self._last_filtered_lines is not None
-        ):
-            return self._last_filtered_lines
-
-        pattern, error = compile_regex(query)
-        if error:
-            return content.splitlines()
-        matches = [line for line in content.splitlines() if pattern.search(line)]
-        lines = matches or [f"No log lines match /{query}/."]
-        self._last_content = content
-        self._last_query = query
-        self._last_filtered_lines = lines
-        return lines
-
 
 class DetailLineRenderer:
-    """Add search highlights and simple tab-specific colors."""
+    """Add search highlights and tab-specific colors to one line."""
 
     def render_line(
         self,
@@ -61,10 +24,10 @@ class DetailLineRenderer:
         *,
         is_error: bool = False,
     ) -> Union[str, list[MarkupSegment]]:
-        """Return display markup for one line in the detail panel.
+        """Format one detail line for display.
 
-        The formatter calls this while rendering a tab. Error lines use the
-        error style; other lines use tab colors and search highlighting.
+        Error lines use the error style. Other lines receive the colors and
+        search highlights used by their tab.
         """
         if is_error:
             return [("error", line)]
@@ -74,10 +37,10 @@ class DetailLineRenderer:
             return self.base_line_markup(line, tab)
 
         if tab != TabName.LOGS:
-            return self.plain_text_highlighted_markup(line, tab, query)
-        return self.regex_highlighted_markup(line, tab, query)
+            return self.highlight_plain_text_matches(line, tab, query)
+        return self.highlight_log_regex_matches(line, tab, query)
 
-    def regex_highlighted_markup(
+    def highlight_log_regex_matches(
         self,
         line: str,
         tab: TabName,
@@ -85,9 +48,9 @@ class DetailLineRenderer:
     ) -> list[MarkupSegment]:
         """Highlight every regex match in a Logs line."""
         match_ranges = regex_match_ranges(line, query)
-        return self.highlighted_markup(line, tab, match_ranges)
+        return self.apply_match_highlighting(line, tab, match_ranges)
 
-    def plain_text_highlighted_markup(
+    def highlight_plain_text_matches(
         self,
         line: str,
         tab: TabName,
@@ -95,9 +58,9 @@ class DetailLineRenderer:
     ) -> list[MarkupSegment]:
         """Highlight plain-text matches in Env, Config, or Top text."""
         match_ranges = plain_text_match_ranges(line, query)
-        return self.highlighted_markup(line, tab, match_ranges)
+        return self.apply_match_highlighting(line, tab, match_ranges)
 
-    def highlighted_markup(
+    def apply_match_highlighting(
         self,
         line: str,
         tab: TabName,
@@ -163,31 +126,20 @@ class DetailLineRenderer:
         if not line:
             return [""]
         if tab != TabName.LOGS:
-            return structured_text_markup(line, tab)
-        return log_markup(line)
+            return format_structured_text_line(line, tab)
+        return format_log_line(line)
 
 
 class DetailTabTextFormatter:
-    """Filter and color text for the active detail tab.
+    """Add colors and search highlights to detail-tab lines.
 
-    TerminalController uses this before each redraw, and TabExportController uses it
-    when exporting the current view. Logs queries remove non-matching lines and
-    highlight regex matches. Env, Config, and Top keep every line and highlight
-    plain-text matches. DetailLineRenderer then adds the normal tab colors.
+    TabTextFilter decides which lines are shown. TerminalController then uses
+    this class to color each line. Logs highlight regex matches. Env, Config,
+    and Top highlight matching search text.
     """
 
     def __init__(self) -> None:
-        self._log_line_filter = LogRegexLineFilter()
         self.line_renderer = DetailLineRenderer()
-
-    def prepare_visible_lines(
-        self,
-        content: str,
-        tab: TabName,
-        query: str,
-    ) -> list[str]:
-        """Return the lines left visible by the active tab's search behavior."""
-        return self._log_line_filter.filter_lines(content, tab, query)
 
     def format_detail_line(
         self,
@@ -197,19 +149,8 @@ class DetailTabTextFormatter:
         *,
         is_error: bool = False,
     ) -> Union[str, list[MarkupSegment]]:
-        """Return the line's colors, using the error color when is_error is True."""
+        """Format one line, using the error style when is_error is True."""
         return self.line_renderer.render_line(line, tab, query, is_error=is_error)
-
-
-@lru_cache(maxsize=128)
-def compile_regex(query: str) -> tuple[re.Pattern[str], Optional[str]]:
-    """Compile a case-insensitive regex, returning its error instead of raising."""
-    if len(query) > MAX_REGEX_QUERY_LENGTH:
-        return re.compile(r"$."), "Regex query is too long."
-    try:
-        return re.compile(query, re.IGNORECASE), None
-    except re.error as exc:
-        return re.compile(r"$."), str(exc)
 
 
 def regex_match_ranges(line: str, query: str) -> list[tuple[int, int]]:
@@ -218,7 +159,7 @@ def regex_match_ranges(line: str, query: str) -> list[tuple[int, int]]:
     For example, regex_match_ranges("ERROR 500", "error|500") returns
     [(0, 5), (6, 9)]. The search is case-insensitive.
     """
-    pattern, error = compile_regex(query)
+    pattern, error = compile_log_filter_regex(query)
     if error:
         return []
     return [
@@ -279,15 +220,15 @@ def append_markup_piece(
     output[-1] = (attr, combined_text) if attr is not None else combined_text
 
 
-def structured_text_markup(line: str, tab: TabName) -> list[MarkupSegment]:
+def format_structured_text_line(line: str, tab: TabName) -> list[MarkupSegment]:
     """Return simple token markup for Env, Config, and Top lines."""
     if "=" in line and tab == TabName.ENV:
         key, value = line.split("=", 1)
         return [("accent", key), ("muted", "="), ("value", value)]
-    return token_markup(line)
+    return format_structured_tokens(line)
 
 
-def log_markup(line: str) -> list[MarkupSegment]:
+def format_log_line(line: str) -> list[MarkupSegment]:
     """Return color markup for common timestamps, levels, URLs, and numbers."""
     parts: list[MarkupSegment] = []
     for token in re.split(r"(\s+)", line):
@@ -316,8 +257,8 @@ def log_markup(line: str) -> list[MarkupSegment]:
     return parts
 
 
-def token_markup(line: str) -> list[MarkupSegment]:
-    """Add terminal colors to Config and Top values.
+def format_structured_tokens(line: str) -> list[MarkupSegment]:
+    """Color common values in Config and Top text.
 
     Punctuation, numbers, booleans, null values, and quoted text receive
     separate colors so these tabs are easier to scan.
@@ -345,14 +286,11 @@ __all__ = [
     "DetailLineRenderer",
     "DetailTabTextFormatter",
     "MarkupSegment",
-    "MAX_REGEX_QUERY_LENGTH",
-    "LogRegexLineFilter",
     "append_markup_piece",
-    "compile_regex",
     "plain_text_match_ranges",
-    "log_markup",
+    "format_log_line",
     "markup_piece_attr_and_text",
     "regex_match_ranges",
-    "structured_text_markup",
-    "token_markup",
+    "format_structured_text_line",
+    "format_structured_tokens",
 ]

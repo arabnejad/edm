@@ -10,8 +10,8 @@ from easy_docker_manager.app.background_executor import BackgroundExecutor
 def test_executor_runs_function_and_queues_its_ui_completion_callback() -> None:
     completion_notification = Event()
     background_executor = BackgroundExecutor(
-        max_workers=1,
-        notify_completion_ready=completion_notification.set,
+        max_background_worker_threads=1,
+        notify_ui_completion_ready=completion_notification.set,
     )
 
     def handle_completion(completed_future) -> bool:
@@ -40,8 +40,8 @@ def test_executor_runs_function_and_queues_its_ui_completion_callback() -> None:
 def test_fast_completion_does_not_deadlock_callback_registration() -> None:
     completion_notification = Event()
     background_executor = BackgroundExecutor(
-        max_workers=1,
-        notify_completion_ready=completion_notification.set,
+        max_background_worker_threads=1,
+        notify_ui_completion_ready=completion_notification.set,
     )
 
     try:
@@ -57,8 +57,8 @@ def test_fast_completion_does_not_deadlock_callback_registration() -> None:
 
 def test_shutdown_stops_new_submissions_and_can_be_called_twice() -> None:
     background_executor = BackgroundExecutor(
-        max_workers=1,
-        notify_completion_ready=lambda: None,
+        max_background_worker_threads=1,
+        notify_ui_completion_ready=lambda: None,
     )
     background_executor.shutdown()
     background_executor.shutdown()

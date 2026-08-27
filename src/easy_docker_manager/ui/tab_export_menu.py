@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import urwid
 
-from easy_docker_manager.core.tab_export import (
+from easy_docker_manager.tab_export.definitions import (
     TabExportMenuField,
     TabExportMenuState,
     TabExportPhase,
@@ -121,7 +121,10 @@ def _build_tab_export_form_rows(
 
 def _format_export_path(menu_state: TabExportMenuState) -> list[MarkupSegment]:
     """Return the path text with a visible cursor at its editing position."""
-    cursor_index = min(menu_state.path_cursor_index, len(menu_state.file_path))
+    cursor_index = min(
+        menu_state.file_path_cursor_index,
+        len(menu_state.file_path),
+    )
     before_cursor = menu_state.file_path[:cursor_index]
     cursor_character = (
         menu_state.file_path[cursor_index]

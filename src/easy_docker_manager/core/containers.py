@@ -24,7 +24,7 @@ class ContainerSummary:
 
 @dataclass
 class ContainerProcessTable:
-    """Column names and rows returned by Docker's top command."""
+    """Store the column names and process rows returned by Docker top."""
 
     columns: tuple[str, ...]
     rows: tuple[tuple[str, ...], ...]

@@ -1,4 +1,4 @@
-"""Map terminal keypresses to UI state actions."""
+"""Map terminal keypresses to EDM actions."""
 
 from __future__ import annotations
 
@@ -14,16 +14,16 @@ class KeyAction(Enum):
     """Tell EDMApp what to do after a keypress."""
 
     NONE = "none"
-    RENDER = "render"
+    REDRAW = "redraw"
     QUIT = "quit"
 
 
 class KeyboardController:
     """Handle EDM keyboard shortcuts and search input.
 
-    EDMApp sends each Urwid key name here. This controller updates search text
-    and keyboard focus. It sends navigation to TerminalController and export-menu
-    input to TabExportController.
+    EDMApp sends each Urwid key name here. This class handles simple focus and
+    search changes, sends navigation and sorting to TerminalController, and
+    passes export-menu keys to TabExportController.
     """
 
     def __init__(
@@ -48,7 +48,7 @@ class KeyboardController:
             return self._handle_container_sort_menu_keypress(key)
         if self.state.is_search_active:
             return (
-                KeyAction.RENDER
+                KeyAction.REDRAW
                 if self._handle_search_keypress(key, terminal_size)
                 else KeyAction.NONE
             )
@@ -59,17 +59,17 @@ class KeyboardController:
             if self.state.active_focus_area == FocusArea.DETAIL:
                 return KeyAction.NONE
             self.state.active_focus_area = FocusArea.DETAIL
-            return KeyAction.RENDER
+            return KeyAction.REDRAW
         elif key == "esc":
             if self.state.active_focus_area == FocusArea.CONTAINERS:
                 return KeyAction.NONE
             self.state.is_search_active = False
             self.state.active_focus_area = FocusArea.CONTAINERS
-            return KeyAction.RENDER
+            return KeyAction.REDRAW
         elif key == "up":
             if self.state.active_focus_area == FocusArea.DETAIL:
                 return (
-                    KeyAction.RENDER
+                    KeyAction.REDRAW
                     if self.terminal_controller.move_selected_detail_line(
                         "up", terminal_size
                     )
@@ -77,14 +77,14 @@ class KeyboardController:
                 )
             else:
                 return (
-                    KeyAction.RENDER
+                    KeyAction.REDRAW
                     if self.terminal_controller.move_selected_container_index(-1)
                     else KeyAction.NONE
                 )
         elif key == "down":
             if self.state.active_focus_area == FocusArea.DETAIL:
                 return (
-                    KeyAction.RENDER
+                    KeyAction.REDRAW
                     if self.terminal_controller.move_selected_detail_line(
                         "down", terminal_size
                     )
@@ -92,35 +92,35 @@ class KeyboardController:
                 )
             else:
                 return (
-                    KeyAction.RENDER
+                    KeyAction.REDRAW
                     if self.terminal_controller.move_selected_container_index(1)
                     else KeyAction.NONE
                 )
         elif key == "[":
             return (
-                KeyAction.RENDER
+                KeyAction.REDRAW
                 if self.terminal_controller.switch_active_detail_tab(-1)
                 else KeyAction.NONE
             )
         elif key == "]":
             return (
-                KeyAction.RENDER
+                KeyAction.REDRAW
                 if self.terminal_controller.switch_active_detail_tab(1)
                 else KeyAction.NONE
             )
         elif key == "/":
             self.state.active_focus_area = FocusArea.DETAIL
             self.state.is_search_active = True
-            return KeyAction.RENDER
+            return KeyAction.REDRAW
         elif key in {"s", "S"} and self.state.active_focus_area == FocusArea.CONTAINERS:
             return (
-                KeyAction.RENDER
+                KeyAction.REDRAW
                 if self.terminal_controller.open_container_sort_menu()
                 else KeyAction.NONE
             )
         elif key in {"e", "E"} and self.state.active_focus_area == FocusArea.DETAIL:
             return (
-                KeyAction.RENDER
+                KeyAction.REDRAW
                 if self.tab_export_controller.open_tab_export_menu()
                 else KeyAction.NONE
             )
@@ -129,7 +129,7 @@ class KeyboardController:
             and self.state.active_focus_area == FocusArea.DETAIL
         ):
             return (
-                KeyAction.RENDER
+                KeyAction.REDRAW
                 if self.terminal_controller.move_selected_detail_line(
                     key, terminal_size
                 )
@@ -138,9 +138,9 @@ class KeyboardController:
         return KeyAction.NONE
 
     def _handle_tab_export_menu_keypress(self, key: str) -> KeyAction:
-        """Pass an export-menu key to the controller that owns its workflow."""
+        """Pass one export-menu key to TabExportController."""
         changed = self.tab_export_controller.handle_menu_keypress(key)
-        return KeyAction.RENDER if changed else KeyAction.NONE
+        return KeyAction.REDRAW if changed else KeyAction.NONE
 
     def _handle_container_sort_menu_keypress(self, key: str) -> KeyAction:
         """Handle navigation, apply, and cancel keys in the sorting menu."""
@@ -161,7 +161,7 @@ class KeyboardController:
             changed = self.terminal_controller.apply_container_sort_menu()
         elif key == "esc":
             changed = self.terminal_controller.close_container_sort_menu()
-        return KeyAction.RENDER if changed else KeyAction.NONE
+        return KeyAction.REDRAW if changed else KeyAction.NONE
 
     def _handle_search_keypress(
         self,

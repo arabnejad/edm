@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from easy_docker_manager.tabs.config_tab_formatter import format_container_config
+from easy_docker_manager.tabs.config_tab_formatter import (
+    format_container_inspection_data,
+)
 
 
 @pytest.fixture
-def complete_inspection_data() -> dict:
+def complete_container_inspection_data() -> dict:
     return {
         "container": {
             "Name": "/web",
@@ -97,13 +99,15 @@ def complete_inspection_data() -> dict:
 
 
 def test_empty_config_produces_empty_text() -> None:
-    assert format_container_config({}) == ""
+    assert format_container_inspection_data({}) == ""
 
 
 def test_formatted_config_contains_all_sections_and_readable_values(
-    complete_inspection_data: dict,
+    complete_container_inspection_data: dict,
 ) -> None:
-    formatted_config = format_container_config(complete_inspection_data)
+    formatted_config = format_container_inspection_data(
+        complete_container_inspection_data
+    )
 
     for section in [
         "Identity",
@@ -134,7 +138,9 @@ def test_formatted_config_contains_all_sections_and_readable_values(
 
 
 def test_formatter_accepts_raw_container_inspection_data() -> None:
-    formatted_config = format_container_config({"Name": "/worker", "Id": "abc"})
+    formatted_config = format_container_inspection_data(
+        {"Name": "/worker", "Id": "abc"}
+    )
 
     assert "worker" in formatted_config
     assert "Container ID  : abc" in formatted_config

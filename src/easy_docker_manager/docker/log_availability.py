@@ -1,11 +1,11 @@
-"""Check whether Docker can return a container's output logs.
+"""Check whether Docker can read back a container's output logs.
 
 Docker uses a logging driver to decide where each container's standard output
 and error are stored or sent. Common logging drivers include json-file, local,
 journald, and none. The none driver discards the output, and some other drivers
 send it somewhere that the Docker logs command cannot read back. This module
-reads the configured driver name and recognizes Docker errors that mean logs
-are unavailable.
+reads the configured driver name and recognizes the errors Docker returns when
+logs cannot be read.
 """
 
 from __future__ import annotations

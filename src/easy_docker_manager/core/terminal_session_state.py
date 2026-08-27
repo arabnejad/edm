@@ -1,14 +1,13 @@
-"""Store everything that can change while EDM is running.
+"""Store the data that changes during one EDM terminal session.
 
 A terminal session starts when EDM opens and ends when the application exits.
-This state holds the running containers, selected container, active tab,
-keyboard focus, loaded tab text, search queries, open popup, status messages,
-and load errors.
+The state includes the running containers, current selection, active tab,
+keyboard focus, loaded text, search queries, open menu, status message, and
+Docker request errors.
 
-TerminalController and TabExportController change this state after keyboard
-input. DockerManager stores container lists, tab content, log updates, and
-errors after Docker requests finish. The terminal views read the state when
-drawing the screen.
+TerminalController and TabExportController update it after keyboard input. The
+Docker request classes save lists, tab content, log updates, and errors after
+their requests finish. The view classes read it when drawing the screen.
 """
 
 from __future__ import annotations
@@ -24,8 +23,8 @@ from easy_docker_manager.core.container_sorting import (
 )
 from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.core.tab_content_cache import TabContentCache
-from easy_docker_manager.core.tab_export import TabExportMenuState
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
+from easy_docker_manager.tab_export.definitions import TabExportMenuState
 
 
 class FocusArea(str, Enum):
@@ -39,19 +38,19 @@ def _create_default_tab_content_cache() -> TabContentCache:
     """Create a cache from AppConfig defaults for standalone session state."""
     app_config = AppConfig()
     return TabContentCache(
-        max_entries=app_config.content_cache_size,
-        max_total_bytes=app_config.content_cache_max_bytes,
+        max_entries=app_config.tab_content_cache_max_entries,
+        max_total_bytes=app_config.tab_content_cache_max_bytes,
     )
 
 
 @dataclass
 class TerminalSessionState:
-    """Keep the current selection, focus, search, and loaded tab text.
+    """Keep all changing data used to draw and control the terminal screen.
 
     TerminalController and TabExportController update this object after
-    keyboard input. DockerManager updates it after Docker work finishes. It
-    contains no Urwid widgets and makes no Docker calls. The terminal views
-    read this same object during each redraw.
+    keyboard input. The Docker request classes update it when their work
+    finishes. This class contains no Urwid widgets and makes no Docker calls;
+    the view classes read it during each redraw.
     """
 
     # Running container summaries displayed in the left panel.
@@ -75,6 +74,8 @@ class TerminalSessionState:
     follow_log_tail: bool = True
     # Status text displayed below the right detail panel.
     status_message: str = "Loading containers..."
+    # Most recent running-container list refresh error, or None after success.
+    container_list_refresh_error_message: Optional[str] = None
     # Whether printable keyboard input is editing the active search query.
     is_search_active: bool = False
     # Loaded tab text keyed by container and detail tab.
@@ -85,8 +86,8 @@ class TerminalSessionState:
     tab_search_queries: dict[ContainerTabKey, str] = field(default_factory=dict)
     # Container IDs whose logging drivers do not support Docker log reads.
     unreadable_log_container_ids: set[str] = field(default_factory=set)
-    # Most recent loading error for each container tab.
-    tab_load_errors: dict[ContainerTabKey, str] = field(default_factory=dict)
+    # Most recent load or refresh error for each container tab.
+    tab_content_error_messages: dict[ContainerTabKey, str] = field(default_factory=dict)
 
     @property
     def selected_container_summary(self) -> Optional[ContainerSummary]:
@@ -141,7 +142,7 @@ class TerminalSessionState:
             0, min(line_count - 1, self.detail_selected_line_index)
         )
 
-    def remove_stopped_container_state(
+    def remove_state_for_stopped_containers(
         self,
         running_container_ids: set[str],
     ) -> None:
@@ -155,9 +156,9 @@ class TerminalSessionState:
             if not key.container_id or key.container_id in running_container_ids
         }
         self.unreadable_log_container_ids.intersection_update(running_container_ids)
-        self.tab_load_errors = {
+        self.tab_content_error_messages = {
             key: message
-            for key, message in self.tab_load_errors.items()
+            for key, message in self.tab_content_error_messages.items()
             if key.container_id in running_container_ids
         }
         if (

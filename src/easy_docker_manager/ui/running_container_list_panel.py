@@ -14,12 +14,12 @@ from easy_docker_manager.ui.formatting import MarkupSegment
 
 
 class RunningContainerListPanel:
-    """Own the running-container list and the other left-panel widgets.
+    """Display the running-container list and its left-panel controls.
 
     TerminalLayoutView creates this once and calls render() for each redraw.
-    The panel updates its title, container rows, sorting summary, status text,
-    focus, and border from TerminalSessionState. It does not change the selected
-    container or start Docker requests.
+    The panel reads TerminalSessionState to update its title, rows, sort summary,
+    status text, focus, and border. It does not change the selection or start
+    Docker requests.
     """
 
     def __init__(self, app_config: AppConfig) -> None:
@@ -41,7 +41,7 @@ class RunningContainerListPanel:
         )
 
     def render(self, state: TerminalSessionState) -> None:
-        """Update the rows, sort summary, focus, and border from UI state."""
+        """Update the rows, sort summary, focus, and border from session state."""
         self._rebuild_container_list_and_focus_on_selected_container(state)
         self._update_selected_sort_display_text(state)
         border_style = (
@@ -82,9 +82,12 @@ class RunningContainerListPanel:
                 urwid.Text(
                     [
                         ("muted", "Refresh "),
-                        ("value", f"{self.app_config.refresh_interval:g}s"),
+                        (
+                            "value",
+                            f"{self.app_config.container_list_refresh_interval_seconds:g}s",
+                        ),
                         ("muted", " | Logs "),
-                        ("value", f"{self.app_config.log_tail}"),
+                        ("value", f"{self.app_config.initial_log_tail_lines}"),
                         ("muted", " lines"),
                     ],
                     wrap="clip",
@@ -103,10 +106,10 @@ class RunningContainerListPanel:
     ) -> None:
         """Rebuild the list and focus its selected container row.
 
-        render() calls this during each panel redraw. It creates the visible
-        rows from the running containers, replaces the existing Urwid rows,
-        and moves list focus to the selected index from TerminalSessionState. It does
-        not change which container is selected in session state.
+        render() calls this during each panel redraw. It creates rows from the
+        running containers, replaces the existing Urwid rows, and moves focus
+        to the selected index. It does not change the selected index stored in
+        TerminalSessionState.
         """
         rows: list[urwid.Widget] = []
         for index, container in enumerate(state.running_containers):

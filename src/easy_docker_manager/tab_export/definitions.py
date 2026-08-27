@@ -1,4 +1,4 @@
-"""Store the choices and text snapshot used by a tab export."""
+"""Define the menu choices and file-write request used by tab exports."""
 
 from __future__ import annotations
 
@@ -38,20 +38,20 @@ class TabExportPhase(str, Enum):
 
 @dataclass
 class TabExportMenuState:
-    """Keep the choices being edited in the tab export menu.
+    """Store the values currently shown in the tab export menu.
 
     TabExportController creates this when the user opens the menu. Keyboard
     input changes the path, selected field, and export scope. The terminal
     view reads the same object when drawing the popup.
 
-    When a file already exists, the menu asks for confirmation before a second
-    request is allowed to replace it.
+    If the file already exists, phase changes to CONFIRMING_OVERWRITE until the
+    user confirms or returns to editing.
     """
 
     container_tab_key: ContainerTabKey
     container_name: str
     file_path: str
-    path_cursor_index: int
+    file_path_cursor_index: int
     scope: TabExportScope = TabExportScope.CURRENT_VIEW
     selected_field: TabExportMenuField = TabExportMenuField.FILE_PATH
     phase: TabExportPhase = TabExportPhase.EDITING
@@ -60,16 +60,16 @@ class TabExportMenuState:
 
 @dataclass(frozen=True)
 class TabExportRequest:
-    """Carry one fixed text snapshot to the background file writer.
+    """Carry a fixed text snapshot to the background file writer.
 
     TabExportController creates this after the user confirms the export. The
-    object is frozen so its path, text, and overwrite choice cannot change
-    while a worker thread is writing the file.
+    object is frozen so the path, text, and overwrite choice cannot change
+    while the worker thread writes the file.
     """
 
     target_path: Path
-    content: str
-    overwrite: bool = False
+    tab_text_snapshot: str
+    allow_overwrite: bool = False
 
 
 __all__ = [

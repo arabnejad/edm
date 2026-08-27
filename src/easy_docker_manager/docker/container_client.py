@@ -1,9 +1,8 @@
-"""Define the interface EDM uses to send container requests to Docker.
+"""Define the Docker container requests used by the rest of EDM.
 
-DockerContainerClient defines the Docker operations available to the rest of
-the application. It currently lists running containers and loads their logs,
-environment variables, inspection data, and processes. The error classes turn
-Docker SDK failures into specific EDM errors that the terminal UI can display.
+DockerContainerClient lists the operations without depending on the Docker SDK
+types. The error classes give the application clear failures for missing
+containers, unreadable logs, and other Docker request problems.
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional, Union
 
-from easy_docker_manager.core import ContainerProcessTable, ContainerSummary
+from easy_docker_manager.core.containers import ContainerProcessTable, ContainerSummary
 
 
 class DockerContainerClientError(RuntimeError):
@@ -28,15 +27,14 @@ class ContainerNotFoundError(DockerContainerClientError):
 
 
 class FailedDockerRequestType(str, Enum):
-    """Describe which Docker request failed.
+    """Identify the data EDM was trying to read when Docker failed.
 
-    LocalDockerContainerClient passes one of these values from an except block to
-    raise_container_request_error. The value tells that function what the code
-    was trying to load when Docker raised the exception.
+    LocalDockerContainerClient passes one of these values to
+    raise_container_request_error() from an except block. The error mapper uses
+    it to choose a specific EDM exception and build a useful message.
 
     For example, get_container_environment_variables passes LOAD_ENVIRONMENT
-    after its Docker call fails.
-    The error handler then:
+    when its Docker call fails. The error mapper then:
 
     1. Raises ContainerNotFoundError if Docker cannot find the container.
     2. Raises ContainerLogFetchError when the request type is FETCH_LOGS.
@@ -70,15 +68,17 @@ class DockerRequestFailedError(DockerContainerClientError):
         )
 
 
-class LogsUnavailableError(DockerContainerClientError):
+class ContainerLogsUnavailableError(DockerContainerClientError):
     """Raised when Docker cannot read logs for the configured logging driver."""
 
-    def __init__(self, driver: str) -> None:
-        self.driver = driver
-        super().__init__(f"Logs unavailable for Docker logging driver '{driver}'")
+    def __init__(self, logging_driver_name: str) -> None:
+        self.logging_driver_name = logging_driver_name
+        super().__init__(
+            "Logs unavailable for Docker logging driver " f"'{logging_driver_name}'"
+        )
 
 
-class ContainerRefreshError(DockerContainerClientError):
+class RunningContainerListRefreshError(DockerContainerClientError):
     """Raised when a container refresh fails before a valid list is available."""
 
 
@@ -90,17 +90,16 @@ class ContainerLogFetchError(DockerRequestFailedError):
 
 
 class DockerContainerClient(ABC):
-    """Define the Docker container operations available to EDM.
+    """List the Docker container operations that EDM can request.
 
-    DockerManager and TabDataLoader call this interface instead of using the
-    Docker SDK directly. LocalDockerContainerClient provides the production
-    implementation. Tests can provide a small fake or mock client without
-    connecting to Docker.
+    DockerManager and ContainerTabTextLoader use this interface rather than importing
+    Docker SDK objects. LocalDockerContainerClient connects to Docker in the
+    application, while tests can use a fake client without a Docker daemon.
     """
 
     @abstractmethod
     def list_running_containers(self) -> list[ContainerSummary]:
-        """Return running containers or raise ContainerRefreshError on failure."""
+        """Return running containers or report that the list could not load."""
 
     @abstractmethod
     def get_container_logs(
@@ -136,16 +135,16 @@ class DockerContainerClient(ABC):
 
     @abstractmethod
     def close(self) -> None:
-        """Close any Docker connection owned by this client."""
+        """Close the Docker connection if this client opened one."""
 
 
 __all__ = [
     "DockerContainerClient",
     "ContainerLogFetchError",
     "ContainerNotFoundError",
-    "ContainerRefreshError",
+    "RunningContainerListRefreshError",
     "DockerContainerClientError",
     "DockerRequestFailedError",
     "FailedDockerRequestType",
-    "LogsUnavailableError",
+    "ContainerLogsUnavailableError",
 ]

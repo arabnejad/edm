@@ -4,7 +4,7 @@ from functools import partial
 from unittest.mock import Mock
 
 from easy_docker_manager.app.runtime_factory import EDMRuntimeFactory
-from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.docker.client_factory import create_docker_client
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
@@ -12,9 +12,9 @@ from easy_docker_manager.docker.local_container_client import LocalDockerContain
 
 def test_runtime_factory_uses_supplied_config_and_data_source() -> None:
     config = AppConfig(
-        content_cache_size=7,
-        content_cache_max_bytes=500,
-        max_workers=2,
+        tab_content_cache_max_entries=7,
+        tab_content_cache_max_bytes=500,
+        max_background_worker_threads=2,
     )
     docker_container_client = Mock(spec=DockerContainerClient)
     notify_background_work_ready = Mock()
@@ -54,10 +54,12 @@ def test_runtime_factory_builds_local_data_source_with_configured_timeout() -> N
         runtime_factory.docker_container_client,
         LocalDockerContainerClient,
     )
-    create_client = runtime_factory.docker_container_client._create_docker_client
-    assert isinstance(create_client, partial)
-    assert create_client.func is create_docker_client
-    assert create_client.args == (3.5,)
+    create_docker_client_callback = (
+        runtime_factory.docker_container_client._create_docker_client
+    )
+    assert isinstance(create_docker_client_callback, partial)
+    assert create_docker_client_callback.func is create_docker_client
+    assert create_docker_client_callback.args == (3.5,)
 
 
 def test_runtime_factory_uses_default_config_when_none_is_given() -> None:

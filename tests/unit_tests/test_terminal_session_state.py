@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from easy_docker_manager.core.container_sorting import ContainerSortField
-from easy_docker_manager.core.tab_export import TabExportMenuState
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
     TerminalSessionState,
 )
+from easy_docker_manager.tab_export.definitions import TabExportMenuState
 
 
 def test_state_defaults_describe_the_initial_screen() -> None:
@@ -72,7 +72,7 @@ def test_selected_detail_line_is_kept_within_available_range() -> None:
     assert state.detail_selected_line_index == 0
 
 
-def test_remove_stopped_container_state_removes_all_stopped_container_data() -> None:
+def test_remove_state_for_stopped_containers_removes_its_cached_data() -> None:
     state = TerminalSessionState()
     live_container_tab_key = ContainerTabKey("live", TabName.LOGS)
     stopped_container_tab_key = ContainerTabKey("stopped", TabName.ENV)
@@ -83,7 +83,7 @@ def test_remove_stopped_container_state_removes_all_stopped_container_data() -> 
         stopped_container_tab_key: "old",
     }
     state.unreadable_log_container_ids = {"live", "stopped"}
-    state.tab_load_errors = {
+    state.tab_content_error_messages = {
         live_container_tab_key: "live error",
         stopped_container_tab_key: "old error",
     }
@@ -94,11 +94,11 @@ def test_remove_stopped_container_state_removes_all_stopped_container_data() -> 
         len("output.txt"),
     )
 
-    state.remove_stopped_container_state({"live"})
+    state.remove_state_for_stopped_containers({"live"})
 
     assert live_container_tab_key in state.tab_content_cache
     assert stopped_container_tab_key not in state.tab_content_cache
     assert state.tab_search_queries == {live_container_tab_key: "ok"}
     assert state.unreadable_log_container_ids == {"live"}
-    assert state.tab_load_errors == {live_container_tab_key: "live error"}
+    assert state.tab_content_error_messages == {live_container_tab_key: "live error"}
     assert state.tab_export_menu_state is None

@@ -8,25 +8,37 @@ from unittest.mock import Mock
 
 import pytest
 
+from easy_docker_manager.app import (
+    container_log_updates as container_log_updates_module,
+)
 from easy_docker_manager.app import docker_manager as docker_manager_module
+from easy_docker_manager.app import (
+    running_container_refresh as container_refresh_module,
+)
+from easy_docker_manager.app import selected_tab_load as selected_tab_load_module
+from easy_docker_manager.app.container_log_updates import ContainerLogUpdater
 from easy_docker_manager.app.docker_manager import DockerManager
-from easy_docker_manager.core import AppConfig
+from easy_docker_manager.app.running_container_refresh import (
+    RunningContainerListRefresher,
+)
+from easy_docker_manager.app.selected_tab_load import SelectedTabContentLoader
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import ContainerSortField
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import (
     ContainerLogFetchError,
-    ContainerRefreshError,
+    ContainerLogsUnavailableError,
     DockerContainerClient,
     DockerRequestFailedError,
     FailedDockerRequestType,
-    LogsUnavailableError,
+    RunningContainerListRefreshError,
 )
-from easy_docker_manager.tabs.tab_data_loader import TabDataLoader
+from easy_docker_manager.tabs.tab_data_loader import ContainerTabTextLoader
 
 
 @dataclass
-class RecordedRequest:
+class RecordedBackgroundSubmission:
     """Store one worker request so a test can finish it later."""
 
     fn: Callable[..., Any]
@@ -39,7 +51,7 @@ class RecordingBackgroundExecutor:
     """Record submitted work without starting worker threads."""
 
     def __init__(self) -> None:
-        self.requests: list[RecordedRequest] = []
+        self.requests: list[RecordedBackgroundSubmission] = []
 
     def submit(
         self,
@@ -49,7 +61,7 @@ class RecordingBackgroundExecutor:
     ) -> Future:
         future: Future = Future()
         self.requests.append(
-            RecordedRequest(
+            RecordedBackgroundSubmission(
                 fn=fn,
                 arguments=arguments,
                 completion_callback=on_complete,
@@ -58,7 +70,7 @@ class RecordingBackgroundExecutor:
         )
         return future
 
-    def finish_request(
+    def complete_submission(
         self,
         request_index: int = -1,
         result: Any = None,
@@ -76,6 +88,9 @@ class RecordingBackgroundExecutor:
 @dataclass
 class DockerManagerTestSetup:
     docker_manager: DockerManager
+    running_container_list_refresher: RunningContainerListRefresher
+    selected_tab_content_loader: SelectedTabContentLoader
+    container_log_updater: ContainerLogUpdater
     state: TerminalSessionState
     background_executor: RecordingBackgroundExecutor
     tab_data_loader: Mock
@@ -91,7 +106,7 @@ def docker_manager_factory():
         selected_state = state if state is not None else TerminalSessionState()
         selected_config = app_config if app_config is not None else AppConfig()
         background_executor = RecordingBackgroundExecutor()
-        tab_data_loader = Mock(spec=TabDataLoader)
+        tab_data_loader = Mock(spec=ContainerTabTextLoader)
         docker_container_client = Mock(spec=DockerContainerClient)
         docker_manager = DockerManager(
             selected_state,
@@ -102,6 +117,11 @@ def docker_manager_factory():
         )
         return DockerManagerTestSetup(
             docker_manager=docker_manager,
+            running_container_list_refresher=(
+                docker_manager.running_container_list_refresher
+            ),
+            selected_tab_content_loader=docker_manager.selected_tab_content_loader,
+            container_log_updater=docker_manager.container_log_updater,
             state=selected_state,
             background_executor=background_executor,
             tab_data_loader=tab_data_loader,
@@ -111,7 +131,7 @@ def docker_manager_factory():
     return create_docker_manager
 
 
-def test_due_container_refresh_is_submitted_once(
+def test_scheduled_container_refresh_is_submitted_once(
     monkeypatch,
     docker_manager_factory,
 ) -> None:
@@ -125,7 +145,7 @@ def test_due_container_refresh_is_submitted_once(
     request = test_setup.background_executor.requests[0]
     assert request.fn == test_setup.docker_container_client.list_running_containers
     assert request.arguments == ()
-    assert test_setup.docker_manager._next_container_refresh_at == 12.0
+    assert test_setup.running_container_list_refresher._next_refresh_at == 12.0
 
 
 def test_visible_non_log_tab_is_reloaded_on_its_interval(
@@ -141,18 +161,19 @@ def test_visible_non_log_tab_is_reloaded_on_its_interval(
         state,
         AppConfig(tab_refresh_interval=3.0),
     )
-    test_setup.docker_manager._next_container_refresh_at = 100.0
+    test_setup.running_container_list_refresher._next_refresh_at = 100.0
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
+    monkeypatch.setattr(selected_tab_load_module.time, "monotonic", lambda: 10.0)
 
     test_setup.docker_manager.refresh_docker_data_if_needed()
 
     request = test_setup.background_executor.requests[0]
     assert request.fn == test_setup.tab_data_loader.load_tab_text
     assert request.arguments == ("container-1", TabName.ENV)
-    assert test_setup.docker_manager._next_visible_tab_refresh_at == 13.0
+    assert test_setup.selected_tab_content_loader._next_tab_refresh_at == 13.0
 
 
-def test_loaded_readable_logs_are_polled_when_due(
+def test_loaded_readable_logs_are_polled_after_the_interval(
     monkeypatch,
     docker_manager_factory,
     session_state_factory,
@@ -162,16 +183,16 @@ def test_loaded_readable_logs_are_polled_when_due(
     assert selected_tab_key is not None
     state.tab_content_cache[selected_tab_key] = "initial"
     test_setup = docker_manager_factory(state)
-    test_setup.docker_manager._next_container_refresh_at = 100.0
+    test_setup.running_container_list_refresher._next_refresh_at = 100.0
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(docker_manager_module.time, "time", lambda: 50.0)
+    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 50.0)
 
     test_setup.docker_manager.refresh_docker_data_if_needed()
 
     request = test_setup.background_executor.requests[0]
-    assert request.fn == test_setup.docker_manager._fetch_log_poll_content
+    assert request.fn == test_setup.container_log_updater._fetch_log_poll_content
     assert request.arguments == ("container-1", 100, None)
-    assert test_setup.docker_manager._next_log_poll_at == 11.0
+    assert test_setup.container_log_updater._next_log_poll_at == 11.0
 
 
 def test_unreadable_logs_are_not_polled(
@@ -182,7 +203,7 @@ def test_unreadable_logs_are_not_polled(
     state = session_state_factory()
     state.unreadable_log_container_ids.add("container-1")
     test_setup = docker_manager_factory(state)
-    test_setup.docker_manager._next_container_refresh_at = 100.0
+    test_setup.running_container_list_refresher._next_refresh_at = 100.0
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
 
     test_setup.docker_manager.refresh_docker_data_if_needed()
@@ -196,24 +217,26 @@ def test_next_request_check_uses_nearest_deadline_and_idle_delay(
     session_state_factory,
 ) -> None:
     state = session_state_factory(tab=TabName.TOP)
-    docker_manager = docker_manager_factory(state).docker_manager
-    docker_manager._next_container_refresh_at = 100.0
-    docker_manager._next_visible_tab_refresh_at = 8.5
+    test_setup = docker_manager_factory(state)
+    docker_manager = test_setup.docker_manager
+    test_setup.running_container_list_refresher._next_refresh_at = 100.0
+    test_setup.selected_tab_content_loader._next_tab_refresh_at = 8.5
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 5.0)
 
     assert docker_manager.get_next_docker_data_refresh_delay() == 3.5
 
-    docker_manager._tab_load_future = Future()
-    docker_manager._container_refresh_future = Future()
+    test_setup.selected_tab_content_loader._tab_load_future = Future()
+    test_setup.running_container_list_refresher._refresh_future = Future()
     assert docker_manager.get_next_docker_data_refresh_delay() == 1.0
 
 
-def test_overdue_request_check_uses_small_positive_delay(
+def test_late_request_check_uses_small_positive_delay(
     monkeypatch,
     docker_manager_factory,
 ) -> None:
-    docker_manager = docker_manager_factory().docker_manager
-    docker_manager._next_container_refresh_at = 4.0
+    test_setup = docker_manager_factory()
+    docker_manager = test_setup.docker_manager
+    test_setup.running_container_list_refresher._next_refresh_at = 4.0
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 5.0)
     assert docker_manager.get_next_docker_data_refresh_delay() == 0.05
 
@@ -223,8 +246,8 @@ def test_container_refresh_honors_deadline_and_force(
     docker_manager_factory,
 ) -> None:
     test_setup = docker_manager_factory()
-    test_setup.docker_manager._next_container_refresh_at = 20.0
-    monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
+    test_setup.running_container_list_refresher._next_refresh_at = 20.0
+    monkeypatch.setattr(container_refresh_module.time, "monotonic", lambda: 10.0)
 
     assert not test_setup.docker_manager.start_running_container_list_refresh()
     assert test_setup.docker_manager.start_running_container_list_refresh(force=True)
@@ -245,7 +268,7 @@ def test_refresh_selects_first_container_and_loads_its_active_tab(
     ]
     test_setup.docker_manager.start_running_container_list_refresh(force=True)
 
-    assert test_setup.background_executor.finish_request(result=containers)
+    assert test_setup.background_executor.complete_submission(result=containers)
     assert test_setup.state.selected_container_id == "one"
     assert test_setup.state.status_message == "Loading Logs..."
     assert len(test_setup.background_executor.requests) == 2
@@ -275,7 +298,7 @@ def test_refresh_preserves_selection_and_reapplies_active_sort(
     ]
     test_setup.docker_manager.start_running_container_list_refresh(force=True)
 
-    assert test_setup.background_executor.finish_request(result=refreshed)
+    assert test_setup.background_executor.complete_submission(result=refreshed)
     assert [item.container_id for item in state.running_containers] == [
         "three",
         "two",
@@ -283,34 +306,36 @@ def test_refresh_preserves_selection_and_reapplies_active_sort(
     assert state.selected_container_id == "two"
 
 
-def test_unchanged_refresh_recovers_from_error_status(
+def test_unchanged_refresh_clears_explicit_error_state(
     docker_manager_factory,
     session_state_factory,
 ) -> None:
     state = session_state_factory()
-    state.status_message = "Container refresh failed: offline"
+    state.container_list_refresh_error_message = "Container refresh failed: offline"
+    state.status_message = "A different status message"
     test_setup = docker_manager_factory(state)
     test_setup.docker_manager.start_running_container_list_refresh(force=True)
 
-    assert test_setup.background_executor.finish_request(
+    assert test_setup.background_executor.complete_submission(
         result=list(state.running_containers)
     )
     assert state.status_message == "1 running containers"
+    assert state.container_list_refresh_error_message is None
 
 
 def test_repeated_empty_refresh_does_not_redraw_twice(docker_manager_factory) -> None:
     test_setup = docker_manager_factory()
     test_setup.docker_manager.start_running_container_list_refresh(force=True)
-    assert test_setup.background_executor.finish_request(result=[])
+    assert test_setup.background_executor.complete_submission(result=[])
     assert test_setup.state.status_message == "No running containers."
 
     test_setup.docker_manager.start_running_container_list_refresh(force=True)
-    assert not test_setup.background_executor.finish_request(result=[])
+    assert not test_setup.background_executor.complete_submission(result=[])
 
 
 @pytest.mark.parametrize(
     "error",
-    [ContainerRefreshError("offline"), RuntimeError("unexpected")],
+    [RunningContainerListRefreshError("offline"), RuntimeError("unexpected")],
 )
 def test_refresh_failure_keeps_existing_containers_and_shows_error(
     error: Exception,
@@ -321,17 +346,21 @@ def test_refresh_failure_keeps_existing_containers_and_shows_error(
     test_setup = docker_manager_factory(state)
     test_setup.docker_manager.start_running_container_list_refresh(force=True)
 
-    assert test_setup.background_executor.finish_request(exception=error)
+    assert test_setup.background_executor.complete_submission(exception=error)
     assert state.running_containers
     assert state.status_message == f"Container refresh failed: {error}"
+    assert (
+        state.container_list_refresh_error_message
+        == f"Container refresh failed: {error}"
+    )
 
 
 def test_replaced_refresh_completion_is_ignored(
     docker_manager_factory,
     completed_future_factory,
 ) -> None:
-    docker_manager = docker_manager_factory().docker_manager
-    assert not docker_manager._apply_running_container_list_refresh_result(
+    container_list_refresher = docker_manager_factory().running_container_list_refresher
+    assert not container_list_refresher._apply_running_container_list_refresh_result(
         completed_future_factory([])
     )
 
@@ -360,17 +389,41 @@ def test_tab_load_clears_old_error_and_records_initial_log_time(
     state = session_state_factory()
     selected_tab_key = state.selected_container_tab_key
     assert selected_tab_key is not None
-    state.tab_load_errors[selected_tab_key] = "old"
+    state.tab_content_error_messages[selected_tab_key] = "old"
     test_setup = docker_manager_factory(state)
-    monkeypatch.setattr(docker_manager_module.time, "time", lambda: 123.9)
+    monkeypatch.setattr(selected_tab_load_module.time, "time", lambda: 123.9)
 
     assert test_setup.docker_manager.load_selected_tab_content_if_needed()
-    assert selected_tab_key not in state.tab_load_errors
+    assert selected_tab_key not in state.tab_content_error_messages
     assert state.status_message == "Loading Logs..."
 
-    assert test_setup.background_executor.finish_request(result="first logs")
+    assert test_setup.background_executor.complete_submission(result="first logs")
     assert state.tab_content_cache[selected_tab_key] == "first logs"
-    assert test_setup.docker_manager._log_cursor_by_container_id == {"container-1": 123}
+    assert test_setup.container_log_updater._log_cursor_by_container_id == {
+        "container-1": 123
+    }
+
+
+def test_initial_logs_are_cached_without_applying_worker_limits_again(
+    docker_manager_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    selected_tab_key = state.selected_container_tab_key
+    assert selected_tab_key is not None
+    test_setup = docker_manager_factory(state)
+    limit_log_content = Mock()
+    test_setup.container_log_updater.apply_configured_limits_to_log_content = (
+        limit_log_content
+    )
+
+    test_setup.docker_manager.load_selected_tab_content_if_needed()
+    assert test_setup.background_executor.complete_submission(
+        result="limited by worker"
+    )
+
+    assert state.tab_content_cache[selected_tab_key] == "limited by worker"
+    limit_log_content.assert_not_called()
 
 
 def test_running_old_tab_load_finishes_before_loading_new_selection(
@@ -457,7 +510,7 @@ def test_hidden_tab_result_is_cached_before_current_tab_load_starts(
     assert requested_tab_key is not None
     state.active_detail_tab_name = TabName.ENV
 
-    assert test_setup.background_executor.finish_request(result="config")
+    assert test_setup.background_executor.complete_submission(result="config")
     assert state.tab_content_cache[requested_tab_key] == "config"
     assert test_setup.background_executor.requests[1].arguments == (
         "container-1",
@@ -475,15 +528,16 @@ def test_unreadable_initial_logs_are_cached_and_stop_polling(
     test_setup = docker_manager_factory(state)
     test_setup.docker_manager.load_selected_tab_content_if_needed()
 
-    assert test_setup.background_executor.finish_request(
-        exception=LogsUnavailableError("none")
+    assert test_setup.background_executor.complete_submission(
+        exception=ContainerLogsUnavailableError("none")
     )
     assert "container-1" in state.unreadable_log_container_ids
-    assert "driver 'none'" in state.tab_content_cache[selected_tab_key]
+    assert selected_tab_key not in state.tab_content_cache
+    assert "driver 'none'" in state.tab_content_error_messages[selected_tab_key]
     assert state.status_message == "Logs unavailable for selected container."
 
 
-def test_temporary_initial_log_error_keeps_cached_text(
+def test_temporary_initial_log_error_removes_cached_text(
     docker_manager_factory,
     session_state_factory,
 ) -> None:
@@ -494,11 +548,13 @@ def test_temporary_initial_log_error_keeps_cached_text(
     test_setup = docker_manager_factory(state)
     test_setup.docker_manager.load_selected_tab_content_if_needed(force=True)
 
-    assert test_setup.background_executor.finish_request(
+    assert test_setup.background_executor.complete_submission(
         exception=ContainerLogFetchError("container-1", "timeout")
     )
-    assert state.tab_content_cache[selected_tab_key] == "old logs"
-    assert state.tab_load_errors[selected_tab_key].startswith("Log fetch failed:")
+    assert selected_tab_key not in state.tab_content_cache
+    assert state.tab_content_error_messages[selected_tab_key].startswith(
+        "Log fetch failed:"
+    )
 
 
 @pytest.mark.parametrize(
@@ -512,7 +568,7 @@ def test_temporary_initial_log_error_keeps_cached_text(
         RuntimeError("unexpected"),
     ],
 )
-def test_non_log_tab_errors_are_saved_without_replacing_content(
+def test_non_log_tab_refresh_errors_keep_cached_content(
     error: Exception,
     docker_manager_factory,
     session_state_factory,
@@ -520,12 +576,15 @@ def test_non_log_tab_errors_are_saved_without_replacing_content(
     state = session_state_factory(tab=TabName.ENV)
     selected_tab_key = state.selected_container_tab_key
     assert selected_tab_key is not None
+    state.tab_content_cache[selected_tab_key] = "VALUE=previous"
     test_setup = docker_manager_factory(state)
-    test_setup.docker_manager.load_selected_tab_content_if_needed()
+    test_setup.docker_manager.load_selected_tab_content_if_needed(force=True)
 
-    assert test_setup.background_executor.finish_request(exception=error)
-    assert selected_tab_key not in state.tab_content_cache
-    assert state.tab_load_errors[selected_tab_key].startswith("Error loading Env:")
+    assert test_setup.background_executor.complete_submission(exception=error)
+    assert state.tab_content_cache[selected_tab_key] == "VALUE=previous"
+    assert state.tab_content_error_messages[selected_tab_key].startswith(
+        "Error loading Env:"
+    )
 
 
 def test_log_poll_uses_saved_time_and_merges_new_lines(
@@ -537,19 +596,22 @@ def test_log_poll_uses_saved_time_and_merges_new_lines(
     selected_tab_key = state.selected_container_tab_key
     assert selected_tab_key is not None
     state.tab_content_cache[selected_tab_key] = "A\nB"
-    test_setup = docker_manager_factory(state, AppConfig(log_tail=25))
-    test_setup.docker_manager._next_container_refresh_at = 100.0
-    test_setup.docker_manager._log_cursor_by_container_id["container-1"] = 150
+    test_setup = docker_manager_factory(state, AppConfig(initial_log_tail_lines=25))
+    test_setup.running_container_list_refresher._next_refresh_at = 100.0
+    test_setup.container_log_updater._log_cursor_by_container_id["container-1"] = 150
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(docker_manager_module.time, "time", lambda: 200.0)
+    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
 
     test_setup.docker_manager.refresh_docker_data_if_needed()
     request = test_setup.background_executor.requests[0]
     assert request.arguments == ("container-1", "all", 150)
-    assert test_setup.background_executor.finish_request(result="B\nC")
+    assert test_setup.background_executor.complete_submission(result="B\nC")
 
     assert state.tab_content_cache[selected_tab_key] == "A\nB\nC"
-    assert test_setup.docker_manager._log_cursor_by_container_id["container-1"] == 200
+    assert (
+        test_setup.container_log_updater._log_cursor_by_container_id["container-1"]
+        == 200
+    )
 
 
 def test_first_log_poll_can_clear_stale_cached_text(
@@ -562,13 +624,13 @@ def test_first_log_poll_can_clear_stale_cached_text(
     assert selected_tab_key is not None
     state.tab_content_cache[selected_tab_key] = "stale"
     test_setup = docker_manager_factory(state)
-    test_setup.docker_manager._next_container_refresh_at = 100.0
+    test_setup.running_container_list_refresher._next_refresh_at = 100.0
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(docker_manager_module.time, "time", lambda: 200.0)
+    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
 
     test_setup.docker_manager.refresh_docker_data_if_needed()
 
-    assert test_setup.background_executor.finish_request(result="")
+    assert test_setup.background_executor.complete_submission(result="")
     assert state.tab_content_cache[selected_tab_key] == ""
 
 
@@ -582,16 +644,45 @@ def test_empty_incremental_log_poll_keeps_cached_text_and_advances_time(
     assert selected_tab_key is not None
     state.tab_content_cache[selected_tab_key] = "existing"
     test_setup = docker_manager_factory(state)
-    test_setup.docker_manager._next_container_refresh_at = 100.0
-    test_setup.docker_manager._log_cursor_by_container_id["container-1"] = 150
+    test_setup.running_container_list_refresher._next_refresh_at = 100.0
+    test_setup.container_log_updater._log_cursor_by_container_id["container-1"] = 150
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(docker_manager_module.time, "time", lambda: 200.0)
+    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
 
     test_setup.docker_manager.refresh_docker_data_if_needed()
 
-    assert not test_setup.background_executor.finish_request(result="")
+    assert not test_setup.background_executor.complete_submission(result="")
     assert state.tab_content_cache[selected_tab_key] == "existing"
-    assert test_setup.docker_manager._log_cursor_by_container_id["container-1"] == 200
+    assert (
+        test_setup.container_log_updater._log_cursor_by_container_id["container-1"]
+        == 200
+    )
+
+
+def test_merged_incremental_logs_are_limited_before_caching(
+    monkeypatch,
+    docker_manager_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    selected_tab_key = state.selected_container_tab_key
+    assert selected_tab_key is not None
+    state.tab_content_cache[selected_tab_key] = "oldest\nexisting"
+    test_setup = docker_manager_factory(
+        state,
+        AppConfig(max_log_lines=2, max_log_line_chars=32),
+    )
+    test_setup.running_container_list_refresher._next_refresh_at = 100.0
+    test_setup.container_log_updater._log_cursor_by_container_id["container-1"] = 150
+    monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
+    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
+
+    test_setup.docker_manager.refresh_docker_data_if_needed()
+
+    assert test_setup.background_executor.complete_submission(
+        result="incoming-1\nincoming-2"
+    )
+    assert state.tab_content_cache[selected_tab_key] == "incoming-1\nincoming-2"
 
 
 @pytest.mark.parametrize(
@@ -617,15 +708,20 @@ def test_failed_log_poll_keeps_previous_time(
     assert selected_tab_key is not None
     state.tab_content_cache[selected_tab_key] = "existing"
     test_setup = docker_manager_factory(state)
-    test_setup.docker_manager._next_container_refresh_at = 100.0
-    test_setup.docker_manager._log_cursor_by_container_id["container-1"] = 150
+    test_setup.running_container_list_refresher._next_refresh_at = 100.0
+    test_setup.container_log_updater._log_cursor_by_container_id["container-1"] = 150
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(docker_manager_module.time, "time", lambda: 200.0)
+    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
     test_setup.docker_manager.refresh_docker_data_if_needed()
 
-    assert test_setup.background_executor.finish_request(exception=error)
-    assert state.status_message.startswith("Log fetch failed:")
-    assert test_setup.docker_manager._log_cursor_by_container_id["container-1"] == 150
+    assert test_setup.background_executor.complete_submission(exception=error)
+    assert selected_tab_key not in state.tab_content_cache
+    assert selected_tab_key in state.tab_content_error_messages
+    assert state.tab_content_error_messages[selected_tab_key] == state.status_message
+    assert (
+        test_setup.container_log_updater._log_cursor_by_container_id["container-1"]
+        == 150
+    )
 
 
 def test_unreadable_log_poll_stops_future_requests(
@@ -638,14 +734,16 @@ def test_unreadable_log_poll_stops_future_requests(
     assert selected_tab_key is not None
     state.tab_content_cache[selected_tab_key] = "existing"
     test_setup = docker_manager_factory(state)
-    test_setup.docker_manager._next_container_refresh_at = 100.0
+    test_setup.running_container_list_refresher._next_refresh_at = 100.0
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
     test_setup.docker_manager.refresh_docker_data_if_needed()
 
-    assert test_setup.background_executor.finish_request(
-        exception=LogsUnavailableError("none")
+    assert test_setup.background_executor.complete_submission(
+        exception=ContainerLogsUnavailableError("none")
     )
     assert "container-1" in state.unreadable_log_container_ids
+    assert selected_tab_key not in state.tab_content_cache
+    assert selected_tab_key in state.tab_content_error_messages
 
 
 def test_successful_log_poll_clears_previous_failure_status(
@@ -656,16 +754,18 @@ def test_successful_log_poll_clears_previous_failure_status(
     state = session_state_factory()
     selected_tab_key = state.selected_container_tab_key
     assert selected_tab_key is not None
-    state.tab_content_cache[selected_tab_key] = "existing"
-    state.status_message = "Log fetch failed: timeout"
+    state.tab_content_error_messages[selected_tab_key] = "Log fetch failed: timeout"
+    state.status_message = "A different status message"
     test_setup = docker_manager_factory(state)
-    test_setup.docker_manager._next_container_refresh_at = 100.0
-    test_setup.docker_manager._log_cursor_by_container_id["container-1"] = 150
+    test_setup.running_container_list_refresher._next_refresh_at = 100.0
+    test_setup.container_log_updater._log_cursor_by_container_id["container-1"] = 150
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
     test_setup.docker_manager.refresh_docker_data_if_needed()
 
-    assert test_setup.background_executor.finish_request(result="")
+    assert test_setup.background_executor.complete_submission(result="")
     assert state.status_message == "Loaded Logs"
+    assert selected_tab_key not in state.tab_content_error_messages
+    assert state.tab_content_cache[selected_tab_key] == ""
 
 
 def test_hidden_container_log_update_changes_cache_without_redraw(
@@ -674,11 +774,11 @@ def test_hidden_container_log_update_changes_cache_without_redraw(
     completed_future_factory,
 ) -> None:
     state = session_state_factory("visible")
-    docker_manager = docker_manager_factory(state).docker_manager
+    container_log_updater = docker_manager_factory(state).container_log_updater
     completed_request = completed_future_factory("line")
-    docker_manager._log_poll_future = completed_request
+    container_log_updater._log_poll_future = completed_request
 
-    assert not docker_manager._apply_log_poll_result(
+    assert not container_log_updater._apply_log_poll_result(
         "hidden",
         True,
         200,
@@ -713,19 +813,19 @@ def test_container_sort_keeps_selection_and_can_restore_docker_order(
 def test_log_poll_reset_cancels_queued_work_and_removes_stopped_tracking(
     docker_manager_factory,
 ) -> None:
-    docker_manager = docker_manager_factory().docker_manager
+    container_log_updater = docker_manager_factory().container_log_updater
     queued_log_request = Future()
-    docker_manager._log_poll_future = queued_log_request
-    docker_manager._next_log_poll_at = 20.0
-    docker_manager._log_cursor_by_container_id = {"live": 10, "old": 20}
+    container_log_updater._log_poll_future = queued_log_request
+    container_log_updater._next_log_poll_at = 20.0
+    container_log_updater._log_cursor_by_container_id = {"live": 10, "old": 20}
 
-    docker_manager._reset_log_polling_after_selection_change()
-    docker_manager._remove_log_cursors_for_stopped_containers({"live"})
+    container_log_updater.reset_after_selection_change()
+    container_log_updater.remove_log_cursors_for_stopped_containers({"live"})
 
     assert queued_log_request.cancelled()
-    assert docker_manager._log_poll_future is None
-    assert docker_manager._next_log_poll_at == 0.0
-    assert docker_manager._log_cursor_by_container_id == {"live": 10}
+    assert container_log_updater._log_poll_future is None
+    assert container_log_updater._next_log_poll_at == 0.0
+    assert container_log_updater._log_cursor_by_container_id == {"live": 10}
 
 
 def test_worker_log_load_applies_line_and_character_limits(
@@ -741,7 +841,7 @@ def test_worker_log_load_applies_line_and_character_limits(
         f"old\n{'x' * 100}\nnew"
     )
 
-    trimmed_logs = test_setup.docker_manager._fetch_log_poll_content(
+    trimmed_logs = test_setup.container_log_updater._fetch_log_poll_content(
         "container-1",
         "all",
         10,
@@ -757,7 +857,7 @@ def test_worker_log_load_applies_line_and_character_limits(
 
 
 def test_combining_log_content_handles_empty_and_duplicate_batches() -> None:
-    combine_log_content = DockerManager._combine_existing_and_new_log_content
+    combine_log_content = ContainerLogUpdater._combine_existing_and_new_log_content
     assert combine_log_content("", "A") == "A"
     assert combine_log_content("A", "") == "A"
     assert combine_log_content("A\nB", "A\nB") == "A\nB"

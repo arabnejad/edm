@@ -1,4 +1,4 @@
-"""Configure EDM application logging."""
+"""Configure EDM's rotating application log."""
 
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ def configure_logging() -> logging.Logger:
     """Configure EDM's rotating log file and optional terminal output.
 
     main() calls this before loading config or starting the UI. Environment
-    variables can change the level, file path, and stdout output. If the log file
-    cannot be created, warnings fall back to stderr so startup can continue.
+    variables can change the level, file path, and stdout output. If EDM cannot
+    create the log file, warnings go to stderr and startup continues.
     """
     level_name = os.getenv("EDM_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper()
     level = getattr(logging, level_name, logging.INFO)

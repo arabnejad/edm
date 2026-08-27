@@ -13,7 +13,7 @@ from docker.models.containers import Container
 
 from easy_docker_manager.docker.client_factory import create_docker_client
 from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
-from tests.integration_tests.docker_test_setup import DockerTestSetup
+from tests.integration_tests.docker_test_setup import DockerIntegrationTestContainer
 
 CONTAINER_IMAGE = os.getenv("EDM_INTEGRATION_TEST_IMAGE", "alpine:3.20")
 CONTAINER_LOG_MESSAGE = "edm-integration-log-ready"
@@ -43,7 +43,7 @@ def docker_client() -> Iterator[docker.DockerClient]:
 @pytest.fixture(scope="session")
 def docker_test_setup(
     docker_client: docker.DockerClient,
-) -> Iterator[DockerTestSetup]:
+) -> Iterator[DockerIntegrationTestContainer]:
     """Start one container shared by the Docker integration tests, then remove it."""
     container_name = f"edm-integration-{uuid.uuid4().hex[:12]}"
     docker_client.images.pull(CONTAINER_IMAGE)
@@ -62,7 +62,7 @@ def docker_test_setup(
 
     try:
         _wait_for_container(container)
-        yield DockerTestSetup(
+        yield DockerIntegrationTestContainer(
             container=container,
             log_message=CONTAINER_LOG_MESSAGE,
             environment=CONTAINER_ENVIRONMENT,
@@ -75,9 +75,9 @@ def docker_test_setup(
 
 @pytest.fixture
 def local_docker_container_client() -> Iterator[LocalDockerContainerClient]:
-    """Create the production container client with its own Docker connection."""
+    """Create the real container client with a separate Docker connection."""
     docker_container_client = LocalDockerContainerClient(
-        create_client=lambda: create_docker_client(request_timeout=10.0)
+        create_docker_client=lambda: create_docker_client(request_timeout=10.0)
     )
     try:
         yield docker_container_client

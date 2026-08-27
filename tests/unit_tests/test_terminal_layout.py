@@ -2,20 +2,20 @@ from __future__ import annotations
 
 import urwid
 
-from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     ContainerSortMenuState,
-)
-from easy_docker_manager.core.tab_export import (
-    TabExportMenuField,
-    TabExportMenuState,
-    TabExportPhase,
 )
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
     TerminalSessionState,
+)
+from easy_docker_manager.tab_export.definitions import (
+    TabExportMenuField,
+    TabExportMenuState,
+    TabExportPhase,
 )
 from easy_docker_manager.ui.container_details_panel import FocusableDetailLine
 from easy_docker_manager.ui.tab_export_menu import _format_export_path
@@ -114,7 +114,7 @@ def test_render_shows_export_form_and_sensitive_data_warning() -> None:
             container_tab_key=ContainerTabKey("container-1", TabName.ENV),
             container_name="web",
             file_path="/tmp/web-env.txt",
-            path_cursor_index=len("/tmp/web-env.txt"),
+            file_path_cursor_index=len("/tmp/web-env.txt"),
             selected_field=TabExportMenuField.SCOPE,
         )
     )
@@ -137,7 +137,7 @@ def test_render_shows_export_overwrite_confirmation_and_progress() -> None:
         container_tab_key=ContainerTabKey("container-1", TabName.LOGS),
         container_name="web",
         file_path="/tmp/web-logs.log",
-        path_cursor_index=len("/tmp/web-logs.log"),
+        file_path_cursor_index=len("/tmp/web-logs.log"),
         phase=TabExportPhase.CONFIRMING_OVERWRITE,
     )
     state = TerminalSessionState(tab_export_menu_state=menu_state)
@@ -160,7 +160,7 @@ def test_export_path_cursor_and_validation_error_are_rendered() -> None:
         container_tab_key=ContainerTabKey("container-1", TabName.CONFIG),
         container_name="web",
         file_path="output.txt",
-        path_cursor_index=3,
+        file_path_cursor_index=3,
         error_message="Directory does not exist",
     )
     state = TerminalSessionState(tab_export_menu_state=menu_state)

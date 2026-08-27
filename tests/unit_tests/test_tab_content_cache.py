@@ -93,6 +93,21 @@ def test_cache_get_returns_default_without_adding_an_entry() -> None:
     assert len(cache) == 0
 
 
+def test_cache_removes_one_entry_and_updates_its_byte_count() -> None:
+    cache = TabContentCache(max_entries=2, max_total_bytes=100)
+    removed_key = container_tab_key("removed")
+    retained_key = container_tab_key("retained")
+    cache[removed_key] = "one"
+    cache[retained_key] = "two"
+
+    cache.remove_cached_tab_content(removed_key)
+    cache.remove_cached_tab_content(container_tab_key("missing"))
+
+    assert removed_key not in cache
+    assert retained_key in cache
+    assert cache.total_size_bytes == 3
+
+
 def test_cache_prunes_stopped_containers_and_can_be_cleared() -> None:
     cache = TabContentCache(max_entries=2, max_total_bytes=100)
     cache[container_tab_key("live")] = "one"

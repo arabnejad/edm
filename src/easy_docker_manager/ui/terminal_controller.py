@@ -1,4 +1,4 @@
-"""Apply terminal navigation rules and prepare state for rendering."""
+"""Update terminal selections and prepare the next screen redraw."""
 
 from __future__ import annotations
 
@@ -11,31 +11,34 @@ from easy_docker_manager.core.container_sorting import (
 )
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
 
 
 class TerminalController:
-    """Handle navigation, menu choices, search, and screen rendering.
+    """Handle navigation, sorting, search results, and screen redraws.
 
     KeyboardController handles individual keys. This class moves container and
-    detail selections, switches tabs, prepares visible text, and sends the
-    current state to TerminalLayoutView. DockerManager owns Docker
-    requests and updates the state when their results are ready.
+    detail selections, switches tabs, prepares visible text, and sends session
+    state to TerminalLayoutView. It asks DockerManager to load data after a
+    selection or tab change.
     """
 
-    DETAIL_TABS = tuple(TabName)
-    CONTAINER_SORT_FIELDS = tuple(ContainerSortField)
+    DETAIL_TAB_ORDER = tuple(TabName)
+    CONTAINER_SORT_FIELD_ORDER = tuple(ContainerSortField)
 
     def __init__(
         self,
         state: TerminalSessionState,
         terminal_layout_view: TerminalLayoutView,
+        tab_text_filter: TabTextFilter,
         detail_tab_text_formatter: DetailTabTextFormatter,
         docker_manager: DockerManager,
     ) -> None:
         self.state = state
         self.terminal_layout_view = terminal_layout_view
+        self.tab_text_filter = tab_text_filter
         self.detail_tab_text_formatter = detail_tab_text_formatter
         self.docker_manager = docker_manager
 
@@ -69,7 +72,14 @@ class TerminalController:
             if container_tab_key is not None
             else ""
         )
-        is_error = container_tab_key in self.state.tab_load_errors or (
+        has_cached_content = (
+            container_tab_key is not None
+            and container_tab_key in self.state.tab_content_cache
+        )
+        is_error = (
+            container_tab_key in self.state.tab_content_error_messages
+            and not has_cached_content
+        ) or (
             self.state.active_detail_tab_name == TabName.LOGS
             and self.state.selected_container_id
             in self.state.unreadable_log_container_ids
@@ -90,9 +100,9 @@ class TerminalController:
         container_tab_key = self.state.selected_container_tab_key
         if container_tab_key is None:
             return ["Select a running container."]
-        load_error = self.state.tab_load_errors.get(container_tab_key)
-        if load_error:
-            return [load_error]
+        content_error = self.state.tab_content_error_messages.get(container_tab_key)
+        if content_error and container_tab_key not in self.state.tab_content_cache:
+            return [content_error]
         if container_tab_key not in self.state.tab_content_cache:
             return ["Loading..."]
 
@@ -101,7 +111,7 @@ class TerminalController:
             return [self.get_empty_tab_message(self.state.active_detail_tab_name)]
 
         query = self.state.tab_search_queries.get(container_tab_key, "")
-        return self.detail_tab_text_formatter.prepare_visible_lines(
+        return self.tab_text_filter.get_visible_lines(
             content, self.state.active_detail_tab_name, query
         )
 
@@ -210,15 +220,17 @@ class TerminalController:
         if sort_menu_state is None:
             return False
         previous_field = sort_menu_state.selected_sort_field
-        previous_index = self.CONTAINER_SORT_FIELDS.index(previous_field)
+        previous_index = self.CONTAINER_SORT_FIELD_ORDER.index(previous_field)
         selected_index = max(
             0,
             min(
-                len(self.CONTAINER_SORT_FIELDS) - 1,
+                len(self.CONTAINER_SORT_FIELD_ORDER) - 1,
                 previous_index + selection_offset,
             ),
         )
-        sort_menu_state.selected_sort_field = self.CONTAINER_SORT_FIELDS[selected_index]
+        sort_menu_state.selected_sort_field = self.CONTAINER_SORT_FIELD_ORDER[
+            selected_index
+        ]
         return sort_menu_state.selected_sort_field != previous_field
 
     def set_container_sort_menu_direction(self, *, descending: bool) -> bool:
@@ -251,9 +263,11 @@ class TerminalController:
 
     def switch_active_detail_tab(self, tab_offset: int) -> bool:
         """Switch tabs, restore cached text, or schedule a missing tab load."""
-        active_tab_index = self.DETAIL_TABS.index(self.state.active_detail_tab_name)
-        self.state.active_detail_tab_name = self.DETAIL_TABS[
-            (active_tab_index + tab_offset) % len(self.DETAIL_TABS)
+        active_tab_index = self.DETAIL_TAB_ORDER.index(
+            self.state.active_detail_tab_name
+        )
+        self.state.active_detail_tab_name = self.DETAIL_TAB_ORDER[
+            (active_tab_index + tab_offset) % len(self.DETAIL_TAB_ORDER)
         ]
         self.docker_manager.prepare_active_detail_tab()
         return True

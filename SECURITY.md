@@ -2,8 +2,7 @@
 
 ## Supported Versions
 
-EDM is still in early development. Security fixes are made only in the latest
-released version.
+Security fixes are provided for the latest released version of EDM.
 
 | Version | Supported |
 | --- | --- |

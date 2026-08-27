@@ -1,9 +1,8 @@
-"""Build and connect the objects used by EDMApp.
+"""Create the objects needed to run one EDMApp.
 
-EDMApp uses this module during setup. The factory creates the shared session
-state, Docker access, background processing, controllers, tab exporter,
-formatter, and terminal view. EDMRuntime returns the objects that EDMApp uses
-directly.
+The factory creates the shared session state, Docker client, worker pool,
+controllers, and terminal views. It connects them once during startup and
+returns the objects used directly by EDMApp.
 """
 
 from __future__ import annotations
@@ -16,14 +15,15 @@ from typing import Optional
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.app.docker_manager import DockerManager
-from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.tab_content_cache import TabContentCache
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.client_factory import create_docker_client
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
-from easy_docker_manager.tabs.tab_content_exporter import TabContentExporter
-from easy_docker_manager.tabs.tab_data_loader import TabDataLoader
+from easy_docker_manager.tab_export.writer import TabExportWriter
+from easy_docker_manager.tabs.tab_data_loader import ContainerTabTextLoader
+from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.keyboard_controller import KeyboardController
 from easy_docker_manager.ui.tab_export_controller import TabExportController
@@ -33,7 +33,7 @@ from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
 
 @dataclass
 class EDMRuntime:
-    """Hold the objects EDMApp uses while the terminal interface is running."""
+    """Group the objects that EDMApp uses directly while it is running."""
 
     docker_container_client: DockerContainerClient
     background_executor: BackgroundExecutor
@@ -44,12 +44,11 @@ class EDMRuntime:
 
 
 class EDMRuntimeFactory:
-    """Create and connect the default objects used by EDMApp.
+    """Create and connect one complete set of EDM runtime objects.
 
-    The factory creates the Docker client, session state, Docker manager,
-    background executor, controllers, tab exporter, formatter, and terminal
-    view. It connects them and returns EDMApp's direct dependencies in
-    EDMRuntime. EDMApp can then focus on starting and stopping the terminal UI.
+    EDMApp uses this factory during startup. Keeping object creation here keeps
+    EDMApp focused on running the interface and also lets tests provide a
+    different config or Docker client.
     """
 
     def __init__(
@@ -64,7 +63,7 @@ class EDMRuntimeFactory:
             self.docker_container_client = LocalDockerContainerClient(
                 # This partial is equivalent to the lambda below:
                 # lambda: create_docker_client(self.app_config.docker_request_timeout)
-                create_client=partial(
+                create_docker_client=partial(
                     create_docker_client,
                     self.app_config.docker_request_timeout,
                 ),
@@ -78,15 +77,20 @@ class EDMRuntimeFactory:
         """Create and connect all objects used by one EDMApp instance."""
         state = TerminalSessionState(
             tab_content_cache=TabContentCache(
-                self.app_config.content_cache_size,
-                self.app_config.content_cache_max_bytes,
+                self.app_config.tab_content_cache_max_entries,
+                self.app_config.tab_content_cache_max_bytes,
             ),
         )
-        tab_data_loader = TabDataLoader(self.docker_container_client, self.app_config)
+        tab_data_loader = ContainerTabTextLoader(
+            self.docker_container_client, self.app_config
+        )
+        tab_text_filter = TabTextFilter()
         detail_tab_text_formatter = DetailTabTextFormatter()
         background_executor = BackgroundExecutor(
-            max_workers=self.app_config.max_workers,
-            notify_completion_ready=notify_background_task_ready,
+            max_background_worker_threads=(
+                self.app_config.max_background_worker_threads
+            ),
+            notify_ui_completion_ready=notify_background_task_ready,
         )
         terminal_layout_view = TerminalLayoutView(self.app_config)
         docker_manager = DockerManager(
@@ -99,14 +103,15 @@ class EDMRuntimeFactory:
         terminal_controller = TerminalController(
             state,
             terminal_layout_view,
+            tab_text_filter,
             detail_tab_text_formatter,
             docker_manager,
         )
         tab_export_controller = TabExportController(
             state,
-            detail_tab_text_formatter,
+            tab_text_filter,
             background_executor,
-            TabContentExporter(),
+            TabExportWriter(),
             self.launch_directory,
         )
         keyboard_controller = KeyboardController(

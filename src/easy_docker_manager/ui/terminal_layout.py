@@ -9,8 +9,8 @@ import urwid
 
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import ContainerSortMenuState
-from easy_docker_manager.core.tab_export import TabExportMenuState
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.tab_export.definitions import TabExportMenuState
 from easy_docker_manager.ui.container_details_panel import (
     SelectedContainerDetailsPanel,
 )
@@ -27,11 +27,11 @@ from easy_docker_manager.ui.tab_export_menu import build_tab_export_popup_menu
 class TerminalLayoutView:
     """Combine EDM's panels, footer, and active popup.
 
-    TerminalController calls render() with the current session state and the lines to
-    display. RunningContainerListPanel updates the left side,
+    TerminalController calls render() with the current session state and the
+    lines to display. RunningContainerListPanel updates the left side,
     SelectedContainerDetailsPanel updates the right side, and this object
-    chooses whether a sorting or export menu should appear above them. Docker
-    loading, file writing, and navigation stay outside this class.
+    chooses whether a sorting or export menu appears above them. This class
+    does not load Docker data, write files, or change navigation state.
     """
 
     def __init__(self, app_config: AppConfig) -> None:

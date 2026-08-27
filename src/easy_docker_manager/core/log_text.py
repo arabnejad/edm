@@ -25,8 +25,8 @@ def count_repeated_lines_between_batches(
     logs and again at the start of the incoming logs. The caller can then append
     incoming_lines[2:], which adds only "D".
 
-    The function checks every possible overlap in one pass instead of repeatedly
-    slicing and comparing the two lists.
+    Every possible overlap is checked in one pass, without repeatedly slicing
+    and comparing the two lists.
     """
     if not existing_lines or not incoming_lines:
         return 0
@@ -55,10 +55,10 @@ def apply_limits_to_log_content(
 ) -> str:
     """Apply line count and line length limits to log content.
 
-    Even a response containing only a few recent log lines can include a very
-    long JSON or stack-trace line. The tab loader and DockerManager call
-    this before caching logs, which keeps the newest lines visible without
-    making the terminal UI handle very large rows.
+    A small response can still contain a very long JSON or stack-trace line.
+    ContainerTabTextLoader limits the first Logs response in a worker thread.
+    ContainerLogUpdater limits later batches in a worker and limits the full
+    cached history again after merging.
 
     For example:
 
@@ -91,8 +91,7 @@ def apply_character_limit_to_log_line(line: str, *, max_line_chars: int) -> str:
             break
         omitted_chars = actual_omitted_chars
 
-    # Direct callers may supply a limit smaller than the explanatory marker.
-    # In that case, return a plain prefix so the requested limit is still kept.
+    # If the truncation message does not fit, return only the start of the line.
     if len(marker) >= max_line_chars:
         return line[:max_line_chars]
     return f"{line[:visible_chars]}{marker}"

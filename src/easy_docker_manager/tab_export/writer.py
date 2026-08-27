@@ -8,63 +8,63 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Optional
 
-from easy_docker_manager.core.tab_export import TabExportRequest
+from easy_docker_manager.tab_export.definitions import TabExportRequest
 
 
-class ExportTargetExistsError(Exception):
-    """Report that confirmation is needed before replacing an export file."""
+class ExportFileAlreadyExistsError(Exception):
+    """Stop an export until the user confirms that a file may be replaced."""
 
     def __init__(self, target_path: Path) -> None:
         self.target_path = target_path
         super().__init__(f"File already exists: {target_path}")
 
 
-class TabExportError(Exception):
-    """Report why tab text could not be written to the selected path."""
+class TabExportFileError(Exception):
+    """Report why the selected tab could not be written to a file."""
 
     def __init__(self, target_path: Path, reason: str) -> None:
         self.target_path = target_path
         super().__init__(reason)
 
 
-class TabContentExporter:
+class TabExportWriter:
     """Write tab text without replacing an existing file by accident.
 
-    TabExportController sends export_text() to BackgroundExecutor after the
-    user confirms an export. A confirmed replacement is written to a temporary
-    file first, so the existing file stays unchanged if the write fails.
+    TabExportController runs export_text() through BackgroundExecutor. A
+    confirmed replacement is written to a temporary file first, so a failed
+    write does not damage the existing file.
     """
 
     def export_text(self, request: TabExportRequest) -> Path:
         """Write one tab snapshot and return the path that was saved.
 
-        Existing files raise ExportTargetExistsError until the user confirms
-        replacement. Invalid paths and failed writes raise TabExportError so
-        the export menu can show a useful message.
+        Existing files raise ExportFileAlreadyExistsError until the user
+        confirms replacement. Invalid paths and failed writes raise
+        TabExportFileError so the export menu can show a useful message.
         """
         target_path = request.target_path
         parent_directory = target_path.parent
 
         if not parent_directory.exists():
-            raise TabExportError(
+            raise TabExportFileError(
                 target_path,
                 f"Directory does not exist: {parent_directory}",
             )
         if not parent_directory.is_dir():
-            raise TabExportError(
+            raise TabExportFileError(
                 target_path,
                 f"Export parent is not a directory: {parent_directory}",
             )
         if target_path.is_dir():
-            raise TabExportError(
+            raise TabExportFileError(
                 target_path,
                 f"Export path is a directory: {target_path}",
             )
 
-        if request.overwrite:
-            self._replace_file(target_path, request.content)
+        if request.allow_overwrite:
+            self._write_replacement_file(target_path, request.tab_text_snapshot)
         else:
-            self._create_new_file(target_path, request.content)
+            self._create_new_file(target_path, request.tab_text_snapshot)
         return target_path
 
     @staticmethod
@@ -76,17 +76,17 @@ class TabContentExporter:
                 file_was_created = True
                 export_file.write(content)
         except FileExistsError as exc:
-            raise ExportTargetExistsError(target_path) from exc
+            raise ExportFileAlreadyExistsError(target_path) from exc
         except OSError as exc:
-            # A write can fail after creating the file. Remove the incomplete
+            # The write may fail after the file is created. Remove that partial
             # file so it cannot be mistaken for a successful export.
             if file_was_created:
                 with suppress(OSError):
                     target_path.unlink(missing_ok=True)
-            raise TabExportError(target_path, str(exc)) from exc
+            raise TabExportFileError(target_path, str(exc)) from exc
 
     @staticmethod
-    def _replace_file(target_path: Path, content: str) -> None:
+    def _write_replacement_file(target_path: Path, content: str) -> None:
         """Replace a file only after all new content has been written."""
         temporary_path: Optional[Path] = None
         try:
@@ -107,7 +107,11 @@ class TabContentExporter:
             if temporary_path is not None:
                 with suppress(OSError):
                     temporary_path.unlink(missing_ok=True)
-            raise TabExportError(target_path, str(exc)) from exc
+            raise TabExportFileError(target_path, str(exc)) from exc
 
 
-__all__ = ["ExportTargetExistsError", "TabContentExporter", "TabExportError"]
+__all__ = [
+    "ExportFileAlreadyExistsError",
+    "TabExportFileError",
+    "TabExportWriter",
+]

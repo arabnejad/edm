@@ -1,11 +1,10 @@
-"""Send container requests to Docker running on this computer.
+"""Read container data from Docker running on this computer.
 
 LocalDockerContainerClient connects to the local Docker daemon through the
 Docker Python SDK. It lists running containers and loads their logs,
-environment variables, inspection data, and process lists. The connection is
-created when the first request is made and reused while EDM is running. EDMApp
-closes it during shutdown. Callers receive EDM error types instead of Docker
-SDK exceptions.
+environment variables, inspection data, and process lists. It opens the
+connection on the first request, reuses it while EDM runs, and closes it during
+shutdown. Callers receive EDM errors instead of raw Docker SDK exceptions.
 """
 
 from __future__ import annotations
@@ -17,13 +16,13 @@ from typing import Any, Optional, Union
 import docker
 from docker.errors import DockerException, NotFound
 
-from easy_docker_manager.core import ContainerProcessTable, ContainerSummary
+from easy_docker_manager.core.containers import ContainerProcessTable, ContainerSummary
 from easy_docker_manager.docker.container_client import (
+    ContainerLogsUnavailableError,
     ContainerNotFoundError,
-    ContainerRefreshError,
     DockerContainerClient,
     FailedDockerRequestType,
-    LogsUnavailableError,
+    RunningContainerListRefreshError,
 )
 from easy_docker_manager.docker.container_mapper import to_container_summary
 from easy_docker_manager.docker.error_mapping import raise_container_request_error
@@ -36,36 +35,36 @@ logger = logging.getLogger(__name__)
 
 
 class LocalDockerContainerClient(DockerContainerClient):
-    """Perform EDM's container requests through the local Docker daemon."""
+    """Implement EDM's container requests with the local Docker daemon."""
 
     def __init__(
         self,
-        create_client: Callable[[], docker.DockerClient],
+        create_docker_client: Callable[[], docker.DockerClient],
     ) -> None:
-        """Keep the client factory and wait to connect until data is requested."""
-        self._create_docker_client = create_client
-        self._docker_client_instance: Optional[docker.DockerClient] = None
+        """Save the client factory but do not connect until the first request."""
+        self._create_docker_client = create_docker_client
+        self._docker_client: Optional[docker.DockerClient] = None
 
     def _get_or_create_docker_client(self) -> docker.DockerClient:
-        """Create the Docker client on first use, then reuse it."""
-        if self._docker_client_instance is None:
+        """Open the Docker connection on first use and reuse it afterward."""
+        if self._docker_client is None:
             try:
-                self._docker_client_instance = self._create_docker_client()
+                self._docker_client = self._create_docker_client()
             except DockerException:
                 logger.exception("Failed to connect to local Docker")
                 raise
 
-        return self._docker_client_instance
+        return self._docker_client
 
     def list_running_containers(self) -> list[ContainerSummary]:
-        """Return local running containers or raise ContainerRefreshError."""
+        """Return local running containers or raise RunningContainerListRefreshError."""
         try:
             docker_containers = self._get_or_create_docker_client().containers.list(
                 filters={"status": "running"}
             )
         except Exception as exc:
             logger.warning("Error fetching running containers: %s", exc)
-            raise ContainerRefreshError(str(exc)) from exc
+            raise RunningContainerListRefreshError(str(exc)) from exc
 
         container_summaries = []
         for container in docker_containers:
@@ -88,14 +87,14 @@ class LocalDockerContainerClient(DockerContainerClient):
             logging_driver_name = get_container_logging_driver_name(container)
             # Docker's "none" logging driver discards standard output and error.
             if logging_driver_name == "none":
-                raise LogsUnavailableError(logging_driver_name)
+                raise ContainerLogsUnavailableError(logging_driver_name)
 
             log_options: dict[str, Any] = {"tail": tail_lines, "timestamps": True}
             if since_timestamp is not None:
                 log_options["since"] = since_timestamp
             logs = container.logs(**log_options)
-            return self._decode_log_chunk(logs)
-        except LogsUnavailableError:
+            return self._decode_container_log_response(logs)
+        except ContainerLogsUnavailableError:
             raise
         except NotFound as exc:
             raise ContainerNotFoundError(container_id) from exc
@@ -105,7 +104,7 @@ class LocalDockerContainerClient(DockerContainerClient):
                 logger.info(
                     "Logs unavailable for logging driver %s", logging_driver_name
                 )
-                raise LogsUnavailableError(logging_driver_name) from exc
+                raise ContainerLogsUnavailableError(logging_driver_name) from exc
             logger.warning(
                 "Error fetching logs for container %s: %s", container_id, exc
             )
@@ -181,29 +180,30 @@ class LocalDockerContainerClient(DockerContainerClient):
         return ContainerProcessTable(columns=columns, rows=rows)
 
     def close(self) -> None:
-        """Close the Docker SDK client if it has been created.
+        """Close the Docker SDK client if one was created.
 
-        EDMApp.run() calls this from its cleanup block after the terminal UI
-        stops and all background tasks finish. If no Docker request was made,
-        no client exists and this method does nothing. After closing the client,
-        it clears the saved reference so the closed client cannot be reused.
+        EDMApp.run() calls this after the terminal interface stops and all
+        workers finish. If EDM made no Docker request, there is no connection
+        to close. Clearing the saved reference prevents accidental reuse of a
+        closed client.
         """
-        if self._docker_client_instance:
-            self._docker_client_instance.close()
-            self._docker_client_instance = None
+        if self._docker_client:
+            self._docker_client.close()
+            self._docker_client = None
 
     @staticmethod
-    def _decode_log_chunk(chunk: Union[bytes, str]) -> str:
+    def _decode_container_log_response(
+        container_log_response: Union[bytes, str],
+    ) -> str:
         """Return a Docker log response as a Python string.
 
-        get_container_logs() calls this because the Docker SDK may return bytes
-        or a string. Byte responses are decoded as UTF-8. Any invalid bytes are
-        replaced instead of raising an error, so malformed log output does not
-        stop the Logs tab from loading.
+        The Docker SDK may return bytes or a string. Byte responses are decoded
+        as UTF-8, and invalid bytes are replaced so malformed log output does
+        not stop the Logs tab from loading.
         """
-        if isinstance(chunk, bytes):
-            return chunk.decode("utf-8", errors="replace")
-        return chunk
+        if isinstance(container_log_response, bytes):
+            return container_log_response.decode("utf-8", errors="replace")
+        return container_log_response
 
     def _load_image_inspection_data_for_container(
         self,

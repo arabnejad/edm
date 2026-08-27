@@ -23,7 +23,8 @@ from easy_docker_manager.app.background_notifier import (
 )
 from easy_docker_manager.config.app_config_store import default_config_path
 from easy_docker_manager.constants import APP_NAME
-from easy_docker_manager.core import AppConfig, ContainerProcessTable, ContainerSummary
+from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.containers import ContainerProcessTable, ContainerSummary
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.logging.app_logging import default_log_file_path
 
@@ -31,8 +32,8 @@ pytestmark = pytest.mark.smoke
 
 
 def _run_installed_command(command: list[str]) -> subprocess.CompletedProcess[str]:
-    """Run a command assembled by this test and return its captured output."""
-    # Every argument is fixed by the smoke test; no user input reaches the process.
+    """Run one fixed smoke-test command and capture its output."""
+    # The test builds every argument itself; no user input reaches the process.
     return subprocess.run(  # noqa: S603
         command,
         check=True,
@@ -42,7 +43,7 @@ def _run_installed_command(command: list[str]) -> subprocess.CompletedProcess[st
 
 
 class SmokeTestDockerContainerClient(DockerContainerClient):
-    """Provide predictable container data without requiring a Docker daemon."""
+    """Return sample container data without connecting to Docker."""
 
     def __init__(self) -> None:
         self.list_request_count = 0
@@ -125,18 +126,16 @@ class SmokeTestDockerContainerClient(DockerContainerClient):
         self.closed = True
 
 
-class SmokeTestMainLoop:
+class NonBlockingSmokeTestMainLoop:
     """Replace Urwid's interactive event loop during the startup smoke test.
 
-    A real urwid.MainLoop opens the terminal, waits for keyboard input, runs
-    scheduled timer callbacks, and redraws the screen. That behavior would
-    block an automated test. EDMApp still creates and uses this replacement in
-    the normal way, but run() returns immediately so the test can verify both
-    startup and shutdown.
+    A real urwid.MainLoop opens the terminal and waits for keyboard input, which
+    would block the test. EDMApp creates this replacement in the normal way,
+    but run() returns immediately so the test can check startup and shutdown.
 
-    The methods below provide only the parts of Urwid's interface that EDM uses:
-    timers on every operating system and a notification pipe on Linux and
-    macOS. They do not simulate user input or execute scheduled callbacks.
+    It implements only the Urwid methods EDM calls: timers on every operating
+    system and a notification pipe on Linux and macOS. It does not simulate
+    keyboard input or run timer callbacks.
     """
 
     def __init__(
@@ -154,21 +153,20 @@ class SmokeTestMainLoop:
         """Return immediately instead of opening and controlling a terminal."""
 
     def set_alarm_in(self, seconds: float, callback: Any) -> object:
-        """Return a handle for a timer without waiting or calling its callback.
+        """Create a fake timer without waiting or calling its callback.
 
-        Urwid calls these timers alarms. EDM uses them to decide when to check
-        for container updates and, on Windows, for completed background tasks.
-        A real MainLoop would call callback after seconds. This test only needs
-        an object that EDM can later pass to remove_alarm() during shutdown.
+        Urwid calls timers alarms. EDM uses them for Docker refresh checks and,
+        on Windows, worker notifications. A real MainLoop would call callback
+        after seconds. This test needs only a value that EDM can later pass to
+        remove_alarm().
         """
         return object()
 
     def remove_alarm(self, alarm_handle: object) -> bool:
         """Pretend that a previously scheduled timer was cancelled.
 
-        EDM calls this when it replaces a timer or shuts down. No real timer
-        exists in this test, so returning True is enough to match Urwid's
-        successful-cancellation result.
+        No real timer exists in this test. Returning True matches Urwid's result
+        for a timer that was removed successfully.
         """
         return True
 
@@ -177,8 +175,8 @@ class SmokeTestMainLoop:
 
         In production, Urwid watches the read end and calls callback when a
         background worker writes to the other end. The smoke test does not wait
-        for notifications, but it creates real file descriptors so notifier
-        startup and shutdown follow their normal path.
+        for notifications, but real file descriptors let notifier startup and
+        shutdown run normally.
         """
         pipe_read, pipe_write = os.pipe()
         self._pipe_read = pipe_read
@@ -259,7 +257,7 @@ def test_background_notifier_matches_the_operating_system() -> None:
 
 def test_application_completes_basic_startup_and_shutdown(monkeypatch) -> None:
     docker_container_client = SmokeTestDockerContainerClient()
-    monkeypatch.setattr(app_module.urwid, "MainLoop", SmokeTestMainLoop)
+    monkeypatch.setattr(app_module.urwid, "MainLoop", NonBlockingSmokeTestMainLoop)
     app = app_module.EDMApp(
         app_config=AppConfig(),
         docker_container_client=docker_container_client,
@@ -267,6 +265,6 @@ def test_application_completes_basic_startup_and_shutdown(monkeypatch) -> None:
 
     app.run()
 
-    assert isinstance(app.ui_event_loop, SmokeTestMainLoop)
+    assert isinstance(app.urwid_main_loop, NonBlockingSmokeTestMainLoop)
     assert docker_container_client.list_request_count == 1
     assert docker_container_client.closed is True

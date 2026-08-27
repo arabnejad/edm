@@ -17,11 +17,11 @@
 [![mypy](https://img.shields.io/badge/type%20checked-mypy-2A6DB2?logo=python&logoColor=white)](https://mypy-lang.org/)
 [![CodeQL](https://github.com/arabnejad/edm/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/arabnejad/edm/actions/workflows/github-code-scanning/codeql)
 
-Easy Docker Manager (EDM) is a keyboard-driven terminal application for
-inspecting Docker containers running on your computer. It uses Urwid for the
-terminal interface and the Docker Python SDK to read container data.
+Easy Docker Manager (EDM) lets you inspect local Docker containers from a
+keyboard-driven terminal interface. It uses Urwid for the screen and the
+Docker Python SDK to read container data.
 
-EDM provides:
+With EDM, you can view:
 
 - a list of running containers
 - recent logs with automatic updates
@@ -165,9 +165,9 @@ Use `Up` and `Down` to choose a field. Use `Left` for ascending order and
 the menu without changing the list. The active sort is shown below the
 container list.
 
-When you apply a sort, EDM reorders the list without changing which container
-is selected. The selected sort stays active when the container list refreshes.
-Choose Docker order to show containers in the order returned by Docker.
+Applying a sort does not change the selected container. The sort stays active
+after the container list refreshes. Choose Docker order to restore the order
+returned by Docker.
 
 EDM currently shows running containers only, so they usually have the same
 status. For this reason, sorting by Status may not visibly change the list.
@@ -228,22 +228,21 @@ Typical locations are:
 | macOS | `~/Library/Application Support/EDM/config.json` |
 | Windows | `%LOCALAPPDATA%\EDM\config.json` |
 
-EDM creates the file on first use. On every later startup, it reads valid
-settings and rewrites the file using the settings supported by the installed
-version. Missing settings receive their defaults, and unrecognized or invalid
-settings are removed.
+EDM creates this file on first use. On later starts, it keeps valid settings,
+fills in missing defaults, removes unknown or invalid values, and writes the
+cleaned configuration back to the file.
 
 | Setting | Default | Purpose |
 | --- | ---: | --- |
-| `refresh_interval` | `2.0` | Seconds between running-container refreshes |
+| `container_list_refresh_interval_seconds` | `2.0` | Seconds between running-container refreshes |
 | `tab_refresh_interval` | `2.0` | Seconds between reloads of the visible Env, Config, or Top tab |
-| `log_tail` | `100` | Number of recent lines loaded when Logs first opens |
+| `initial_log_tail_lines` | `100` | Number of recent lines loaded when Logs first opens |
 | `max_log_lines` | `2000` | Maximum log lines kept for one container |
 | `max_log_line_chars` | `4000` | Maximum characters kept from one log line (minimum `32`) |
-| `content_cache_size` | `50` | Maximum number of cached container tabs |
-| `content_cache_max_bytes` | `25000000` | Maximum UTF-8 size of all cached tab text |
+| `tab_content_cache_max_entries` | `50` | Maximum number of cached container tabs |
+| `tab_content_cache_max_bytes` | `25000000` | Maximum UTF-8 size of all cached tab text |
 | `docker_request_timeout` | `10.0` | Docker SDK request timeout in seconds |
-| `max_workers` | `4` | Maximum number of background worker threads |
+| `max_background_worker_threads` | `4` | Maximum number of background worker threads |
 | `colors_enabled` | `true` | Use terminal colors; set to `false` for monochrome output |
 
 `edm --no-color` disables colors for one run without changing `config.json`.

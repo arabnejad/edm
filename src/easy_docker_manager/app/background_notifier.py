@@ -23,7 +23,7 @@ BackgroundTaskReadyCallback = Callable[[bytes], None]
 
 
 class BackgroundNotifier(ABC):
-    """Wake EDMApp on the UI thread when worker results are ready."""
+    """Arrange for EDMApp to process finished work on the UI thread."""
 
     @abstractmethod
     def start(
@@ -31,11 +31,10 @@ class BackgroundNotifier(ABC):
         loop: urwid.MainLoop,
         callback: BackgroundTaskReadyCallback,
     ) -> None:
-        """Connect the notifier to the event loop that manages the terminal UI.
+        """Connect the notifier to Urwid's running event loop.
 
-        Urwid's MainLoop handles keyboard input, timers, and screen updates.
-        This method registers callback so completed work is handled on the same
-        thread as those UI operations.
+        MainLoop handles keyboard input, timers, and screen updates. Registering
+        callback here ensures that finished work is also handled on that thread.
         """
 
     @abstractmethod
@@ -44,7 +43,7 @@ class BackgroundNotifier(ABC):
 
     @abstractmethod
     def stop(self) -> None:
-        """Stop notifications and release any Urwid resources."""
+        """Stop notifications and remove the pipe or timer from Urwid."""
 
 
 class PipeBackgroundNotifier(BackgroundNotifier):
@@ -52,13 +51,13 @@ class PipeBackgroundNotifier(BackgroundNotifier):
 
     Linux and macOS support Urwid's watch_pipe feature. When background work
     finishes, notify() writes one byte to the pipe. Urwid detects the byte and
-    immediately runs EDMApp's callback on the UI thread. This implementation
-    does not need a timer because the pipe itself signals that work is ready.
+    immediately runs EDMApp's callback on the UI thread. No timer is needed;
+    the pipe itself tells Urwid that work is ready.
     """
 
     def __init__(self) -> None:
-        self._loop: Optional[urwid.MainLoop] = None
-        self._pipe_write: Optional[int] = None
+        self._urwid_main_loop: Optional[urwid.MainLoop] = None
+        self._pipe_write_file_descriptor: Optional[int] = None
         self._lock = Lock()
 
     def start(
@@ -71,34 +70,34 @@ class PipeBackgroundNotifier(BackgroundNotifier):
         if not callable(watch_pipe):
             raise RuntimeError("Urwid watch_pipe is not available on this platform")
         with self._lock:
-            self._loop = loop
-            self._pipe_write = watch_pipe(callback)
+            self._urwid_main_loop = loop
+            self._pipe_write_file_descriptor = watch_pipe(callback)
 
     def notify(self) -> None:
         """Write one byte to wake the Urwid pipe watcher."""
         with self._lock:
-            if self._pipe_write is None:
+            if self._pipe_write_file_descriptor is None:
                 return
             try:
-                os.write(self._pipe_write, b"x")
+                os.write(self._pipe_write_file_descriptor, b"x")
             except OSError:
                 logger.debug("Unable to notify the terminal UI event loop")
 
     def stop(self) -> None:
         """Remove the pipe watcher and close its write descriptor."""
         with self._lock:
-            loop = self._loop
-            pipe_write = self._pipe_write
-            self._loop = None
-            self._pipe_write = None
-        if loop is None or pipe_write is None:
+            urwid_main_loop = self._urwid_main_loop
+            pipe_write_file_descriptor = self._pipe_write_file_descriptor
+            self._urwid_main_loop = None
+            self._pipe_write_file_descriptor = None
+        if urwid_main_loop is None or pipe_write_file_descriptor is None:
             return
         try:
-            loop.remove_watch_pipe(pipe_write)
+            urwid_main_loop.remove_watch_pipe(pipe_write_file_descriptor)
         except (OSError, ValueError):
             logger.debug("Unable to remove Urwid pipe watch")
         try:
-            os.close(pipe_write)
+            os.close(pipe_write_file_descriptor)
         except OSError:
             logger.debug("Unable to close Urwid pipe")
 
@@ -107,17 +106,17 @@ class PollingBackgroundNotifier(BackgroundNotifier):
     """Notify EDMApp through a repeating timer on Windows.
 
     Urwid's watch_pipe feature is unavailable on Windows. Instead, notify()
-    records that background work is ready. A timer checks that state every 0.2
-    seconds and runs EDMApp's callback on the UI thread when needed.
+    records that background work is ready. A timer checks this flag every 0.2
+    seconds and runs EDMApp's callback on the UI thread when work is waiting.
     """
 
     def __init__(self, poll_interval: float = 0.2) -> None:
         if poll_interval <= 0:
             raise ValueError("poll_interval must be positive")
         self.poll_interval = poll_interval
-        self._loop: Optional[urwid.MainLoop] = None
+        self._urwid_main_loop: Optional[urwid.MainLoop] = None
         self._callback: Optional[BackgroundTaskReadyCallback] = None
-        self._timer_handle: Optional[Any] = None
+        self._notification_timer_handle: Optional[Any] = None
         self._notification_pending = False
         self._lock = Lock()
 
@@ -128,7 +127,7 @@ class PollingBackgroundNotifier(BackgroundNotifier):
     ) -> None:
         """Start a repeating timer that checks for worker notifications."""
         with self._lock:
-            self._loop = loop
+            self._urwid_main_loop = loop
             self._callback = callback
             self._notification_pending = False
         self._schedule_next_notification_check()
@@ -136,37 +135,37 @@ class PollingBackgroundNotifier(BackgroundNotifier):
     def notify(self) -> None:
         """Mark worker results as ready for the next timer check."""
         with self._lock:
-            if self._loop is not None:
+            if self._urwid_main_loop is not None:
                 self._notification_pending = True
 
     def stop(self) -> None:
         """Stop the polling timer and clear the callback."""
         with self._lock:
-            loop = self._loop
-            timer_handle = self._timer_handle
-            self._loop = None
+            urwid_main_loop = self._urwid_main_loop
+            notification_timer_handle = self._notification_timer_handle
+            self._urwid_main_loop = None
             self._callback = None
-            self._timer_handle = None
+            self._notification_timer_handle = None
             self._notification_pending = False
-        if loop is not None and timer_handle is not None:
+        if urwid_main_loop is not None and notification_timer_handle is not None:
             try:
-                loop.remove_alarm(timer_handle)
+                urwid_main_loop.remove_alarm(notification_timer_handle)
             except ValueError:
                 logger.debug("Unable to remove Urwid polling timer")
 
-    # Urwid calls timer callbacks with the event loop and optional user data.
-    # EDM does not use the loop here, but the callback must accept it to match that
-    # callback signature. The leading underscore marks it as intentionally unused.
+    # Urwid passes its event loop and optional user data to timer callbacks.
+    # EDM does not need either value here, but this method must accept them to
+    # match Urwid's callback signature. The underscores mark them as unused.
     def _check_for_task_notifications(
         self,
-        _loop: urwid.MainLoop,
+        _urwid_main_loop: urwid.MainLoop,
         _data: Any = None,
     ) -> None:
         """Run the EDMApp callback when a worker notification is pending."""
         callback: Optional[BackgroundTaskReadyCallback] = None
         with self._lock:
-            self._timer_handle = None
-            if self._loop is None:
+            self._notification_timer_handle = None
+            if self._urwid_main_loop is None:
                 return
             if self._notification_pending and self._callback is not None:
                 self._notification_pending = False
@@ -178,16 +177,16 @@ class PollingBackgroundNotifier(BackgroundNotifier):
     def _schedule_next_notification_check(self) -> None:
         """Schedule the next timer check while the notifier is running."""
         with self._lock:
-            if self._loop is None:
+            if self._urwid_main_loop is None:
                 return
-            self._timer_handle = self._loop.set_alarm_in(
+            self._notification_timer_handle = self._urwid_main_loop.set_alarm_in(
                 self.poll_interval,
                 self._check_for_task_notifications,
             )
 
 
 def create_background_notifier() -> BackgroundNotifier:
-    """Use polling on Windows and a pipe on other platforms."""
+    """Create the notifier supported by the current operating system."""
     # os.name is "nt" on Windows, where Urwid's watch_pipe is unavailable.
     # A short polling timer provides a Windows-compatible alternative.
     if os.name == "nt":

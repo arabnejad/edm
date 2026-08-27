@@ -20,11 +20,11 @@ class ContainerSortField(str, Enum):
 
 @dataclass
 class ContainerSortMenuState:
-    """Keep the choices being edited in the container sorting menu.
+    """Store the choices currently shown in the container sorting menu.
 
-    TerminalController creates this object when the menu opens. The choices stay
-    separate from the active container order until the user presses Enter.
-    Pressing Esc discards this object and leaves the current order unchanged.
+    TerminalController creates this object when the menu opens. These temporary
+    choices do not change the container list until the user presses Enter.
+    Pressing Esc discards them and keeps the current order.
     """
 
     selected_sort_field: ContainerSortField
@@ -38,9 +38,9 @@ def get_container_list_in_requested_order(
 ) -> list[ContainerSummary]:
     """Return containers in the requested order without changing the input list.
 
-    DockerManager calls this after Docker refreshes the container
-    list and when the user applies a choice from the sorting menu. An empty
-    image name or creation time stays at the end in either direction.
+    RunningContainerListRefresher calls this after Docker refreshes the
+    container list and when the user applies a choice from the sorting menu.
+    An empty image name or creation time stays at the end in either direction.
     """
     if sort_field == ContainerSortField.DOCKER_ORDER:
         return list(containers)

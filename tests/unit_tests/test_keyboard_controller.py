@@ -9,12 +9,12 @@ from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     ContainerSortMenuState,
 )
-from easy_docker_manager.core.tab_export import TabExportMenuState
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
     TerminalSessionState,
 )
+from easy_docker_manager.tab_export.definitions import TabExportMenuState
 from easy_docker_manager.ui.keyboard_controller import KeyAction, KeyboardController
 from easy_docker_manager.ui.tab_export_controller import TabExportController
 
@@ -56,11 +56,11 @@ def test_enter_and_escape_change_active_panel(keyboard_controller_factory) -> No
     test_setup = keyboard_controller_factory(state)
     keyboard_controller = test_setup.keyboard_controller
 
-    assert keyboard_controller.handle_keypress("enter") == KeyAction.RENDER
+    assert keyboard_controller.handle_keypress("enter") == KeyAction.REDRAW
     assert state.active_focus_area == FocusArea.DETAIL
     assert keyboard_controller.handle_keypress("enter") == KeyAction.NONE
 
-    assert keyboard_controller.handle_keypress("esc") == KeyAction.RENDER
+    assert keyboard_controller.handle_keypress("esc") == KeyAction.REDRAW
     assert state.active_focus_area == FocusArea.CONTAINERS
     assert keyboard_controller.handle_keypress("esc") == KeyAction.NONE
 
@@ -72,7 +72,7 @@ def test_arrow_keys_move_the_active_panel_selection(
     test_setup = keyboard_controller_factory(state)
     test_setup.terminal_controller.move_selected_container_index.return_value = True
 
-    assert test_setup.keyboard_controller.handle_keypress("down") == KeyAction.RENDER
+    assert test_setup.keyboard_controller.handle_keypress("down") == KeyAction.REDRAW
     test_setup.terminal_controller.move_selected_container_index.assert_called_once_with(
         1
     )
@@ -81,7 +81,7 @@ def test_arrow_keys_move_the_active_panel_selection(
     test_setup.terminal_controller.move_selected_detail_line.return_value = True
     assert (
         test_setup.keyboard_controller.handle_keypress("up", (80, 24))
-        == KeyAction.RENDER
+        == KeyAction.REDRAW
     )
     test_setup.terminal_controller.move_selected_detail_line.assert_called_once_with(
         "up", (80, 24)
@@ -94,8 +94,8 @@ def test_bracket_keys_switch_tabs_in_both_directions(
     test_setup = keyboard_controller_factory(TerminalSessionState())
     test_setup.terminal_controller.switch_active_detail_tab.return_value = True
 
-    assert test_setup.keyboard_controller.handle_keypress("[") == KeyAction.RENDER
-    assert test_setup.keyboard_controller.handle_keypress("]") == KeyAction.RENDER
+    assert test_setup.keyboard_controller.handle_keypress("[") == KeyAction.REDRAW
+    assert test_setup.keyboard_controller.handle_keypress("]") == KeyAction.REDRAW
     assert test_setup.terminal_controller.switch_active_detail_tab.call_args_list[
         0
     ].args == (-1,)
@@ -111,7 +111,7 @@ def test_sort_key_opens_menu_only_from_running_container_list_panel(
     test_setup = keyboard_controller_factory(state)
     test_setup.terminal_controller.open_container_sort_menu.return_value = True
 
-    assert test_setup.keyboard_controller.handle_keypress("s") == KeyAction.RENDER
+    assert test_setup.keyboard_controller.handle_keypress("s") == KeyAction.REDRAW
     test_setup.terminal_controller.open_container_sort_menu.assert_called_once_with()
 
     state.active_focus_area = FocusArea.DETAIL
@@ -125,7 +125,7 @@ def test_export_key_opens_menu_only_from_details_panel(
     test_setup = keyboard_controller_factory(state)
     test_setup.tab_export_controller.open_tab_export_menu.return_value = True
 
-    assert test_setup.keyboard_controller.handle_keypress("e") == KeyAction.RENDER
+    assert test_setup.keyboard_controller.handle_keypress("e") == KeyAction.REDRAW
     test_setup.tab_export_controller.open_tab_export_menu.assert_called_once_with()
 
     state.active_focus_area = FocusArea.CONTAINERS
@@ -152,7 +152,7 @@ def test_export_menu_delegates_every_key_to_its_controller(
     test_setup.tab_export_controller.handle_menu_keypress.return_value = True
 
     assert (
-        test_setup.keyboard_controller.handle_keypress(pressed_key) == KeyAction.RENDER
+        test_setup.keyboard_controller.handle_keypress(pressed_key) == KeyAction.REDRAW
     )
     test_setup.tab_export_controller.handle_menu_keypress.assert_called_once_with(
         pressed_key
@@ -205,7 +205,7 @@ def test_sort_menu_routes_its_keyboard_controls(
     method.return_value = True
 
     assert (
-        test_setup.keyboard_controller.handle_keypress(pressed_key) == KeyAction.RENDER
+        test_setup.keyboard_controller.handle_keypress(pressed_key) == KeyAction.REDRAW
     )
     method.assert_called_once()
     assert method.call_args.args == expected_arguments
@@ -233,10 +233,10 @@ def test_search_text_is_stored_per_selected_tab(
     test_setup = keyboard_controller_factory(state)
     keyboard_controller = test_setup.keyboard_controller
 
-    assert keyboard_controller.handle_keypress("/") == KeyAction.RENDER
+    assert keyboard_controller.handle_keypress("/") == KeyAction.REDRAW
     assert state.is_search_active
     assert state.active_focus_area == FocusArea.DETAIL
-    assert keyboard_controller.handle_keypress("A") == KeyAction.RENDER
+    assert keyboard_controller.handle_keypress("A") == KeyAction.REDRAW
 
     container_tab_key = state.selected_container_tab_key
     assert container_tab_key is not None
@@ -253,7 +253,7 @@ def test_backspace_edits_query_without_moving_an_empty_query(
     keyboard_controller.handle_keypress("/")
     keyboard_controller.handle_keypress("A")
 
-    assert keyboard_controller.handle_keypress("backspace") == KeyAction.RENDER
+    assert keyboard_controller.handle_keypress("backspace") == KeyAction.REDRAW
     assert keyboard_controller.handle_keypress("backspace") == KeyAction.NONE
 
 
@@ -266,7 +266,7 @@ def test_enter_closes_search_and_keeps_detail_focus(
     keyboard_controller = test_setup.keyboard_controller
     keyboard_controller.handle_keypress("/")
 
-    assert keyboard_controller.handle_keypress("enter") == KeyAction.RENDER
+    assert keyboard_controller.handle_keypress("enter") == KeyAction.REDRAW
     assert not state.is_search_active
     assert state.active_focus_area == FocusArea.DETAIL
 
@@ -280,7 +280,7 @@ def test_escape_closes_search_and_returns_to_containers(
     keyboard_controller = test_setup.keyboard_controller
     keyboard_controller.handle_keypress("/")
 
-    assert keyboard_controller.handle_keypress("esc") == KeyAction.RENDER
+    assert keyboard_controller.handle_keypress("esc") == KeyAction.REDRAW
     assert not state.is_search_active
     assert state.active_focus_area == FocusArea.CONTAINERS
 
@@ -297,7 +297,7 @@ def test_search_navigation_moves_detail_without_changing_query(
 
     assert (
         test_setup.keyboard_controller.handle_keypress("page down", (80, 24))
-        == KeyAction.RENDER
+        == KeyAction.REDRAW
     )
     test_setup.terminal_controller.move_selected_detail_line.assert_called_once_with(
         "page down",

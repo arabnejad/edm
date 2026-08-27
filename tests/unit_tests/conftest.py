@@ -5,7 +5,7 @@ from typing import Any, Callable, Optional
 
 import pytest
 
-from easy_docker_manager.core import ContainerSummary
+from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 
@@ -55,7 +55,7 @@ def container_summary_factory() -> Callable[..., ContainerSummary]:
 def session_state_factory(
     container_summary_factory: Callable[..., ContainerSummary],
 ) -> Callable[..., TerminalSessionState]:
-    """Create UI state with one selected container and detail tab."""
+    """Create terminal session state with one selected container and tab."""
 
     def create_session_state(
         container_id: str = "container-1",
