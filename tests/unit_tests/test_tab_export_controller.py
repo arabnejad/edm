@@ -20,7 +20,7 @@ from easy_docker_manager.tab_export.writer import (
     TabExportError,
     TabExportWriter,
 )
-from easy_docker_manager.ui.formatting import DetailTabTextFormatter
+from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
 from easy_docker_manager.ui.tab_export_controller import TabExportController
 
 
@@ -41,7 +41,7 @@ def tab_export_controller_factory(tmp_path: Path):
         background_executor.submit.return_value = export_future
         controller = TabExportController(
             state,
-            DetailTabTextFormatter(),
+            TabTextFilter(),
             background_executor,
             tab_export_writer,
             tmp_path,

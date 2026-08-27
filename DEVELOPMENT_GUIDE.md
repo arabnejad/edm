@@ -42,6 +42,7 @@ src/
     tabs/
       config_tab_formatter.py     Formats Docker inspection data
       tab_data_loader.py          Loads text for Logs, Env, Config, and Top
+      tab_text_filter.py          Chooses the lines visible after a search
 
     tab_export/
       definitions.py              Export menu choices and file-write request
@@ -52,7 +53,7 @@ src/
                                   Builds the running-container list panel
       container_sort_menu.py      Builds the container sorting menu
       container_details_panel.py Builds the selected container details panel
-      formatting.py               Filters lines and adds terminal colors
+      formatting.py               Adds terminal colors and search highlights
       keyboard_controller.py      Maps keypresses to actions
       tab_export_controller.py    Handles the export workflow
       tab_export_menu.py          Builds the export popup menu
@@ -95,6 +96,7 @@ flowchart TD
     Client[LocalDockerContainerClient]
     DockerSDK[Docker SDK for Python]
     Docker[(🐳 Local Docker daemon)]
+    Filter[TabTextFilter]
     Formatter[DetailTabTextFormatter]
     Exporter[TabExportWriter]
     File[(📄 Exported text file)]
@@ -106,10 +108,11 @@ flowchart TD
     Keyboard --> UI
     Keyboard --> ExportController
 
+    UI --> Filter
     UI --> Formatter
     UI --> View --> Urwid --> Terminal
     UI --> State
-    ExportController --> Formatter
+    ExportController --> Filter
     ExportController --> State
     ExportController --> Executor
 
@@ -128,7 +131,7 @@ flowchart TD
     classDef thirdParty fill:#fff8c5,stroke:#9a6700,color:#1f2328
     classDef external fill:#f6f8fa,stroke:#57606a,color:#1f2328
 
-    class App,Keyboard,UI,ExportController,State,DockerManager,Executor,Notifier,Loader,Client,Formatter,Exporter,View edm
+    class App,Keyboard,UI,ExportController,State,DockerManager,Executor,Notifier,Loader,Client,Filter,Formatter,Exporter,View edm
     class DockerSDK,Urwid thirdParty
     class User,Docker,Terminal,File external
 ```
@@ -142,6 +145,8 @@ The main responsibilities are:
   and prepares the screen for drawing.
 - `TabExportController` edits export choices, prepares a cached text snapshot,
   and handles the result of the file write.
+- `TabTextFilter` applies the same line-visibility rules to the terminal and
+  Current view exports.
 - `DockerManager` decides what container data is needed, requests
   it, and stores each finished result in session state.
 - `BackgroundExecutor` runs Docker requests and file writes outside the UI
@@ -423,17 +428,18 @@ flowchart TD
     Client[DockerContainerClient]
     Complete[DockerManager stores the result]
     Cache[(TabContentCache)]
+    Filter[TabTextFilter]
     Format[DetailTabTextFormatter]
     Draw[TerminalLayoutView]
 
     Selection --> Key --> Cached
-    Cached -- yes --> Show --> Format --> Draw
+    Cached -- yes --> Show --> Filter --> Format --> Draw
     Cached -- no --> Submit --> Loader --> Choose
     Choose --> Logs --> Client
     Choose --> Env --> Client
     Choose --> Config --> Client
     Choose --> Top --> Client
-    Client --> Complete --> Cache --> Format --> Draw
+    Client --> Complete --> Cache --> Filter --> Format --> Draw
 ```
 
 `TabDataLoader.load_tab_text()` checks the requested `TabName` and calls one
@@ -492,12 +498,15 @@ container refresh.
 panel should show: a loading message, an error, an empty-state message, or
 loaded text.
 
-`DetailTabTextFormatter` then applies the active search:
+`TabTextFilter` chooses which loaded lines remain visible:
 
 - Logs uses a case-insensitive regular expression. Lines that do not match are
   hidden. Invalid expressions leave the full log text visible.
-- Env, Config, and Top use case-insensitive plain-text search. Matching text is
-  highlighted without hiding any lines.
+- Env, Config, and Top keep every line visible.
+
+`DetailTabTextFormatter` then adds terminal colors and highlights matching
+text. Env, Config, and Top use case-insensitive plain-text highlighting. Logs
+highlights the regular expression matches that passed the filter.
 
 Queries are stored by `ContainerTabKey`, so switching away and back restores
 the same search. Log regular expressions are limited to 200 characters.
@@ -552,6 +561,7 @@ environment keys, structured values, search matches, and errors.
 | `create_docker_client` | Creates a local Docker SDK client and rejects remote `DOCKER_HOST` transports |
 | `to_container_summary` | Converts a Docker container object to `ContainerSummary` |
 | `TabDataLoader` | Loads and formats the full text for a requested detail tab |
+| `TabTextFilter` | Chooses visible lines for the terminal and Current view exports |
 | `TabExportWriter` | Writes a prepared tab snapshot without silently replacing a file |
 
 ### UI
@@ -569,8 +579,7 @@ environment keys, structured values, search matches, and errors.
 | `build_container_sort_popup_menu` | Builds the sort popup menu over the main layout |
 | `build_tab_export_popup_menu` | Builds the export popup menu over the main layout |
 | `FocusableDetailLine` | Lets keyboard navigation select one line of detail text |
-| `DetailTabTextFormatter` | Applies search behavior and requests line colors |
-| `LogRegexLineFilter` | Filters Logs while leaving other tab lines in place |
+| `DetailTabTextFormatter` | Adds tab colors and search highlights to visible lines |
 | `DetailLineRenderer` | Adds tab colors, search highlights, and error colors |
 
 ## Adding A Detail Tab
@@ -578,9 +587,9 @@ environment keys, structured values, search matches, and errors.
 1. Add the new value to `TabName`.
 2. Add a private loading method in `TabDataLoader` and call it from
    `load_tab_text()` for the new value.
-3. Add formatting rules only if the tab needs different colors or search
-   behavior.
-4. Check tab switching, loading, empty content, errors, and search behavior.
+3. Update `TabTextFilter` if the tab needs different line-visibility rules.
+4. Add formatting rules only if the tab needs different colors or highlights.
+5. Check tab switching, loading, empty content, errors, and search behavior.
 
 ## Adding A Config Setting
 

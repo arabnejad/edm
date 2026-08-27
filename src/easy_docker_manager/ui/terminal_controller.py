@@ -11,6 +11,7 @@ from easy_docker_manager.core.container_sorting import (
 )
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
 
@@ -31,11 +32,13 @@ class TerminalController:
         self,
         state: TerminalSessionState,
         terminal_layout_view: TerminalLayoutView,
+        tab_text_filter: TabTextFilter,
         detail_tab_text_formatter: DetailTabTextFormatter,
         docker_manager: DockerManager,
     ) -> None:
         self.state = state
         self.terminal_layout_view = terminal_layout_view
+        self.tab_text_filter = tab_text_filter
         self.detail_tab_text_formatter = detail_tab_text_formatter
         self.docker_manager = docker_manager
 
@@ -101,7 +104,7 @@ class TerminalController:
             return [self.get_empty_tab_message(self.state.active_detail_tab_name)]
 
         query = self.state.tab_search_queries.get(container_tab_key, "")
-        return self.detail_tab_text_formatter.prepare_visible_lines(
+        return self.tab_text_filter.get_visible_lines(
             content, self.state.active_detail_tab_name, query
         )
 

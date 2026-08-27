@@ -2,8 +2,8 @@
 
 EDMApp uses this module during setup. The factory creates the shared session
 state, Docker access, background processing, controllers, tab export writer,
-formatter, and terminal view. EDMRuntime returns the objects that EDMApp uses
-directly.
+text filter, formatter, and terminal view. EDMRuntime returns the objects that
+EDMApp uses directly.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
 from easy_docker_manager.tab_export.writer import TabExportWriter
 from easy_docker_manager.tabs.tab_data_loader import TabDataLoader
+from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.keyboard_controller import KeyboardController
 from easy_docker_manager.ui.tab_export_controller import TabExportController
@@ -47,9 +48,9 @@ class EDMRuntimeFactory:
     """Create and connect the default objects used by EDMApp.
 
     The factory creates the Docker client, session state, Docker manager,
-    background executor, controllers, tab export writer, formatter, and terminal
-    view. It connects them and returns EDMApp's direct dependencies in
-    EDMRuntime. EDMApp can then focus on starting and stopping the terminal UI.
+    background executor, controllers, tab export writer, text filter, formatter,
+    and terminal view. It connects them and returns EDMApp's direct dependencies
+    in EDMRuntime. EDMApp can then focus on starting and stopping the terminal UI.
     """
 
     def __init__(
@@ -83,6 +84,7 @@ class EDMRuntimeFactory:
             ),
         )
         tab_data_loader = TabDataLoader(self.docker_container_client, self.app_config)
+        tab_text_filter = TabTextFilter()
         detail_tab_text_formatter = DetailTabTextFormatter()
         background_executor = BackgroundExecutor(
             max_workers=self.app_config.max_workers,
@@ -99,12 +101,13 @@ class EDMRuntimeFactory:
         terminal_controller = TerminalController(
             state,
             terminal_layout_view,
+            tab_text_filter,
             detail_tab_text_formatter,
             docker_manager,
         )
         tab_export_controller = TabExportController(
             state,
-            detail_tab_text_formatter,
+            tab_text_filter,
             background_executor,
             TabExportWriter(),
             self.launch_directory,

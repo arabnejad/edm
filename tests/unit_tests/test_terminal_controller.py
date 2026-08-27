@@ -11,6 +11,7 @@ from easy_docker_manager.core.container_sorting import (
 )
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.terminal_controller import TerminalController
 
@@ -30,6 +31,7 @@ def controller_factory():
         terminal_controller = TerminalController(
             state,
             terminal_layout_view,
+            TabTextFilter(),
             DetailTabTextFormatter(),
             docker_manager,
         )

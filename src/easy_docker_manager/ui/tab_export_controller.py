@@ -25,7 +25,7 @@ from easy_docker_manager.tab_export.writer import (
     TabExportError,
     TabExportWriter,
 )
-from easy_docker_manager.ui.formatting import DetailTabTextFormatter
+from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +49,13 @@ class TabExportController:
     def __init__(
         self,
         state: TerminalSessionState,
-        detail_tab_text_formatter: DetailTabTextFormatter,
+        tab_text_filter: TabTextFilter,
         background_executor: BackgroundExecutor,
         tab_export_writer: TabExportWriter,
         launch_directory: Path,
     ) -> None:
         self.state = state
-        self.detail_tab_text_formatter = detail_tab_text_formatter
+        self.tab_text_filter = tab_text_filter
         self.background_executor = background_executor
         self.tab_export_writer = tab_export_writer
         self.launch_directory = launch_directory.resolve()
@@ -344,7 +344,7 @@ class TabExportController:
             return full_content
 
         query = self.state.tab_search_queries.get(menu_state.container_tab_key, "")
-        visible_lines = self.detail_tab_text_formatter.prepare_visible_lines(
+        visible_lines = self.tab_text_filter.get_visible_lines(
             full_content,
             menu_state.container_tab_key.tab_name,
             query,

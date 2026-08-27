@@ -2,12 +2,9 @@ from __future__ import annotations
 
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.ui.formatting import (
-    MAX_REGEX_QUERY_LENGTH,
     DetailLineRenderer,
     DetailTabTextFormatter,
-    LogRegexLineFilter,
     append_markup_piece,
-    compile_regex,
     log_markup,
     markup_piece_attr_and_text,
     plain_text_match_ranges,
@@ -19,50 +16,6 @@ from easy_docker_manager.ui.formatting import (
 
 def flatten_markup_text(markup) -> str:
     return "".join(piece[1] if isinstance(piece, tuple) else piece for piece in markup)
-
-
-def test_log_filter_applies_case_insensitive_regex_to_logs() -> None:
-    line_filter = LogRegexLineFilter()
-
-    assert line_filter.filter_lines(
-        "INFO started\nERROR failed",
-        TabName.LOGS,
-        "error",
-    ) == ["ERROR failed"]
-
-
-def test_log_filter_reports_no_matches() -> None:
-    assert LogRegexLineFilter().filter_lines("INFO", TabName.LOGS, "ERROR") == [
-        "No log lines match /ERROR/."
-    ]
-
-
-def test_log_filter_leaves_non_log_tabs_and_invalid_regex_unchanged() -> None:
-    content = "A=1\nB=2"
-    line_filter = LogRegexLineFilter()
-
-    assert line_filter.filter_lines(content, TabName.ENV, "A") == ["A=1", "B=2"]
-    assert line_filter.filter_lines(content, TabName.LOGS, "[") == ["A=1", "B=2"]
-    assert line_filter.filter_lines("", TabName.LOGS, "A") == []
-
-
-def test_log_filter_reuses_the_last_result() -> None:
-    line_filter = LogRegexLineFilter()
-    first_result = line_filter.filter_lines("A\nB", TabName.LOGS, "A")
-    repeated_result = line_filter.filter_lines("A\nB", TabName.LOGS, "A")
-    assert repeated_result is first_result
-
-
-def test_compile_regex_handles_valid_invalid_and_long_queries() -> None:
-    pattern, error = compile_regex("error")
-    assert error is None
-    assert pattern.search("ERROR")
-
-    _, error = compile_regex("[")
-    assert error
-
-    _, error = compile_regex("a" * (MAX_REGEX_QUERY_LENGTH + 1))
-    assert error == "Regex query is too long."
 
 
 def test_regex_match_ranges_ignore_zero_width_matches() -> None:
@@ -100,10 +53,9 @@ def test_detail_renderer_highlights_log_regex() -> None:
     assert any(piece == ("highlight", "ERROR failed") for piece in markup)
 
 
-def test_detail_formatter_delegates_filtering_and_rendering() -> None:
+def test_detail_formatter_delegates_line_rendering() -> None:
     formatter = DetailTabTextFormatter()
 
-    assert formatter.prepare_visible_lines("A\nB", TabName.LOGS, "B") == ["B"]
     assert formatter.format_detail_line("A=1", TabName.ENV, "") == [
         ("accent", "A"),
         ("muted", "="),

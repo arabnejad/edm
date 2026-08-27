@@ -1,4 +1,4 @@
-"""Choose visible detail lines and add their terminal colors."""
+"""Add terminal colors and search highlights to detail text."""
 
 from __future__ import annotations
 
@@ -8,46 +8,9 @@ from functools import lru_cache
 from typing import Optional, Union
 
 from easy_docker_manager.core.tabs import TabName
+from easy_docker_manager.tabs.tab_text_filter import compile_regex
 
 MarkupSegment = Union[str, tuple[Hashable, str]]
-
-MAX_REGEX_QUERY_LENGTH = 200
-
-
-class LogRegexLineFilter:
-    """Filter Logs by regex without removing lines from other tabs."""
-
-    def __init__(self) -> None:
-        """Keep one recent result so an unchanged Logs view is cheap to redraw."""
-        self._last_content: Optional[str] = None
-        self._last_query: Optional[str] = None
-        self._last_filtered_lines: Optional[list[str]] = None
-
-    def filter_lines(self, content: str, tab: TabName, query: str) -> list[str]:
-        """Apply regex filtering to Logs and return all lines for other tabs."""
-        if not content:
-            return []
-
-        query = query.strip()
-        if tab != TabName.LOGS or not query:
-            return content.splitlines()
-
-        if (
-            content == self._last_content
-            and query == self._last_query
-            and self._last_filtered_lines is not None
-        ):
-            return self._last_filtered_lines
-
-        pattern, error = compile_regex(query)
-        if error:
-            return content.splitlines()
-        matches = [line for line in content.splitlines() if pattern.search(line)]
-        lines = matches or [f"No log lines match /{query}/."]
-        self._last_content = content
-        self._last_query = query
-        self._last_filtered_lines = lines
-        return lines
 
 
 class DetailLineRenderer:
@@ -168,26 +131,15 @@ class DetailLineRenderer:
 
 
 class DetailTabTextFormatter:
-    """Filter and color text for the active detail tab.
+    """Add colors and search highlights to detail-tab lines.
 
-    TerminalController uses this before each redraw, and TabExportController uses it
-    when exporting the current view. Logs queries remove non-matching lines and
-    highlight regex matches. Env, Config, and Top keep every line and highlight
-    plain-text matches. DetailLineRenderer then adds the normal tab colors.
+    TerminalController uses this before drawing each visible line. Logs use
+    regex highlights. Env, Config, and Top highlight plain-text matches.
+    TabTextFilter decides which lines are visible before this formatter runs.
     """
 
     def __init__(self) -> None:
-        self._log_line_filter = LogRegexLineFilter()
         self.line_renderer = DetailLineRenderer()
-
-    def prepare_visible_lines(
-        self,
-        content: str,
-        tab: TabName,
-        query: str,
-    ) -> list[str]:
-        """Return the lines left visible by the active tab's search behavior."""
-        return self._log_line_filter.filter_lines(content, tab, query)
 
     def format_detail_line(
         self,
@@ -199,17 +151,6 @@ class DetailTabTextFormatter:
     ) -> Union[str, list[MarkupSegment]]:
         """Return the line's colors, using the error color when is_error is True."""
         return self.line_renderer.render_line(line, tab, query, is_error=is_error)
-
-
-@lru_cache(maxsize=128)
-def compile_regex(query: str) -> tuple[re.Pattern[str], Optional[str]]:
-    """Compile a case-insensitive regex, returning its error instead of raising."""
-    if len(query) > MAX_REGEX_QUERY_LENGTH:
-        return re.compile(r"$."), "Regex query is too long."
-    try:
-        return re.compile(query, re.IGNORECASE), None
-    except re.error as exc:
-        return re.compile(r"$."), str(exc)
 
 
 def regex_match_ranges(line: str, query: str) -> list[tuple[int, int]]:
@@ -345,10 +286,7 @@ __all__ = [
     "DetailLineRenderer",
     "DetailTabTextFormatter",
     "MarkupSegment",
-    "MAX_REGEX_QUERY_LENGTH",
-    "LogRegexLineFilter",
     "append_markup_piece",
-    "compile_regex",
     "plain_text_match_ranges",
     "log_markup",
     "markup_piece_attr_and_text",
