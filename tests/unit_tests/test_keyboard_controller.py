@@ -118,6 +118,20 @@ def test_sort_key_opens_menu_only_from_running_container_list_panel(
     assert test_setup.keyboard_controller.handle_keypress("S") == KeyAction.NONE
 
 
+def test_filter_key_starts_input_only_from_running_container_list_panel(
+    keyboard_controller_factory,
+) -> None:
+    state = TerminalSessionState()
+    test_setup = keyboard_controller_factory(state)
+    test_setup.terminal_controller.start_editing_container_filter.return_value = True
+
+    assert test_setup.keyboard_controller.handle_keypress("f") == KeyAction.REDRAW
+    test_setup.terminal_controller.start_editing_container_filter.assert_called_once_with()
+
+    state.active_focus_area = FocusArea.DETAIL
+    assert test_setup.keyboard_controller.handle_keypress("F") == KeyAction.NONE
+
+
 def test_export_key_opens_menu_only_from_details_panel(
     keyboard_controller_factory,
 ) -> None:
@@ -223,6 +237,51 @@ def test_sort_menu_ignores_unrelated_keys(keyboard_controller_factory) -> None:
     test_setup = keyboard_controller_factory(state)
 
     assert test_setup.keyboard_controller.handle_keypress("q") == KeyAction.NONE
+
+
+@pytest.mark.parametrize(
+    ("pressed_key", "controller_method", "expected_arguments"),
+    [
+        ("enter", "finish_editing_container_filter", ()),
+        ("esc", "cancel_container_filter_editing", ()),
+        ("backspace", "remove_last_character_from_container_filter", ()),
+        ("x", "add_character_to_container_filter", ("x",)),
+        ("q", "add_character_to_container_filter", ("q",)),
+        ("s", "add_character_to_container_filter", ("s",)),
+        ("[", "add_character_to_container_filter", ("[",)),
+        ("]", "add_character_to_container_filter", ("]",)),
+    ],
+)
+def test_container_filter_routes_only_its_editing_keys(
+    keyboard_controller_factory,
+    pressed_key: str,
+    controller_method: str,
+    expected_arguments: tuple[object, ...],
+) -> None:
+    state = TerminalSessionState(container_filter_query_before_editing="")
+    test_setup = keyboard_controller_factory(state)
+    method = getattr(test_setup.terminal_controller, controller_method)
+    method.return_value = True
+
+    assert (
+        test_setup.keyboard_controller.handle_keypress(pressed_key) == KeyAction.REDRAW
+    )
+    method.assert_called_once_with(*expected_arguments)
+
+
+@pytest.mark.parametrize(
+    "pressed_key",
+    ["up", "down", "page up", "page down", "home", "end", "delete"],
+)
+def test_container_filter_ignores_navigation_and_other_shortcuts(
+    keyboard_controller_factory,
+    pressed_key: str,
+) -> None:
+    state = TerminalSessionState(container_filter_query_before_editing="")
+    test_setup = keyboard_controller_factory(state)
+
+    assert test_setup.keyboard_controller.handle_keypress(pressed_key) == KeyAction.NONE
+    assert not test_setup.terminal_controller.method_calls
 
 
 def test_search_text_is_stored_per_selected_tab(

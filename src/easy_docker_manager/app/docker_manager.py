@@ -132,9 +132,9 @@ class DockerManager:
         self.container_log_updater.reset_after_selection_change()
         self.selected_tab_content_loader.prepare_active_detail_tab()
 
-    def apply_container_sort_to_current_list(self) -> None:
-        """Reorder the current container list using the selected sort."""
-        self.running_container_list_refresher.apply_container_sort_to_current_list()
+    def rebuild_displayed_container_list(self) -> None:
+        """Rebuild the displayed container list after its sort or filter changes."""
+        self.running_container_list_refresher.rebuild_displayed_container_list()
 
     def _is_initial_log_content_load_in_progress(self) -> bool:
         """Return True while the selected container's first log load is running."""

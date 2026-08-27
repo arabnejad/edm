@@ -9,6 +9,7 @@ from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     ContainerSortMenuState,
 )
+from easy_docker_manager.core.running_container_list import RunningContainerList
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
@@ -55,7 +56,7 @@ def test_active_detail_tab_display_lines_show_empty_and_error_messages(
         "Select a running container."
     ]
 
-    state.running_containers = [container_summary_factory()]
+    state.running_container_list = RunningContainerList([container_summary_factory()])
     state.selected_container_index = 0
     container_tab_key = state.selected_container_tab_key
     assert container_tab_key is not None
@@ -202,10 +203,12 @@ def test_move_selected_container_index_loads_the_new_container(
     container_summary_factory,
 ) -> None:
     state = TerminalSessionState(
-        running_containers=[
-            container_summary_factory("one"),
-            container_summary_factory("two"),
-        ],
+        running_container_list=RunningContainerList(
+            [
+                container_summary_factory("one"),
+                container_summary_factory("two"),
+            ]
+        ),
         selected_container_index=0,
     )
     test_setup = terminal_controller_factory(state)
@@ -233,10 +236,12 @@ def test_sort_menu_applies_the_selected_field_and_direction(
     container_summary_factory,
 ) -> None:
     state = TerminalSessionState(
-        running_containers=[
-            container_summary_factory("z", name="Zulu"),
-            container_summary_factory("a", name="alpha"),
-        ],
+        running_container_list=RunningContainerList(
+            [
+                container_summary_factory("z", name="Zulu"),
+                container_summary_factory("a", name="alpha"),
+            ]
+        ),
         selected_container_index=0,
     )
     test_setup = terminal_controller_factory(state)
@@ -256,7 +261,7 @@ def test_sort_menu_applies_the_selected_field_and_direction(
     assert state.container_sort_descending
     assert state.container_sort_menu_state is None
     docker_manager = test_setup.docker_manager
-    docker_manager.apply_container_sort_to_current_list.assert_called_once_with()
+    docker_manager.rebuild_displayed_container_list.assert_called_once_with()
 
 
 def test_sort_menu_can_cancel_and_reject_unavailable_movements(
@@ -294,6 +299,44 @@ def test_docker_order_ignores_direction_in_the_sort_menu(
     )
     assert test_setup.terminal_controller.apply_container_sort_menu()
     assert not state.container_sort_descending
+
+
+def test_container_filter_query_changes_rebuild_the_displayed_container_list(
+    terminal_controller_factory,
+) -> None:
+    state = TerminalSessionState(container_filter_query="red")
+    test_setup = terminal_controller_factory(state)
+    controller = test_setup.terminal_controller
+
+    assert controller.add_character_to_container_filter("i")
+    assert state.container_filter_query == "redi"
+    assert controller.remove_last_character_from_container_filter()
+    assert state.container_filter_query == "red"
+    assert test_setup.docker_manager.rebuild_displayed_container_list.call_count == 2
+
+
+def test_container_filter_input_can_keep_or_restore_the_previous_query(
+    terminal_controller_factory,
+) -> None:
+    state = TerminalSessionState(container_filter_query="redis")
+    test_setup = terminal_controller_factory(state)
+    controller = test_setup.terminal_controller
+
+    assert controller.start_editing_container_filter()
+    assert not controller.start_editing_container_filter()
+    assert state.is_editing_container_filter
+    assert state.container_filter_query_before_editing == "redis"
+    assert controller.finish_editing_container_filter()
+    assert not state.is_editing_container_filter
+    assert state.container_filter_query == "redis"
+
+    assert controller.start_editing_container_filter()
+    assert controller.add_character_to_container_filter("7")
+    assert state.container_filter_query == "redis7"
+    assert controller.cancel_container_filter_editing()
+    assert not state.is_editing_container_filter
+    assert state.container_filter_query == "redis"
+    assert test_setup.docker_manager.rebuild_displayed_container_list.call_count == 2
 
 
 def test_switch_active_detail_tab_changes_tab_and_notifies_docker_manager(

@@ -17,12 +17,12 @@ from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
 
 
 class TerminalController:
-    """Handle navigation, sorting, search results, and screen redraws.
+    """Handle navigation, container display options, and screen redraws.
 
     KeyboardController handles individual keys. This class moves container and
-    detail selections, switches tabs, prepares visible text, and sends session
-    state to TerminalLayoutView. It asks DockerManager to load data after a
-    selection or tab change.
+    detail selections, filters and sorts the container list, switches tabs,
+    prepares visible text, and sends session state to TerminalLayoutView. It
+    asks DockerManager to load data after a selection or tab change.
     """
 
     DETAIL_TAB_ORDER = tuple(TabName)
@@ -179,7 +179,8 @@ class TerminalController:
 
     def move_selected_container_index(self, selection_offset: int) -> bool:
         """Move the selection without passing the first or last container."""
-        if not self.state.running_containers:
+        displayed_containers = self.state.running_container_list.displayed_containers
+        if not displayed_containers:
             return False
         previous_index = self.state.selected_container_index
         if self.state.selected_container_index is None:
@@ -188,7 +189,7 @@ class TerminalController:
             self.state.selected_container_index = max(
                 0,
                 min(
-                    len(self.state.running_containers) - 1,
+                    len(displayed_containers) - 1,
                     self.state.selected_container_index + selection_offset,
                 ),
             )
@@ -196,6 +197,47 @@ class TerminalController:
             return False
         self.docker_manager.prepare_selected_container_details()
         return True
+
+    def start_editing_container_filter(self) -> bool:
+        """Start sending printable keypresses to the container filter.
+
+        KeyboardController calls this when the user presses f in the container
+        panel. An existing query stays in place so it can be edited or cleared.
+        """
+        if self.state.is_editing_container_filter:
+            return False
+        self.state.container_filter_query_before_editing = (
+            self.state.container_filter_query
+        )
+        return True
+
+    def finish_editing_container_filter(self) -> bool:
+        """Stop editing the filter while keeping its current query applied."""
+        if not self.state.is_editing_container_filter:
+            return False
+        self.state.container_filter_query_before_editing = None
+        return True
+
+    def cancel_container_filter_editing(self) -> bool:
+        """Restore the previous query and return control to the container list."""
+        previous_filter_query = self.state.container_filter_query_before_editing
+        if previous_filter_query is None:
+            return False
+        self.state.container_filter_query_before_editing = None
+        self._set_container_filter_query(previous_filter_query)
+        return True
+
+    def add_character_to_container_filter(self, character: str) -> bool:
+        """Add one typed character and immediately update the displayed list."""
+        return self._set_container_filter_query(
+            self.state.container_filter_query + character
+        )
+
+    def remove_last_character_from_container_filter(self) -> bool:
+        """Remove the last query character and immediately update the list."""
+        if not self.state.container_filter_query:
+            return False
+        return self._set_container_filter_query(self.state.container_filter_query[:-1])
 
     def open_container_sort_menu(self) -> bool:
         """Open the sorting menu with the active sort choices selected."""
@@ -258,7 +300,7 @@ class TerminalController:
             else False
         )
         self.state.container_sort_menu_state = None
-        self.docker_manager.apply_container_sort_to_current_list()
+        self.docker_manager.rebuild_displayed_container_list()
         return True
 
     def switch_active_detail_tab(self, tab_offset: int) -> bool:
@@ -270,6 +312,14 @@ class TerminalController:
             (active_tab_index + tab_offset) % len(self.DETAIL_TAB_ORDER)
         ]
         self.docker_manager.prepare_active_detail_tab()
+        return True
+
+    def _set_container_filter_query(self, filter_query: str) -> bool:
+        """Store a changed query and rebuild the displayed container list."""
+        if filter_query == self.state.container_filter_query:
+            return False
+        self.state.container_filter_query = filter_query
+        self.docker_manager.rebuild_displayed_container_list()
         return True
 
 
