@@ -4,7 +4,8 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from easy_docker_manager.core import AppConfig, ContainerProcessTable, ContainerSummary
+from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.containers import ContainerProcessTable, ContainerSummary
 from easy_docker_manager.core.log_text import MIN_LOG_LINE_CHARS
 from easy_docker_manager.core.tabs import TabName
 

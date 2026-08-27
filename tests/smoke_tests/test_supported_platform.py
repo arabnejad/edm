@@ -23,7 +23,8 @@ from easy_docker_manager.app.background_notifier import (
 )
 from easy_docker_manager.config.app_config_store import default_config_path
 from easy_docker_manager.constants import APP_NAME
-from easy_docker_manager.core import AppConfig, ContainerProcessTable, ContainerSummary
+from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.containers import ContainerProcessTable, ContainerSummary
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.logging.app_logging import default_log_file_path
 

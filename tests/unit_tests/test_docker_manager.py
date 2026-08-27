@@ -22,7 +22,7 @@ from easy_docker_manager.app.running_container_refresh import (
     RunningContainerListRefresher,
 )
 from easy_docker_manager.app.selected_tab_load import SelectedTabContentLoader
-from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import ContainerSortField
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState

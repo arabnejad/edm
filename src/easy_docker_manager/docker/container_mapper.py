@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from easy_docker_manager.core import ContainerSummary
+from easy_docker_manager.core.containers import ContainerSummary
 
 
 def to_container_summary(container: Any) -> ContainerSummary:

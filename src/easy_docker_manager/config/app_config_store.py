@@ -11,7 +11,7 @@ from typing import Any, Optional
 from platformdirs import user_config_dir
 
 from easy_docker_manager.constants import APP_NAME
-from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.config import AppConfig
 
 logger = logging.getLogger(__name__)
 

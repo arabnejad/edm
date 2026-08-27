@@ -9,10 +9,11 @@ from concurrent.futures import Future
 from typing import Optional
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
-from easy_docker_manager.core import AppConfig, ContainerSummary
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import (
     get_container_list_in_requested_order,
 )
+from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import DockerContainerClient
 

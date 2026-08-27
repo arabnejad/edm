@@ -6,7 +6,7 @@ from pathlib import Path
 
 from easy_docker_manager.config import app_config_store
 from easy_docker_manager.config.app_config_store import AppConfigStore
-from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.config import AppConfig
 
 
 def test_load_and_sync_writes_default_config(tmp_path: Path) -> None:

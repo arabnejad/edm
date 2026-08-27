@@ -9,7 +9,7 @@ from functools import partial
 from typing import Optional, Union
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
-from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.log_text import (
     apply_limits_to_log_content,
     count_repeated_lines_between_batches,

@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 from docker.errors import DockerException, NotFound
 
-from easy_docker_manager.core import ContainerSummary
+from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.docker.container_client import (
     ContainerLogFetchError,
     ContainerNotFoundError,

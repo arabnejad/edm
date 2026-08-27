@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from easy_docker_manager import main as main_module
-from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.config import AppConfig
 
 
 def test_main_configures_logging_loads_config_and_runs_app(monkeypatch) -> None:

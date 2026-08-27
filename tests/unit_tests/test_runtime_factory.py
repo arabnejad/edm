@@ -4,7 +4,7 @@ from functools import partial
 from unittest.mock import Mock
 
 from easy_docker_manager.app.runtime_factory import EDMRuntimeFactory
-from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.docker.client_factory import create_docker_client
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient

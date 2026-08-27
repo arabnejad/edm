@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import urwid
 
-from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     ContainerSortMenuState,

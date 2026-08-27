@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from easy_docker_manager.core import AppConfig, ContainerProcessTable
+from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.containers import ContainerProcessTable
 from easy_docker_manager.core.log_text import apply_limits_to_log_content
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.docker.container_client import (

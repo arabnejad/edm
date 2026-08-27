@@ -16,7 +16,7 @@ from typing import Optional
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.app.docker_manager import DockerManager
-from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.tab_content_cache import TabContentCache
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.client_factory import create_docker_client

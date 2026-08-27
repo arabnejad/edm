@@ -17,7 +17,7 @@ from typing import Any, Optional, Union
 import docker
 from docker.errors import DockerException, NotFound
 
-from easy_docker_manager.core import ContainerProcessTable, ContainerSummary
+from easy_docker_manager.core.containers import ContainerProcessTable, ContainerSummary
 from easy_docker_manager.docker.container_client import (
     ContainerNotFoundError,
     ContainerRefreshError,

@@ -4,7 +4,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from easy_docker_manager.core import AppConfig, ContainerProcessTable
+from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.containers import ContainerProcessTable
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.docker.container_client import (
     DockerContainerClient,

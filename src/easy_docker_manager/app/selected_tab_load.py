@@ -10,7 +10,7 @@ from typing import Optional
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.app.container_log_updates import ContainerLogUpdater
-from easy_docker_manager.core import AppConfig
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import (

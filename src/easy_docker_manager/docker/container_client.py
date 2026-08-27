@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional, Union
 
-from easy_docker_manager.core import ContainerProcessTable, ContainerSummary
+from easy_docker_manager.core.containers import ContainerProcessTable, ContainerSummary
 
 
 class DockerContainerClientError(RuntimeError):
