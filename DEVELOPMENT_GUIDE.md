@@ -183,6 +183,8 @@ flowchart TD
     Start([Run edm])
     ParseOptions[Parse command options]
     ShowInfo([Print help or version and exit])
+    CheckTerminal[Check for at least<br/>120 columns and 30 rows]
+    SizeError([Print the current size and exit])
     Logging[Configure application logging]
     LoadConfig[Load or create config.json]
     BuildApp[Create EDMApp and its runtime objects]
@@ -194,14 +196,18 @@ flowchart TD
 
     Start --> ParseOptions
     ParseOptions -->|help or version| ShowInfo
-    ParseOptions -->|start EDM| Logging --> LoadConfig --> BuildApp --> StartNotifier
+    ParseOptions -->|start EDM| CheckTerminal
+    CheckTerminal -->|too small| SizeError
+    CheckTerminal -->|large enough| Logging --> LoadConfig --> BuildApp --> StartNotifier
     StartNotifier --> FirstRefresh --> FirstDraw --> StartTimer --> RunUI
 ```
 
 `easy_docker_manager.main` first parses the command options. `--help` and
 `--version` print their output and exit without starting the application.
-`--no-color` starts EDM with a temporary no-color override. Starting EDM then
-performs three steps:
+`--no-color` starts EDM with a temporary no-color override. Before startup,
+EDM checks that the terminal has at least 120 columns and 30 rows. A smaller
+terminal receives an error showing its current size, and no application or
+Docker work is started. EDM then performs three steps:
 
 1. Configure EDM's application log.
 2. Load `AppConfig` from `config.json`.

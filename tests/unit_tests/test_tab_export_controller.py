@@ -77,10 +77,27 @@ def test_export_menu_uses_launch_directory_and_tab_extension(
 
     menu_state = state.tab_export_menu_state
     assert menu_state is not None
-    export_path = Path(menu_state.file_path)
+    export_path = Path(menu_state.file_path).expanduser()
     assert export_path.parent == tmp_path
     assert export_path.name.startswith("web-logs-")
     assert export_path.suffix == ".log"
+
+
+def test_export_menu_replaces_home_directory_with_tilde(
+    tab_export_controller_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    _cache_active_tab_content(state)
+    controller = tab_export_controller_factory(state).tab_export_controller
+    controller.launch_directory = Path.home() / "edm-exports"
+
+    assert controller.open_tab_export_menu()
+
+    menu_state = state.tab_export_menu_state
+    assert menu_state is not None
+    assert Path(menu_state.file_path).parent == Path("~") / "edm-exports"
+    assert Path(menu_state.file_path).expanduser().parent == controller.launch_directory
 
 
 def test_export_menu_reports_missing_selection_and_unloaded_content(
@@ -127,6 +144,33 @@ def test_current_view_export_uses_filtered_log_lines(
     assert export_request.tab_text_snapshot == "ERROR failed"
     assert not export_request.allow_overwrite
     assert menu_state.phase == TabExportPhase.WRITING
+
+
+def test_submit_export_expands_tilde_to_the_home_directory(
+    tab_export_controller_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    _cache_active_tab_content(state)
+    test_setup = tab_export_controller_factory(state)
+    test_setup.tab_export_controller.open_tab_export_menu()
+    menu_state = state.tab_export_menu_state
+    assert menu_state is not None
+    menu_state.file_path = "~/edm-export.log"
+
+    assert test_setup.tab_export_controller.handle_menu_keypress("enter")
+
+    export_request = test_setup.background_executor.submit.call_args.args[1]
+    target_path = Path.home() / "edm-export.log"
+    assert export_request.target_path == target_path
+    assert menu_state.file_path == "~/edm-export.log"
+
+    test_setup.export_future.set_result(target_path)
+    completion_callback = test_setup.background_executor.submit.call_args.kwargs[
+        "on_complete"
+    ]
+    assert completion_callback(test_setup.export_future)
+    assert state.tab_export_menu_state is None
 
 
 def test_full_tab_export_keeps_all_cached_text(

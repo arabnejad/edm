@@ -87,7 +87,7 @@ class TabExportController:
             selected_container.name,
             container_tab_key.tab_name,
         )
-        file_path = str(self.launch_directory / file_name)
+        file_path = self._format_export_path_for_menu(self.launch_directory / file_name)
         self.state.container_sort_menu_state = None
         self.state.tab_export_menu_state = TabExportMenuState(
             container_tab_key=container_tab_key,
@@ -296,7 +296,7 @@ class TabExportController:
             allow_overwrite=overwrite,
         )
 
-        menu_state.file_path = str(target_path)
+        menu_state.file_path = self._format_export_path_for_menu(target_path)
         menu_state.file_path_cursor_index = len(menu_state.file_path)
         menu_state.error_message = ""
         menu_state.phase = TabExportPhase.WRITING
@@ -337,6 +337,19 @@ class TabExportController:
         extension = ".log" if tab_name == TabName.LOGS else ".txt"
         return f"{safe_container_name}-{tab_name.value.lower()}-{timestamp}{extension}"
 
+    @staticmethod
+    def _format_export_path_for_menu(target_path: Path) -> str:
+        """Replace the user's home directory with ~ in the export menu.
+
+        This keeps long paths easier to read and edit. Before writing the file,
+        EDM expands ~ back to the full home directory.
+        """
+        try:
+            path_below_home = target_path.relative_to(Path.home())
+        except ValueError:
+            return str(target_path)
+        return str(Path("~") / path_below_home)
+
     def _build_export_text_snapshot(
         self,
         menu_state: TabExportMenuState,
@@ -374,7 +387,7 @@ class TabExportController:
         is_matching_menu = (
             menu_state is not None
             and menu_state.container_tab_key == container_tab_key
-            and Path(menu_state.file_path) == target_path
+            and Path(menu_state.file_path).expanduser() == target_path
         )
 
         try:

@@ -4,14 +4,20 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from collections.abc import Sequence
 from dataclasses import replace
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as distribution_version
+from shutil import get_terminal_size
 from typing import Optional
 
 from easy_docker_manager.app.app import EDMApp
 from easy_docker_manager.config import AppConfigStore
+from easy_docker_manager.constants import (
+    MINIMUM_TERMINAL_COLUMNS,
+    MINIMUM_TERMINAL_ROWS,
+)
 from easy_docker_manager.logging.app_logging import configure_logging
 
 DISTRIBUTION_NAME = "easy-docker-manager"
@@ -53,6 +59,31 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _check_minimum_terminal_size() -> bool:
+    """Check that the terminal is large enough to display EDM.
+
+    EDM calls this before loading its config or starting background work. If
+    the terminal is too small, the function prints the current and required
+    sizes so the user knows how far to resize it.
+    """
+    terminal_size = get_terminal_size(fallback=(0, 0))
+    if (
+        terminal_size.columns >= MINIMUM_TERMINAL_COLUMNS
+        and terminal_size.lines >= MINIMUM_TERMINAL_ROWS
+    ):
+        return True
+
+    print(
+        "Error: EDM requires a terminal size of at least "
+        f"{MINIMUM_TERMINAL_COLUMNS} columns by {MINIMUM_TERMINAL_ROWS} rows.\n"
+        f"Current terminal size: {terminal_size.columns} columns by "
+        f"{terminal_size.lines} rows.\n"
+        "Resize the terminal and run EDM again.",
+        file=sys.stderr,
+    )
+    return False
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """Process command options and start EDM when no exit option is used.
 
@@ -62,6 +93,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     interface opens.
     """
     command_options = _build_argument_parser().parse_args(argv)
+    if not _check_minimum_terminal_size():
+        return 1
+
     configure_logging()
     app_config = AppConfigStore().load_and_sync()
     if command_options.no_color:
