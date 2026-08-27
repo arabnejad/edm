@@ -7,9 +7,18 @@ from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     ContainerSortMenuState,
 )
-from easy_docker_manager.core.tabs import TabName
-from easy_docker_manager.core.ui_session_state import FocusArea, UISessionState
+from easy_docker_manager.core.tab_export import (
+    TabExportMenuField,
+    TabExportMenuState,
+    TabExportPhase,
+)
+from easy_docker_manager.core.tabs import ContainerTabKey, TabName
+from easy_docker_manager.core.terminal_session_state import (
+    FocusArea,
+    TerminalSessionState,
+)
 from easy_docker_manager.ui.container_details_panel import FocusableDetailLine
+from easy_docker_manager.ui.tab_export_menu import _format_export_path
 from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
 
 
@@ -32,6 +41,8 @@ def test_layout_builds_all_named_palette_entries() -> None:
         "active_detail_tab",
         "highlight",
         "error",
+        "export_menu_selected",
+        "export_path_cursor",
     } <= names
 
 
@@ -53,7 +64,7 @@ def test_no_color_palette_uses_terminal_defaults_and_keeps_selection_visible() -
 
 def test_render_shows_empty_container_state() -> None:
     view = TerminalLayoutView(AppConfig())
-    state = UISessionState(status_message="No running containers.")
+    state = TerminalSessionState(status_message="No running containers.")
 
     view.render(state, ["Select a running container."], lambda line: line)
 
@@ -75,7 +86,7 @@ def test_render_shows_empty_container_state() -> None:
 
 def test_render_shows_and_hides_container_sort_menu() -> None:
     view = TerminalLayoutView(AppConfig())
-    state = UISessionState(
+    state = TerminalSessionState(
         container_sort_menu_state=ContainerSortMenuState(
             selected_sort_field=ContainerSortField.IMAGE,
             sort_descending=True,
@@ -96,9 +107,78 @@ def test_render_shows_and_hides_container_sort_menu() -> None:
     assert view.layout.original_widget is view._main_layout
 
 
+def test_render_shows_export_form_and_sensitive_data_warning() -> None:
+    view = TerminalLayoutView(AppConfig())
+    state = TerminalSessionState(
+        tab_export_menu_state=TabExportMenuState(
+            container_tab_key=ContainerTabKey("container-1", TabName.ENV),
+            container_name="web",
+            file_path="/tmp/web-env.txt",
+            path_cursor_index=len("/tmp/web-env.txt"),
+            selected_field=TabExportMenuField.SCOPE,
+        )
+    )
+
+    view.render(state, ["A=1"], lambda line: line)
+
+    assert isinstance(view.layout.original_widget, urwid.Overlay)
+    rendered_text = b"\n".join(view.layout.render((120, 40)).text).decode()
+    assert "Export Env" in rendered_text
+    assert "Container: web" in rendered_text
+    assert "may contain passwords" in rendered_text
+    assert "> Scope: Current view" in rendered_text
+    assert "Enter Export" in rendered_text
+    assert "q Quit EDM" not in rendered_text
+
+
+def test_render_shows_export_overwrite_confirmation_and_progress() -> None:
+    view = TerminalLayoutView(AppConfig())
+    menu_state = TabExportMenuState(
+        container_tab_key=ContainerTabKey("container-1", TabName.LOGS),
+        container_name="web",
+        file_path="/tmp/web-logs.log",
+        path_cursor_index=len("/tmp/web-logs.log"),
+        phase=TabExportPhase.CONFIRMING_OVERWRITE,
+    )
+    state = TerminalSessionState(tab_export_menu_state=menu_state)
+
+    view.render(state, ["line"], lambda line: line)
+    rendered_text = b"\n".join(view.layout.render((120, 40)).text).decode()
+    assert "This file already exists" in rendered_text
+    assert "Enter Overwrite" in rendered_text
+
+    menu_state.phase = TabExportPhase.WRITING
+    view.render(state, ["line"], lambda line: line)
+    rendered_text = b"\n".join(view.layout.render((120, 40)).text).decode()
+    assert "Writing the selected tab" in rendered_text
+    assert "Please wait" in rendered_text
+
+
+def test_export_path_cursor_and_validation_error_are_rendered() -> None:
+    view = TerminalLayoutView(AppConfig())
+    menu_state = TabExportMenuState(
+        container_tab_key=ContainerTabKey("container-1", TabName.CONFIG),
+        container_name="web",
+        file_path="output.txt",
+        path_cursor_index=3,
+        error_message="Directory does not exist",
+    )
+    state = TerminalSessionState(tab_export_menu_state=menu_state)
+
+    view.render(state, ["config"], lambda line: line)
+
+    assert _format_export_path(menu_state) == [
+        ("value", "out"),
+        ("export_path_cursor", "p"),
+        ("value", "ut.txt"),
+    ]
+    rendered_text = b"\n".join(view.layout.render((120, 40)).text).decode()
+    assert "Directory does not exist" in rendered_text
+
+
 def test_container_footer_shows_active_sort_direction() -> None:
     view = TerminalLayoutView(AppConfig())
-    state = UISessionState(
+    state = TerminalSessionState(
         container_sort_field=ContainerSortField.CREATED_AT,
         container_sort_descending=True,
     )

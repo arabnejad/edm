@@ -9,7 +9,8 @@ import urwid
 
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import ContainerSortMenuState
-from easy_docker_manager.core.ui_session_state import UISessionState
+from easy_docker_manager.core.tab_export import TabExportMenuState
+from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.ui.container_details_panel import (
     SelectedContainerDetailsPanel,
 )
@@ -20,16 +21,17 @@ from easy_docker_manager.ui.formatting import MarkupSegment
 from easy_docker_manager.ui.running_container_list_panel import (
     RunningContainerListPanel,
 )
+from easy_docker_manager.ui.tab_export_menu import build_tab_export_popup_menu
 
 
 class TerminalLayoutView:
     """Combine EDM's panels, footer, and active popup.
 
-    UIController calls render() with the current session state and the lines to
+    TerminalController calls render() with the current session state and the lines to
     display. RunningContainerListPanel updates the left side,
     SelectedContainerDetailsPanel updates the right side, and this object
-    chooses whether the sorting menu should appear above them. Docker loading
-    and navigation stay outside this class.
+    chooses whether a sorting or export menu should appear above them. Docker
+    loading, file writing, and navigation stay outside this class.
     """
 
     def __init__(self, app_config: AppConfig) -> None:
@@ -95,6 +97,11 @@ class TerminalLayoutView:
             ("sort_menu", "light gray", "default"),
             ("sort_menu_title", "yellow,bold", "default"),
             ("sort_menu_selected", "white,bold", "light cyan"),
+            ("export_menu", "light gray", "default"),
+            ("export_menu_title", "light cyan,bold", "default"),
+            ("export_menu_selected", "white,bold", "light cyan"),
+            ("export_path_cursor", "black", "white"),
+            ("export_warning", "yellow,bold", "default"),
         ]
         if self.app_config.colors_enabled:
             return color_palette
@@ -107,6 +114,8 @@ class TerminalLayoutView:
             "active_detail_tab",
             "highlight",
             "sort_menu_selected",
+            "export_menu_selected",
+            "export_path_cursor",
         }
         bold_styles = {
             "app_title",
@@ -121,6 +130,8 @@ class TerminalLayoutView:
             "error",
             "log_error",
             "sort_menu_title",
+            "export_menu_title",
+            "export_warning",
         }
         monochrome_palette = []
         for style_name, _foreground, _background in color_palette:
@@ -134,7 +145,7 @@ class TerminalLayoutView:
 
     def render(
         self,
-        state: UISessionState,
+        state: TerminalSessionState,
         detail_lines: list[str],
         format_detail_line: Callable[[str], Union[str, list[MarkupSegment]]],
     ) -> None:
@@ -146,7 +157,12 @@ class TerminalLayoutView:
             format_detail_line,
         )
 
-        if isinstance(state.container_sort_menu_state, ContainerSortMenuState):
+        if isinstance(state.tab_export_menu_state, TabExportMenuState):
+            self.layout.original_widget = build_tab_export_popup_menu(
+                state.tab_export_menu_state,
+                self._main_layout,
+            )
+        elif isinstance(state.container_sort_menu_state, ContainerSortMenuState):
             self.layout.original_widget = build_container_sort_popup_menu(
                 state.container_sort_menu_state,
                 self._main_layout,
@@ -177,7 +193,9 @@ class TerminalLayoutView:
             ("shortcut_key", " / "),
             ("footer", " Search  "),
             ("shortcut_key", " s "),
-            ("footer", " Sort"),
+            ("footer", " Sort  "),
+            ("shortcut_key", " e "),
+            ("footer", " Export"),
         ]
 
 

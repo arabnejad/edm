@@ -17,8 +17,8 @@ from easy_docker_manager.app.runtime_factory import EDMRuntimeFactory
 from easy_docker_manager.core import AppConfig
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.ui.keyboard_controller import KeyAction, KeyboardController
+from easy_docker_manager.ui.terminal_controller import TerminalController
 from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
-from easy_docker_manager.ui.ui_controller import UIController
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ class EDMApp:
         # The keyboard controller handles user input, and the UI controller
         # prepares the current state for the terminal view.
         self.docker_manager: DockerManager = runtime.docker_manager
-        self.ui_controller: UIController = runtime.ui_controller
+        self.terminal_controller: TerminalController = runtime.terminal_controller
         self.keyboard_controller: KeyboardController = runtime.keyboard_controller
 
     def run(self) -> None:
@@ -108,7 +108,7 @@ class EDMApp:
                 self._process_completed_background_tasks,
             )
             self.docker_manager.start_running_container_list_refresh(force=True)
-            self.ui_controller.update_terminal_view()
+            self.terminal_controller.update_terminal_view()
             self._schedule_next_docker_data_refresh_check(delay=0)
             self.ui_event_loop.run()
         finally:
@@ -127,7 +127,7 @@ class EDMApp:
         if action == KeyAction.QUIT:
             raise urwid.ExitMainLoop()
         if action == KeyAction.RENDER:
-            self.ui_controller.update_terminal_view()
+            self.terminal_controller.update_terminal_view()
             self.docker_manager.refresh_docker_data_if_needed()
             self._schedule_next_docker_data_refresh_check()
         return None
@@ -163,7 +163,7 @@ class EDMApp:
         self.docker_manager.refresh_docker_data_if_needed()
         self._schedule_next_docker_data_refresh_check()
         if should_redraw:
-            self.ui_controller.update_terminal_view()
+            self.terminal_controller.update_terminal_view()
 
     def _schedule_next_docker_data_refresh_check(
         self,

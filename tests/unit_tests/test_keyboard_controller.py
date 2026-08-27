@@ -9,26 +9,37 @@ from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     ContainerSortMenuState,
 )
-from easy_docker_manager.core.tabs import TabName
-from easy_docker_manager.core.ui_session_state import FocusArea, UISessionState
+from easy_docker_manager.core.tab_export import TabExportMenuState
+from easy_docker_manager.core.tabs import ContainerTabKey, TabName
+from easy_docker_manager.core.terminal_session_state import (
+    FocusArea,
+    TerminalSessionState,
+)
 from easy_docker_manager.ui.keyboard_controller import KeyAction, KeyboardController
+from easy_docker_manager.ui.tab_export_controller import TabExportController
 
 
 @dataclass
 class KeyboardControllerTestSetup:
     keyboard_controller: KeyboardController
-    ui_controller: Mock
+    terminal_controller: Mock
+    tab_export_controller: Mock
 
 
 @pytest.fixture
 def keyboard_controller_factory():
-    def create_keyboard_controller(state: UISessionState):
-        ui_controller = Mock()
-        ui_controller.state = state
-        keyboard_controller = KeyboardController(ui_controller)
+    def create_keyboard_controller(state: TerminalSessionState):
+        terminal_controller = Mock()
+        terminal_controller.state = state
+        tab_export_controller = Mock(spec=TabExportController)
+        keyboard_controller = KeyboardController(
+            terminal_controller,
+            tab_export_controller,
+        )
         return KeyboardControllerTestSetup(
             keyboard_controller=keyboard_controller,
-            ui_controller=ui_controller,
+            terminal_controller=terminal_controller,
+            tab_export_controller=tab_export_controller,
         )
 
     return create_keyboard_controller
@@ -36,12 +47,12 @@ def keyboard_controller_factory():
 
 @pytest.mark.parametrize("pressed_key", ["q", "Q"])
 def test_quit_keys_request_exit(pressed_key: str, keyboard_controller_factory) -> None:
-    test_setup = keyboard_controller_factory(UISessionState())
+    test_setup = keyboard_controller_factory(TerminalSessionState())
     assert test_setup.keyboard_controller.handle_keypress(pressed_key) == KeyAction.QUIT
 
 
 def test_enter_and_escape_change_active_panel(keyboard_controller_factory) -> None:
-    state = UISessionState()
+    state = TerminalSessionState()
     test_setup = keyboard_controller_factory(state)
     keyboard_controller = test_setup.keyboard_controller
 
@@ -57,20 +68,22 @@ def test_enter_and_escape_change_active_panel(keyboard_controller_factory) -> No
 def test_arrow_keys_move_the_active_panel_selection(
     keyboard_controller_factory,
 ) -> None:
-    state = UISessionState()
+    state = TerminalSessionState()
     test_setup = keyboard_controller_factory(state)
-    test_setup.ui_controller.move_selected_container_index.return_value = True
+    test_setup.terminal_controller.move_selected_container_index.return_value = True
 
     assert test_setup.keyboard_controller.handle_keypress("down") == KeyAction.RENDER
-    test_setup.ui_controller.move_selected_container_index.assert_called_once_with(1)
+    test_setup.terminal_controller.move_selected_container_index.assert_called_once_with(
+        1
+    )
 
     state.active_focus_area = FocusArea.DETAIL
-    test_setup.ui_controller.move_selected_detail_line.return_value = True
+    test_setup.terminal_controller.move_selected_detail_line.return_value = True
     assert (
         test_setup.keyboard_controller.handle_keypress("up", (80, 24))
         == KeyAction.RENDER
     )
-    test_setup.ui_controller.move_selected_detail_line.assert_called_once_with(
+    test_setup.terminal_controller.move_selected_detail_line.assert_called_once_with(
         "up", (80, 24)
     )
 
@@ -78,31 +91,90 @@ def test_arrow_keys_move_the_active_panel_selection(
 def test_bracket_keys_switch_tabs_in_both_directions(
     keyboard_controller_factory,
 ) -> None:
-    test_setup = keyboard_controller_factory(UISessionState())
-    test_setup.ui_controller.switch_active_detail_tab.return_value = True
+    test_setup = keyboard_controller_factory(TerminalSessionState())
+    test_setup.terminal_controller.switch_active_detail_tab.return_value = True
 
     assert test_setup.keyboard_controller.handle_keypress("[") == KeyAction.RENDER
     assert test_setup.keyboard_controller.handle_keypress("]") == KeyAction.RENDER
-    assert test_setup.ui_controller.switch_active_detail_tab.call_args_list[0].args == (
-        -1,
-    )
-    assert test_setup.ui_controller.switch_active_detail_tab.call_args_list[1].args == (
-        1,
-    )
+    assert test_setup.terminal_controller.switch_active_detail_tab.call_args_list[
+        0
+    ].args == (-1,)
+    assert test_setup.terminal_controller.switch_active_detail_tab.call_args_list[
+        1
+    ].args == (1,)
 
 
 def test_sort_key_opens_menu_only_from_running_container_list_panel(
     keyboard_controller_factory,
 ) -> None:
-    state = UISessionState()
+    state = TerminalSessionState()
     test_setup = keyboard_controller_factory(state)
-    test_setup.ui_controller.open_container_sort_menu.return_value = True
+    test_setup.terminal_controller.open_container_sort_menu.return_value = True
 
     assert test_setup.keyboard_controller.handle_keypress("s") == KeyAction.RENDER
-    test_setup.ui_controller.open_container_sort_menu.assert_called_once_with()
+    test_setup.terminal_controller.open_container_sort_menu.assert_called_once_with()
 
     state.active_focus_area = FocusArea.DETAIL
     assert test_setup.keyboard_controller.handle_keypress("S") == KeyAction.NONE
+
+
+def test_export_key_opens_menu_only_from_details_panel(
+    keyboard_controller_factory,
+) -> None:
+    state = TerminalSessionState(active_focus_area=FocusArea.DETAIL)
+    test_setup = keyboard_controller_factory(state)
+    test_setup.tab_export_controller.open_tab_export_menu.return_value = True
+
+    assert test_setup.keyboard_controller.handle_keypress("e") == KeyAction.RENDER
+    test_setup.tab_export_controller.open_tab_export_menu.assert_called_once_with()
+
+    state.active_focus_area = FocusArea.CONTAINERS
+    assert test_setup.keyboard_controller.handle_keypress("E") == KeyAction.NONE
+
+
+@pytest.mark.parametrize(
+    "pressed_key",
+    ["up", "down", "tab", "enter", "esc", "left", "q", "Q", "x"],
+)
+def test_export_menu_delegates_every_key_to_its_controller(
+    keyboard_controller_factory,
+    pressed_key: str,
+) -> None:
+    state = TerminalSessionState(
+        tab_export_menu_state=TabExportMenuState(
+            ContainerTabKey("container-1", TabName.LOGS),
+            "web",
+            "logs.log",
+            len("logs.log"),
+        )
+    )
+    test_setup = keyboard_controller_factory(state)
+    test_setup.tab_export_controller.handle_menu_keypress.return_value = True
+
+    assert (
+        test_setup.keyboard_controller.handle_keypress(pressed_key) == KeyAction.RENDER
+    )
+    test_setup.tab_export_controller.handle_menu_keypress.assert_called_once_with(
+        pressed_key
+    )
+
+
+def test_export_menu_does_not_redraw_when_its_controller_reports_no_change(
+    keyboard_controller_factory,
+) -> None:
+    state = TerminalSessionState(
+        tab_export_menu_state=TabExportMenuState(
+            ContainerTabKey("container-1", TabName.LOGS),
+            "web",
+            "logs.log",
+            len("logs.log"),
+        )
+    )
+    test_setup = keyboard_controller_factory(state)
+    test_setup.tab_export_controller.handle_menu_keypress.return_value = False
+
+    assert test_setup.keyboard_controller.handle_keypress("q") == KeyAction.NONE
+    test_setup.tab_export_controller.handle_menu_keypress.assert_called_once_with("q")
 
 
 @pytest.mark.parametrize(
@@ -122,14 +194,14 @@ def test_sort_menu_routes_its_keyboard_controls(
     controller_method: str,
     expected_arguments: tuple[object, ...],
 ) -> None:
-    state = UISessionState(
+    state = TerminalSessionState(
         container_sort_menu_state=ContainerSortMenuState(
             selected_sort_field=ContainerSortField.DOCKER_ORDER,
             sort_descending=False,
         )
     )
     test_setup = keyboard_controller_factory(state)
-    method = getattr(test_setup.ui_controller, controller_method)
+    method = getattr(test_setup.terminal_controller, controller_method)
     method.return_value = True
 
     assert (
@@ -142,7 +214,7 @@ def test_sort_menu_routes_its_keyboard_controls(
 
 
 def test_sort_menu_ignores_unrelated_keys(keyboard_controller_factory) -> None:
-    state = UISessionState(
+    state = TerminalSessionState(
         container_sort_menu_state=ContainerSortMenuState(
             selected_sort_field=ContainerSortField.DOCKER_ORDER,
             sort_descending=False,
@@ -221,13 +293,13 @@ def test_search_navigation_moves_detail_without_changing_query(
     test_setup = keyboard_controller_factory(state)
     test_setup.keyboard_controller.handle_keypress("/")
     test_setup.keyboard_controller.handle_keypress("x")
-    test_setup.ui_controller.move_selected_detail_line.return_value = True
+    test_setup.terminal_controller.move_selected_detail_line.return_value = True
 
     assert (
         test_setup.keyboard_controller.handle_keypress("page down", (80, 24))
         == KeyAction.RENDER
     )
-    test_setup.ui_controller.move_selected_detail_line.assert_called_once_with(
+    test_setup.terminal_controller.move_selected_detail_line.assert_called_once_with(
         "page down",
         (80, 24),
     )
@@ -237,11 +309,11 @@ def test_search_navigation_moves_detail_without_changing_query(
 def test_page_navigation_is_ignored_while_running_container_list_panel_is_active(
     keyboard_controller_factory,
 ) -> None:
-    test_setup = keyboard_controller_factory(UISessionState())
+    test_setup = keyboard_controller_factory(TerminalSessionState())
     assert test_setup.keyboard_controller.handle_keypress("page down") == KeyAction.NONE
-    test_setup.ui_controller.move_selected_detail_line.assert_not_called()
+    test_setup.terminal_controller.move_selected_detail_line.assert_not_called()
 
 
 def test_unknown_key_does_nothing(keyboard_controller_factory) -> None:
-    test_setup = keyboard_controller_factory(UISessionState())
+    test_setup = keyboard_controller_factory(TerminalSessionState())
     assert test_setup.keyboard_controller.handle_keypress("f1") == KeyAction.NONE

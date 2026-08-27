@@ -5,8 +5,9 @@ from __future__ import annotations
 from enum import Enum
 from typing import Optional
 
-from easy_docker_manager.core.ui_session_state import FocusArea
-from easy_docker_manager.ui.ui_controller import UIController
+from easy_docker_manager.core.terminal_session_state import FocusArea
+from easy_docker_manager.ui.tab_export_controller import TabExportController
+from easy_docker_manager.ui.terminal_controller import TerminalController
 
 
 class KeyAction(Enum):
@@ -21,13 +22,19 @@ class KeyboardController:
     """Handle EDM keyboard shortcuts and search input.
 
     EDMApp sends each Urwid key name here. This controller updates search text
-    and keyboard focus. It asks UIController to move selections or switch tabs.
+    and keyboard focus. It sends navigation to TerminalController and export-menu
+    input to TabExportController.
     """
 
-    def __init__(self, ui_controller: UIController) -> None:
-        """Keep the UI controller and its shared session state."""
-        self.ui_controller = ui_controller
-        self.state = ui_controller.state
+    def __init__(
+        self,
+        terminal_controller: TerminalController,
+        tab_export_controller: TabExportController,
+    ) -> None:
+        """Keep both UI controllers and their shared session state."""
+        self.terminal_controller = terminal_controller
+        self.tab_export_controller = tab_export_controller
+        self.state = terminal_controller.state
 
     def handle_keypress(
         self,
@@ -35,6 +42,8 @@ class KeyboardController:
         terminal_size: Optional[tuple[int, ...]] = None,
     ) -> KeyAction:
         """Handle one keypress and tell EDMApp whether to redraw or quit."""
+        if self.state.tab_export_menu_state is not None:
+            return self._handle_tab_export_menu_keypress(key)
         if self.state.container_sort_menu_state is not None:
             return self._handle_container_sort_menu_keypress(key)
         if self.state.is_search_active:
@@ -61,20 +70,22 @@ class KeyboardController:
             if self.state.active_focus_area == FocusArea.DETAIL:
                 return (
                     KeyAction.RENDER
-                    if self.ui_controller.move_selected_detail_line("up", terminal_size)
+                    if self.terminal_controller.move_selected_detail_line(
+                        "up", terminal_size
+                    )
                     else KeyAction.NONE
                 )
             else:
                 return (
                     KeyAction.RENDER
-                    if self.ui_controller.move_selected_container_index(-1)
+                    if self.terminal_controller.move_selected_container_index(-1)
                     else KeyAction.NONE
                 )
         elif key == "down":
             if self.state.active_focus_area == FocusArea.DETAIL:
                 return (
                     KeyAction.RENDER
-                    if self.ui_controller.move_selected_detail_line(
+                    if self.terminal_controller.move_selected_detail_line(
                         "down", terminal_size
                     )
                     else KeyAction.NONE
@@ -82,19 +93,19 @@ class KeyboardController:
             else:
                 return (
                     KeyAction.RENDER
-                    if self.ui_controller.move_selected_container_index(1)
+                    if self.terminal_controller.move_selected_container_index(1)
                     else KeyAction.NONE
                 )
         elif key == "[":
             return (
                 KeyAction.RENDER
-                if self.ui_controller.switch_active_detail_tab(-1)
+                if self.terminal_controller.switch_active_detail_tab(-1)
                 else KeyAction.NONE
             )
         elif key == "]":
             return (
                 KeyAction.RENDER
-                if self.ui_controller.switch_active_detail_tab(1)
+                if self.terminal_controller.switch_active_detail_tab(1)
                 else KeyAction.NONE
             )
         elif key == "/":
@@ -104,7 +115,13 @@ class KeyboardController:
         elif key in {"s", "S"} and self.state.active_focus_area == FocusArea.CONTAINERS:
             return (
                 KeyAction.RENDER
-                if self.ui_controller.open_container_sort_menu()
+                if self.terminal_controller.open_container_sort_menu()
+                else KeyAction.NONE
+            )
+        elif key in {"e", "E"} and self.state.active_focus_area == FocusArea.DETAIL:
+            return (
+                KeyAction.RENDER
+                if self.tab_export_controller.open_tab_export_menu()
                 else KeyAction.NONE
             )
         elif (
@@ -113,30 +130,37 @@ class KeyboardController:
         ):
             return (
                 KeyAction.RENDER
-                if self.ui_controller.move_selected_detail_line(key, terminal_size)
+                if self.terminal_controller.move_selected_detail_line(
+                    key, terminal_size
+                )
                 else KeyAction.NONE
             )
         return KeyAction.NONE
+
+    def _handle_tab_export_menu_keypress(self, key: str) -> KeyAction:
+        """Pass an export-menu key to the controller that owns its workflow."""
+        changed = self.tab_export_controller.handle_menu_keypress(key)
+        return KeyAction.RENDER if changed else KeyAction.NONE
 
     def _handle_container_sort_menu_keypress(self, key: str) -> KeyAction:
         """Handle navigation, apply, and cancel keys in the sorting menu."""
         changed = False
         if key == "up":
-            changed = self.ui_controller.move_container_sort_menu_selection(-1)
+            changed = self.terminal_controller.move_container_sort_menu_selection(-1)
         elif key == "down":
-            changed = self.ui_controller.move_container_sort_menu_selection(1)
+            changed = self.terminal_controller.move_container_sort_menu_selection(1)
         elif key == "left":
-            changed = self.ui_controller.set_container_sort_menu_direction(
+            changed = self.terminal_controller.set_container_sort_menu_direction(
                 descending=False
             )
         elif key == "right":
-            changed = self.ui_controller.set_container_sort_menu_direction(
+            changed = self.terminal_controller.set_container_sort_menu_direction(
                 descending=True
             )
         elif key == "enter":
-            changed = self.ui_controller.apply_container_sort_menu()
+            changed = self.terminal_controller.apply_container_sort_menu()
         elif key == "esc":
-            changed = self.ui_controller.close_container_sort_menu()
+            changed = self.terminal_controller.close_container_sort_menu()
         return KeyAction.RENDER if changed else KeyAction.NONE
 
     def _handle_search_keypress(
@@ -155,13 +179,13 @@ class KeyboardController:
             focus_changed = self.state.active_focus_area != FocusArea.DETAIL
             self.state.active_focus_area = FocusArea.DETAIL
             return (
-                self.ui_controller.move_selected_detail_line(key, terminal_size)
+                self.terminal_controller.move_selected_detail_line(key, terminal_size)
                 or focus_changed
             )
         if key == "[":
-            return self.ui_controller.switch_active_detail_tab(-1)
+            return self.terminal_controller.switch_active_detail_tab(-1)
         if key == "]":
-            return self.ui_controller.switch_active_detail_tab(1)
+            return self.terminal_controller.switch_active_detail_tab(1)
 
         if key == "esc":
             changed = (

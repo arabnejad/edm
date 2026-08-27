@@ -170,10 +170,10 @@ class DetailLineRenderer:
 class DetailTabTextFormatter:
     """Filter and color text for the active detail tab.
 
-    UIController uses this before each redraw. Logs queries remove non-matching
-    lines and highlight regex matches. Env, Config, and Top keep every line and
-    highlight plain-text matches. DetailLineRenderer then adds the normal tab
-    colors.
+    TerminalController uses this before each redraw, and TabExportController uses it
+    when exporting the current view. Logs queries remove non-matching lines and
+    highlight regex matches. Env, Config, and Top keep every line and highlight
+    plain-text matches. DetailLineRenderer then adds the normal tab colors.
     """
 
     def __init__(self) -> None:

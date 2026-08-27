@@ -26,10 +26,11 @@ src/
       config.py                   AppConfig values and validation
       container_sorting.py       Container sort fields and ordering
       containers.py               Container and process data classes
+      tab_export.py               Export menu choices and file-write request
       tab_content_cache.py        Size-limited tab text cache
       log_text.py                 Log trimming and duplicate-line handling
       tabs.py                     Detail tab names
-      ui_session_state.py         State for the current terminal session
+      terminal_session_state.py         State for the current terminal session
 
     docker/
       container_client.py         DockerContainerClient interface and EDM errors
@@ -41,6 +42,7 @@ src/
 
     tabs/
       config_tab_formatter.py     Formats Docker inspection data
+      tab_content_exporter.py     Writes tab snapshots to UTF-8 text files
       tab_data_loader.py          Loads text for Logs, Env, Config, and Top
 
     ui/
@@ -50,8 +52,10 @@ src/
       container_details_panel.py Builds the selected container details panel
       formatting.py               Filters lines and adds terminal colors
       keyboard_controller.py      Maps keypresses to actions
+      tab_export_controller.py    Handles the export workflow
+      tab_export_menu.py          Builds the export popup menu
       terminal_layout.py          Combines panels, popups, and the footer
-      ui_controller.py            Handles navigation, search, and drawing
+      terminal_controller.py            Handles navigation, search, and drawing
 
     logging/
       app_logging.py              Configures EDM application logging
@@ -71,16 +75,17 @@ The colors show who owns each part:
 - Gray nodes are people or systems outside the application.
 
 Read the diagram from top to bottom. User input enters through `EDMApp`. The
-flow then branches toward screen updates or Docker requests. Finished Docker
-work returns to `EDMApp` through `BackgroundNotifier`.
+flow then branches toward screen updates, Docker requests, or file exports.
+Finished background work returns to `EDMApp` through `BackgroundNotifier`.
 
 ```mermaid
 flowchart TD
     User(("👤 User"))
     App[EDMApp]
     Keyboard[KeyboardController]
-    UI[UIController]
-    State[(UISessionState)]
+    UI[TerminalController]
+    ExportController[TabExportController]
+    State[(TerminalSessionState)]
     DockerManager[DockerManager]
     Executor[BackgroundExecutor]
     Notifier[BackgroundNotifier]
@@ -89,15 +94,22 @@ flowchart TD
     DockerSDK[Docker SDK for Python]
     Docker[(🐳 Local Docker daemon)]
     Formatter[DetailTabTextFormatter]
+    Exporter[TabContentExporter]
+    File[(📄 Exported text file)]
     View[TerminalLayoutView]
     Urwid[Urwid]
     Terminal[🖥️ User's terminal window]
 
-    User --> App --> Keyboard --> UI
+    User --> App --> Keyboard
+    Keyboard --> UI
+    Keyboard --> ExportController
 
     UI --> Formatter
     UI --> View --> Urwid --> Terminal
     UI --> State
+    ExportController --> Formatter
+    ExportController --> State
+    ExportController --> Executor
 
     App --> DockerManager
     UI --> DockerManager
@@ -105,6 +117,7 @@ flowchart TD
     DockerManager --> Executor
     Executor --> Loader --> Client
     Executor --> Client
+    Executor --> Exporter --> File
     Client --> DockerSDK --> Docker
 
     Executor --> Notifier --> App
@@ -113,9 +126,9 @@ flowchart TD
     classDef thirdParty fill:#fff8c5,stroke:#9a6700,color:#1f2328
     classDef external fill:#f6f8fa,stroke:#57606a,color:#1f2328
 
-    class App,Keyboard,UI,State,DockerManager,Executor,Notifier,Loader,Client,Formatter,View edm
+    class App,Keyboard,UI,ExportController,State,DockerManager,Executor,Notifier,Loader,Client,Formatter,Exporter,View edm
     class DockerSDK,Urwid thirdParty
-    class User,Docker,Terminal external
+    class User,Docker,Terminal,File external
 ```
 
 The main responsibilities are:
@@ -123,11 +136,14 @@ The main responsibilities are:
 - `EDMApp` starts and stops the terminal application. It also receives
   keypresses and finished background work.
 - `KeyboardController` decides what a key means.
-- `UIController` changes selections, switches tabs, handles menus and search,
+- `TerminalController` changes selections, switches tabs, handles menus and search,
   and prepares the screen for drawing.
+- `TabExportController` edits export choices, prepares a cached text snapshot,
+  and handles the result of the file write.
 - `DockerManager` decides what container data is needed, requests
   it, and stores each finished result in session state.
-- `BackgroundExecutor` runs blocking functions outside the UI thread.
+- `BackgroundExecutor` runs Docker requests and file writes outside the UI
+  thread.
 - `TerminalLayoutView` combines the two panels, popups, and shortcut footer.
   Together, these visible parts are called the terminal view.
 - `RunningContainerListPanel` and `SelectedContainerDetailsPanel` update their
@@ -209,14 +225,17 @@ flowchart LR
     Root[_KeyboardRoutingWidget]
     App[EDMApp]
     Keyboard[KeyboardController]
-    UI[UIController]
-    State[(UISessionState)]
+    UI[TerminalController]
+    Export[TabExportController]
+    State[(TerminalSessionState)]
     View[TerminalLayoutView]
 
     Key --> Root --> App --> Keyboard
     Keyboard --> State
     Keyboard --> UI
+    Keyboard --> Export
     UI --> State
+    Export --> State
     UI --> View
 ```
 
@@ -224,8 +243,10 @@ flowchart LR
 
 `KeyboardController` handles simple key behavior directly, such as entering
 search mode or changing which panel has keyboard focus. It calls
-`UIController` for actions that need several steps, such as moving to another
-container, sorting containers, switching tabs, or scrolling detail text.
+`TerminalController` for actions that need several steps, such as moving to another
+container, sorting containers, switching tabs, or scrolling detail text. While
+the export menu is open, it passes every key to `TabExportController`. This
+keeps all export-menu rules in one place.
 
 The controller returns a `KeyAction`:
 
@@ -240,7 +261,7 @@ The menu and its keyboard controls are documented in
 popup rather than opening another terminal window.
 
 `KeyboardController` gives the menu first chance to handle keys while it is
-open. `UISessionState.container_sort_menu_state` holds a `ContainerSortMenuState` with
+open. `TerminalSessionState.container_sort_menu_state` holds a `ContainerSortMenuState` with
 the choices currently shown in the menu. The active sort is not changed
 until the user presses `Enter`, so `Esc` can cancel without changing the list.
 
@@ -250,32 +271,61 @@ The same container and loaded tab stay selected. Later refreshes use the same
 sort. `Docker order` restores an unchanged copy of the latest list received
 from Docker.
 
+### Tab Export
+
+The popup and its keyboard controls are documented in
+[Exporting Tab Content](README.md#exporting-tab-content).
+
+One `TabExportController` handles exports for Logs, Env, Config, and Top. The
+active `ContainerTabKey` records which container and tab the export belongs to.
+The workflow is:
+
+1. The user presses `e` while the details panel is active.
+2. `KeyboardController` asks `TabExportController` to open the popup.
+3. While the popup is open, `KeyboardController` passes each key to
+   `TabExportController.handle_menu_keypress()`.
+4. `TerminalSessionState.tab_export_menu_state` stores the path, scope, selected
+   field, and current menu phase.
+5. When the user presses `Enter`, the controller reads the tab text already in
+   `TabContentCache`. It does not make another Docker request.
+6. Current view applies the active Logs filter. Full loaded tab keeps all
+   cached text. Searches on Env, Config, and Top do not remove lines.
+7. The controller creates a `TabExportRequest` containing that fixed text
+   snapshot and sends `TabContentExporter.export_text()` to
+   `BackgroundExecutor`.
+8. The completion callback closes the popup after success. If the path exists,
+   it asks for confirmation. Other errors leave the popup open so the path can
+   be corrected.
+
+Confirmed replacements use a temporary file in the destination directory.
+The existing file is replaced only after all new content has been written.
+
 ## Background Work
 
-Docker requests can be slow, so they run in worker threads. Urwid widgets and
-`UISessionState` are changed only on the UI thread.
+Docker requests and file writes can be slow, so they run in worker threads.
+Urwid widgets and `TerminalSessionState` are changed only on the UI thread.
 
-Two objects handle this work:
+Three objects handle this work:
 
 - `DockerManager` owns the request from start to finish. It decides
   when to start it and provides the function that will handle its result.
+- `TabExportController` does the same for a user-requested file export.
 - `BackgroundExecutor` runs the blocking function in a worker thread. It does
-  not know whether the function is refreshing containers, loading a tab, or
-  polling logs.
+  not need to know whether the function reads Docker or writes a file.
 
-Read this diagram from top to bottom. The worker thread only calls Docker. All
-state changes happen later on the UI thread.
+Read this diagram from top to bottom. The worker thread does the blocking work.
+All state changes happen later on the UI thread.
 
 ```mermaid
 flowchart TD
     subgraph UI[UI thread]
-        Check[1. A timer or UI action asks<br/>DockerManager to check which<br/>Docker data needs updating]
-        Choose[2. DockerManager starts<br/>a container refresh, tab load,<br/>or log poll]
-        Submit[3. BackgroundExecutor submits<br/>the Docker function and its<br/>completion callback]
+        Check[1. A timer or UI action asks<br/>which work is needed]
+        Choose[2. DockerManager starts a Docker<br/>request, or TabExportController<br/>starts a file export]
+        Submit[3. BackgroundExecutor submits<br/>the blocking function and its<br/>completion callback]
         Receive[8. EDMApp takes completed<br/>callbacks from the executor queue]
         Current{9. Does this Future still<br/>belong to the active request?}
         Discard[Ignore the old completion]
-        Apply[10. DockerManager reads<br/>the Future and updates<br/>the UI session state]
+        Apply[10. The completion callback reads<br/>the Future and updates<br/>the UI session state]
         Schedule[11. Start the next request<br/>when it is due and schedule<br/>the next timer]
         Changed{12. Did visible state change?}
         Draw[13. Draw the current state]
@@ -283,7 +333,7 @@ flowchart TD
     end
 
     subgraph Worker[Worker thread]
-        Request[4. Run the Docker request]
+        Request[4. Run the Docker request<br/>or write the export file]
         Finish[5. Store returned data or<br/>an exception in the Future]
         Queue[6. Put its completion callback<br/>in the executor queue]
     end
@@ -343,6 +393,8 @@ For example, a container refresh submits
 `DockerContainerClient.list_running_containers` together with
 `DockerManager._apply_running_container_list_refresh_result`. The first
 function runs in a worker. The second function runs later on the UI thread.
+Tab export follows the same pattern with `TabContentExporter.export_text()` and
+the completion method in `TabExportController`.
 
 When a worker finishes, the executor puts its completion callback in a queue
 and calls `BackgroundNotifier`. On Unix-like systems,
@@ -395,7 +447,7 @@ because they must be merged into existing log text.
 
 ## State And Cache
 
-`UISessionState` holds the changing data for one run of EDM. Controllers and
+`TerminalSessionState` holds the changing data for one run of EDM. Controllers and
 `DockerManager` update it. The terminal views only read it.
 
 Important fields are:
@@ -407,6 +459,7 @@ Important fields are:
 | `container_sort_field` | Sort field currently applied to the container list |
 | `container_sort_descending` | Whether the active sort runs in descending order |
 | `container_sort_menu_state` | Temporary choices in the open sort menu, or `None` when it is closed |
+| `tab_export_menu_state` | Path, scope, selection, and phase of the open export menu, or `None` when it is closed |
 | `active_detail_tab_name` | Logs, Env, Config, or Top |
 | `active_focus_area` | Panel that receives navigation keys |
 | `detail_selected_line_index` | Selected line in the detail panel |
@@ -433,7 +486,7 @@ container refresh.
 
 ## Display And Search
 
-`UIController.get_active_detail_tab_display_lines()` chooses what the detail
+`TerminalController.get_active_detail_tab_display_lines()` chooses what the detail
 panel should show: a loading message, an error, an empty-state message, or
 loaded text.
 
@@ -479,9 +532,12 @@ environment keys, structured values, search matches, and errors.
 | `ContainerProcessTable` | Stores process column names and rows from Docker top |
 | `TabName` | Names the four detail tabs |
 | `FocusArea` | Names the container and detail keyboard focus areas |
-| `UISessionState` | Stores changing data for the current UI session |
+| `TerminalSessionState` | Stores changing data for the current terminal session |
 | `ContainerTabKey` | Identifies one tab for one container |
 | `TabContentCache` | Keeps recently used tab text within count and byte limits |
+| `TabExportMenuState` | Stores the path and scope while the export popup is open |
+| `TabExportPhase` | Says whether the export menu is being edited, writing a file, or confirming replacement |
+| `TabExportRequest` | Carries one fixed text snapshot to the file writer |
 
 ### Docker And Tabs
 
@@ -494,6 +550,7 @@ environment keys, structured values, search matches, and errors.
 | `create_docker_client` | Creates a local Docker SDK client and rejects remote `DOCKER_HOST` transports |
 | `to_container_summary` | Converts a Docker container object to `ContainerSummary` |
 | `TabDataLoader` | Loads and formats the full text for a requested detail tab |
+| `TabContentExporter` | Writes a prepared tab snapshot without silently replacing a file |
 
 ### UI
 
@@ -501,12 +558,14 @@ environment keys, structured values, search matches, and errors.
 | --- | --- |
 | `KeyboardController` | Turns keypresses into state and navigation actions |
 | `KeyAction` | Tells `EDMApp` to do nothing, redraw, or quit |
-| `UIController` | Handles navigation, search, menu choices, and drawing |
+| `TerminalController` | Handles navigation, search, menu choices, and drawing |
+| `TabExportController` | Handles export choices, cached text snapshots, and file-write results |
 | `TerminalLayoutView` | Combines the panels, active popup, and shortcut footer |
 | `RunningContainerListPanel` | Owns the running-container list and its header, footer, and border |
 | `SelectedContainerDetailsPanel` | Owns the selected container's tabs, rows, status, border, and row cache |
 | `ContainerSortMenuState` | Holds choices being edited in the sort menu |
 | `build_container_sort_popup_menu` | Builds the sort popup menu over the main layout |
+| `build_tab_export_popup_menu` | Builds the export popup menu over the main layout |
 | `FocusableDetailLine` | Lets keyboard navigation select one line of detail text |
 | `DetailTabTextFormatter` | Applies search behavior and requests line colors |
 | `LogRegexLineFilter` | Filters Logs while leaving other tab lines in place |
@@ -697,4 +756,3 @@ vhs docs/demos/edm-demo.tape
 Use dedicated demo containers. Before committing the GIF, check every frame
 for passwords, tokens, internal hostnames, private URLs, and sensitive log or
 container data.
-

@@ -6,7 +6,10 @@ import urwid
 
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import ContainerSortField
-from easy_docker_manager.core.ui_session_state import FocusArea, UISessionState
+from easy_docker_manager.core.terminal_session_state import (
+    FocusArea,
+    TerminalSessionState,
+)
 from easy_docker_manager.ui.formatting import MarkupSegment
 
 
@@ -15,7 +18,7 @@ class RunningContainerListPanel:
 
     TerminalLayoutView creates this once and calls render() for each redraw.
     The panel updates its title, container rows, sorting summary, status text,
-    focus, and border from UISessionState. It does not change the selected
+    focus, and border from TerminalSessionState. It does not change the selected
     container or start Docker requests.
     """
 
@@ -37,7 +40,7 @@ class RunningContainerListPanel:
             ]
         )
 
-    def render(self, state: UISessionState) -> None:
+    def render(self, state: TerminalSessionState) -> None:
         """Update the rows, sort summary, focus, and border from UI state."""
         self._rebuild_container_list_and_focus_on_selected_container(state)
         self._update_selected_sort_display_text(state)
@@ -96,13 +99,13 @@ class RunningContainerListPanel:
         )
 
     def _rebuild_container_list_and_focus_on_selected_container(
-        self, state: UISessionState
+        self, state: TerminalSessionState
     ) -> None:
         """Rebuild the list and focus its selected container row.
 
         render() calls this during each panel redraw. It creates the visible
         rows from the running containers, replaces the existing Urwid rows,
-        and moves list focus to the selected index from UISessionState. It does
+        and moves list focus to the selected index from TerminalSessionState. It does
         not change which container is selected in session state.
         """
         rows: list[urwid.Widget] = []
@@ -140,7 +143,7 @@ class RunningContainerListPanel:
         selected_index = state.selected_container_index or 0
         self.container_rows.set_focus(min(selected_index, len(rows) - 1))
 
-    def _update_selected_sort_display_text(self, state: UISessionState) -> None:
+    def _update_selected_sort_display_text(self, state: TerminalSessionState) -> None:
         """Show the selected sort field and direction below the container list."""
         sort_field = state.container_sort_field
         sort_text: list[MarkupSegment] = [

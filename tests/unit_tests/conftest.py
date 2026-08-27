@@ -7,7 +7,7 @@ import pytest
 
 from easy_docker_manager.core import ContainerSummary
 from easy_docker_manager.core.tabs import TabName
-from easy_docker_manager.core.ui_session_state import UISessionState
+from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 
 
 @pytest.fixture
@@ -54,14 +54,14 @@ def container_summary_factory() -> Callable[..., ContainerSummary]:
 @pytest.fixture
 def session_state_factory(
     container_summary_factory: Callable[..., ContainerSummary],
-) -> Callable[..., UISessionState]:
+) -> Callable[..., TerminalSessionState]:
     """Create UI state with one selected container and detail tab."""
 
     def create_session_state(
         container_id: str = "container-1",
         tab: TabName = TabName.LOGS,
-    ) -> UISessionState:
-        return UISessionState(
+    ) -> TerminalSessionState:
+        return TerminalSessionState(
             running_containers=[container_summary_factory(container_id=container_id)],
             selected_container_index=0,
             active_detail_tab_name=tab,

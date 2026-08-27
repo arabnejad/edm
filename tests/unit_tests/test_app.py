@@ -15,8 +15,8 @@ from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.app.runtime_factory import EDMRuntimeFactory
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.ui.keyboard_controller import KeyAction, KeyboardController
+from easy_docker_manager.ui.terminal_controller import TerminalController
 from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
-from easy_docker_manager.ui.ui_controller import UIController
 
 
 @dataclass
@@ -39,7 +39,7 @@ def edm_app_setup() -> EDMAppTestSetup:
         background_executor=Mock(spec=BackgroundExecutor),
         terminal_layout_view=terminal_layout_view,
         docker_manager=Mock(spec=DockerManager),
-        ui_controller=Mock(spec=UIController),
+        terminal_controller=Mock(spec=TerminalController),
         keyboard_controller=Mock(spec=KeyboardController),
     )
     runtime_factory = Mock(spec=EDMRuntimeFactory)
@@ -86,7 +86,7 @@ def test_keyboard_render_action_redraws_and_checks_background_work(
 
     assert edm_app_setup.app.handle_keyboard_input("down", (80, 24)) is None
 
-    edm_app_setup.runtime.ui_controller.update_terminal_view.assert_called_once_with()
+    edm_app_setup.runtime.terminal_controller.update_terminal_view.assert_called_once_with()
     docker_manager = edm_app_setup.runtime.docker_manager
     docker_manager.refresh_docker_data_if_needed.assert_called_once_with()
     edm_app_setup.app._schedule_next_docker_data_refresh_check.assert_called_once_with()
@@ -99,7 +99,7 @@ def test_keyboard_no_action_does_not_redraw(edm_app_setup) -> None:
 
     edm_app_setup.app.handle_keyboard_input("unknown")
 
-    edm_app_setup.runtime.ui_controller.update_terminal_view.assert_not_called()
+    edm_app_setup.runtime.terminal_controller.update_terminal_view.assert_not_called()
 
 
 def test_keyboard_quit_action_exits_main_loop(edm_app_setup) -> None:
@@ -143,7 +143,7 @@ def test_completion_callbacks_run_and_visible_changes_redraw(
     second_completion.assert_called_once_with()
     docker_manager = edm_app_setup.runtime.docker_manager
     docker_manager.refresh_docker_data_if_needed.assert_called_once_with()
-    edm_app_setup.runtime.ui_controller.update_terminal_view.assert_called_once_with()
+    edm_app_setup.runtime.terminal_controller.update_terminal_view.assert_called_once_with()
 
 
 def test_completion_callbacks_do_not_redraw_when_nothing_visible_changed(
@@ -156,7 +156,7 @@ def test_completion_callbacks_do_not_redraw_when_nothing_visible_changed(
 
     edm_app_setup.app._process_completed_background_tasks(b"")
 
-    edm_app_setup.runtime.ui_controller.update_terminal_view.assert_not_called()
+    edm_app_setup.runtime.terminal_controller.update_terminal_view.assert_not_called()
 
 
 class FakeUrwidMainLoop:
@@ -227,7 +227,7 @@ def test_run_starts_ui_and_closes_resources(
     runtime.docker_manager.start_running_container_list_refresh.assert_called_once_with(
         force=True
     )
-    runtime.ui_controller.update_terminal_view.assert_called_once_with()
+    runtime.terminal_controller.update_terminal_view.assert_called_once_with()
     fake_urwid_main_loop.set_alarm_in.assert_called_once_with(
         0,
         edm_app_setup.app._run_scheduled_docker_data_refresh_check,

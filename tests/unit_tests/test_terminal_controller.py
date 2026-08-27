@@ -10,31 +10,31 @@ from easy_docker_manager.core.container_sorting import (
     ContainerSortMenuState,
 )
 from easy_docker_manager.core.tabs import TabName
-from easy_docker_manager.core.ui_session_state import UISessionState
+from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
-from easy_docker_manager.ui.ui_controller import UIController
+from easy_docker_manager.ui.terminal_controller import TerminalController
 
 
 @dataclass
-class UIControllerTestSetup:
-    controller: UIController
+class TerminalControllerTestSetup:
+    controller: TerminalController
     terminal_layout_view: Mock
     docker_manager: Mock
 
 
 @pytest.fixture
 def controller_factory():
-    def create_controller(state: UISessionState):
+    def create_controller(state: TerminalSessionState):
         terminal_layout_view = Mock()
         docker_manager = Mock()
-        ui_controller = UIController(
+        terminal_controller = TerminalController(
             state,
             terminal_layout_view,
             DetailTabTextFormatter(),
             docker_manager,
         )
-        return UIControllerTestSetup(
-            controller=ui_controller,
+        return TerminalControllerTestSetup(
+            controller=terminal_controller,
             terminal_layout_view=terminal_layout_view,
             docker_manager=docker_manager,
         )
@@ -46,7 +46,7 @@ def test_active_detail_tab_display_lines_show_empty_and_error_messages(
     controller_factory,
     container_summary_factory,
 ) -> None:
-    state = UISessionState()
+    state = TerminalSessionState()
     test_setup = controller_factory(state)
     controller = test_setup.controller
     assert controller.get_active_detail_tab_display_lines() == [
@@ -181,7 +181,7 @@ def test_move_selected_container_index_loads_the_new_container(
     controller_factory,
     container_summary_factory,
 ) -> None:
-    state = UISessionState(
+    state = TerminalSessionState(
         running_containers=[
             container_summary_factory("one"),
             container_summary_factory("two"),
@@ -212,7 +212,7 @@ def test_sort_menu_applies_the_selected_field_and_direction(
     controller_factory,
     container_summary_factory,
 ) -> None:
-    state = UISessionState(
+    state = TerminalSessionState(
         running_containers=[
             container_summary_factory("z", name="Zulu"),
             container_summary_factory("a", name="alpha"),
@@ -240,7 +240,7 @@ def test_sort_menu_applies_the_selected_field_and_direction(
 def test_sort_menu_can_cancel_and_reject_unavailable_movements(
     controller_factory,
 ) -> None:
-    state = UISessionState()
+    state = TerminalSessionState()
     test_setup = controller_factory(state)
 
     assert not test_setup.controller.close_container_sort_menu()
@@ -257,7 +257,7 @@ def test_sort_menu_can_cancel_and_reject_unavailable_movements(
 
 
 def test_docker_order_ignores_direction_in_the_sort_menu(controller_factory) -> None:
-    state = UISessionState()
+    state = TerminalSessionState()
     test_setup = controller_factory(state)
 
     test_setup.controller.open_container_sort_menu()

@@ -1,7 +1,8 @@
 """Run blocking work without holding up the terminal interface.
 
-Docker requests can take time. BackgroundExecutor runs them in worker threads
-so the UI thread remains free to handle keys and redraw the screen.
+Docker requests and file writes can take time. BackgroundExecutor runs them in
+worker threads so the UI thread remains free to handle keys and redraw the
+screen.
 
 The caller provides two functions when submitting work:
 
@@ -11,7 +12,7 @@ The caller provides two functions when submitting work:
 The worker function runs in the thread pool. When it finishes, the executor
 puts its completion function in a queue and wakes EDMApp. EDMApp later runs the
 completion function on the UI thread. Worker threads therefore never update
-UISessionState or Urwid widgets.
+TerminalSessionState or Urwid widgets.
 """
 
 from __future__ import annotations
@@ -30,10 +31,10 @@ UICompletionCallback = Callable[[], bool]
 class BackgroundExecutor:
     """Run blocking functions and queue their UI-thread completion functions.
 
-    DockerManager uses this executor for Docker requests. The
-    completion callback for each request is defined beside the code that starts
-    it, which keeps the full workflow in one place. EDMApp drains the callback
-    queue whenever BackgroundNotifier reports that work has finished.
+    DockerManager uses this executor for Docker requests, and
+    TabExportController uses it for export file writes. Each completion
+    callback is defined beside the code that starts the work. EDMApp drains the
+    callback queue whenever BackgroundNotifier reports a finished operation.
     """
 
     def __init__(
