@@ -7,6 +7,7 @@ from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     ContainerSortMenuState,
 )
+from easy_docker_manager.core.running_container_list import RunningContainerList
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
@@ -80,7 +81,23 @@ def test_render_shows_empty_container_state() -> None:
     assert details_panel.detail_status_text.get_text()[0] == "No running containers."
     assert (
         running_container_list_panel.container_sort_text.get_text()[0]
-        == "Sort: Docker order"
+        == " s  Sort: Docker order"
+    )
+    assert running_container_list_panel.container_filter_text.get_text()[0] == (
+        " f  Filter: off"
+    )
+    rendered_text = b"\n".join(view.layout.render((120, 40)).text).decode()
+    assert rendered_text.index("localhost (active)") < rendered_text.index(
+        "Filter: off"
+    )
+    assert rendered_text.index("Filter: off") < rendered_text.index(
+        "Sort: Docker order"
+    )
+    assert rendered_text.index("Sort: Docker order") < rendered_text.index(
+        "No running containers."
+    )
+    assert rendered_text.index("No running containers.") < rendered_text.index(
+        "Refresh 2s | Logs 100 lines"
     )
 
 
@@ -187,7 +204,65 @@ def test_container_footer_shows_active_sort_direction() -> None:
 
     assert (
         view.running_container_list_panel.container_sort_text.get_text()[0]
-        == "Sort: Creation time descending"
+        == " s  Sort: Creation time descending"
+    )
+
+
+def test_container_panel_shows_filter_query_match_count_and_editing_state(
+    container_summary_factory,
+) -> None:
+    view = TerminalLayoutView(AppConfig())
+    running_container_list = RunningContainerList(
+        [
+            container_summary_factory("cache", image_name="redis:7"),
+            container_summary_factory("web", image_name="python:3.12"),
+            container_summary_factory("worker", image_name="python:3.12"),
+        ]
+    )
+    running_container_list.rebuild_displayed_containers(
+        ContainerSortField.DOCKER_ORDER,
+        False,
+        "redis",
+    )
+    state = TerminalSessionState(
+        running_container_list=running_container_list,
+        selected_container_index=0,
+        container_filter_query="redis",
+        container_filter_query_before_editing="",
+    )
+
+    view.render(state, ["Loading..."], lambda line: line)
+
+    assert view.running_container_list_panel.container_filter_text.get_text()[0] == (
+        " f  Filter: redis (1/3) [editing]"
+    )
+    assert " f  Filter" in view.shortcut_footer_text.get_text()[0]
+
+
+def test_container_panel_explains_when_no_running_container_matches_filter(
+    container_summary_factory,
+) -> None:
+    view = TerminalLayoutView(AppConfig())
+    running_container_list = RunningContainerList(
+        [
+            container_summary_factory("web"),
+            container_summary_factory("worker"),
+        ]
+    )
+    running_container_list.rebuild_displayed_containers(
+        ContainerSortField.DOCKER_ORDER,
+        False,
+        "redis",
+    )
+    state = TerminalSessionState(
+        running_container_list=running_container_list,
+        container_filter_query="redis",
+    )
+
+    view.render(state, ["Select a running container."], lambda line: line)
+
+    assert view.running_container_list_panel.container_rows[0].get_text()[0] == (
+        'No running containers match "redis".'
     )
 
 

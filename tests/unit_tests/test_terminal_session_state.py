@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from easy_docker_manager.core.container_sorting import ContainerSortField
+from easy_docker_manager.core.running_container_list import RunningContainerList
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
@@ -12,8 +13,12 @@ from easy_docker_manager.tab_export.definitions import TabExportMenuState
 def test_state_defaults_describe_the_initial_screen() -> None:
     state = TerminalSessionState()
 
-    assert state.running_containers == []
+    assert state.running_container_list.displayed_containers == []
     assert state.selected_container_index is None
+    assert state.running_container_list.unfiltered_container_count == 0
+    assert state.container_filter_query == ""
+    assert not state.is_editing_container_filter
+    assert state.container_filter_query_before_editing is None
     assert state.active_detail_tab_name == TabName.LOGS
     assert state.active_focus_area == FocusArea.CONTAINERS
     assert state.status_message == "Loading containers..."
@@ -26,7 +31,9 @@ def test_state_defaults_describe_the_initial_screen() -> None:
 def test_selected_container_properties_require_a_valid_index(
     container_summary_factory,
 ) -> None:
-    state = TerminalSessionState(running_containers=[container_summary_factory()])
+    state = TerminalSessionState(
+        running_container_list=RunningContainerList([container_summary_factory()])
+    )
 
     assert state.selected_container_summary is None
     assert state.selected_container_id is None
@@ -47,10 +54,12 @@ def test_find_running_container_index_returns_matching_position(
     container_summary_factory,
 ) -> None:
     state = TerminalSessionState(
-        running_containers=[
-            container_summary_factory("one"),
-            container_summary_factory("two"),
-        ]
+        running_container_list=RunningContainerList(
+            [
+                container_summary_factory("one"),
+                container_summary_factory("two"),
+            ]
+        )
     )
 
     assert state.find_running_container_index("two") == 1

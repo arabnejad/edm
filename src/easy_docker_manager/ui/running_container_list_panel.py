@@ -17,9 +17,9 @@ class RunningContainerListPanel:
     """Display the running-container list and its left-panel controls.
 
     TerminalLayoutView creates this once and calls render() for each redraw.
-    The panel reads TerminalSessionState to update its title, rows, sort summary,
-    status text, focus, and border. It does not change the selection or start
-    Docker requests.
+    The panel reads TerminalSessionState to update its title, rows, active
+    filter, sort summary, focus, and border. It does not change the selection
+    or start Docker requests.
     """
 
     def __init__(self, app_config: AppConfig) -> None:
@@ -28,6 +28,7 @@ class RunningContainerListPanel:
             []
         )
         self.container_list_view = urwid.ListBox(self.container_rows)
+        self.container_filter_text = urwid.Text("", wrap="clip")
         self.container_sort_text = urwid.Text("", wrap="clip")
         self.panel = urwid.AttrMap(
             urwid.LineBox(self._build_container_frame()),
@@ -41,8 +42,9 @@ class RunningContainerListPanel:
         )
 
     def render(self, state: TerminalSessionState) -> None:
-        """Update the rows, sort summary, focus, and border from session state."""
+        """Update the rows, filter, sort summary, focus, and panel border."""
         self._rebuild_container_list_and_focus_on_selected_container(state)
+        self._update_container_filter_display_text(state)
         self._update_selected_sort_display_text(state)
         border_style = (
             "border_active"
@@ -60,7 +62,7 @@ class RunningContainerListPanel:
         return urwid.AttrMap(urwid.LineBox(title), "title_border")
 
     def _build_container_frame(self) -> urwid.Widget:
-        """Build the container header, scrollable rows, and footer."""
+        """Build the host details, list controls, container rows, and footer."""
         header = urwid.Pile(
             [
                 (
@@ -75,25 +77,23 @@ class RunningContainerListPanel:
                     ),
                 ),
                 ("pack", urwid.AttrMap(urwid.Divider("─"), "muted")),
+                ("pack", self.container_filter_text),
+                ("pack", self.container_sort_text),
+                ("pack", urwid.AttrMap(urwid.Divider("─"), "muted")),
             ]
         )
-        footer = urwid.Pile(
+        footer = urwid.Text(
             [
-                urwid.Text(
-                    [
-                        ("muted", "Refresh "),
-                        (
-                            "value",
-                            f"{self.app_config.container_list_refresh_interval_seconds:g}s",
-                        ),
-                        ("muted", " | Logs "),
-                        ("value", f"{self.app_config.initial_log_tail_lines}"),
-                        ("muted", " lines"),
-                    ],
-                    wrap="clip",
+                ("muted", "Refresh "),
+                (
+                    "value",
+                    f"{self.app_config.container_list_refresh_interval_seconds:g}s",
                 ),
-                self.container_sort_text,
-            ]
+                ("muted", " | Logs "),
+                ("value", f"{self.app_config.initial_log_tail_lines}"),
+                ("muted", " lines"),
+            ],
+            wrap="clip",
         )
         return urwid.Frame(
             self.container_list_view,
@@ -112,7 +112,8 @@ class RunningContainerListPanel:
         TerminalSessionState.
         """
         rows: list[urwid.Widget] = []
-        for index, container in enumerate(state.running_containers):
+        displayed_containers = state.running_container_list.displayed_containers
+        for index, container in enumerate(displayed_containers):
             if index == state.selected_container_index:
                 selected_style = (
                     "selected"
@@ -140,17 +141,54 @@ class RunningContainerListPanel:
             rows.append(urwid.Text(row_text, wrap="clip"))
 
         if not rows:
-            rows.append(urwid.Text(("muted", "No running containers."), wrap="clip"))
+            empty_message = "No running containers."
+            if (
+                state.container_filter_query
+                and state.running_container_list.unfiltered_container_count > 0
+            ):
+                empty_message = (
+                    f'No running containers match "{state.container_filter_query}".'
+                )
+            rows.append(urwid.Text(("muted", empty_message), wrap="clip"))
 
         self.container_rows[:] = rows
         selected_index = state.selected_container_index or 0
         self.container_rows.set_focus(min(selected_index, len(rows) - 1))
 
+    def _update_container_filter_display_text(
+        self,
+        state: TerminalSessionState,
+    ) -> None:
+        """Show the applied query, match count, and whether input is active."""
+        filter_query = state.container_filter_query
+        filter_text: list[MarkupSegment] = [
+            ("shortcut_key", " f "),
+            ("muted", " Filter: "),
+        ]
+        if filter_query:
+            filter_text.extend(
+                [
+                    ("value", filter_query),
+                    (
+                        "muted",
+                        " "
+                        f"({len(state.running_container_list.displayed_containers)}/"
+                        f"{state.running_container_list.unfiltered_container_count})",
+                    ),
+                ]
+            )
+        else:
+            filter_text.append(("muted", "off"))
+        if state.is_editing_container_filter:
+            filter_text.append(("accent", " [editing]"))
+        self.container_filter_text.set_text(filter_text)
+
     def _update_selected_sort_display_text(self, state: TerminalSessionState) -> None:
-        """Show the selected sort field and direction below the container list."""
+        """Show the selected sort field and direction above the container list."""
         sort_field = state.container_sort_field
         sort_text: list[MarkupSegment] = [
-            ("muted", "Sort: "),
+            ("shortcut_key", " s "),
+            ("muted", " Sort: "),
             ("value", sort_field.value),
         ]
         if sort_field != ContainerSortField.DOCKER_ORDER:

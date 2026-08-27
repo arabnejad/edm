@@ -19,7 +19,7 @@ src/
       docker_manager.py
                                   Coordinates the Docker data components
       running_container_refresh.py
-                                  Refreshes and sorts the container list
+                                  Refreshes the list and preserves its selection
       selected_tab_load.py        Loads the selected container tab
       container_log_updates.py    Polls and merges container logs
 
@@ -28,6 +28,7 @@ src/
 
     core/
       config.py                   AppConfig values and validation
+      running_container_list.py  Keeps Docker's list and the displayed list
       container_sorting.py       Container sort fields and ordering
       containers.py               Container and process data classes
       tab_content_cache.py        Size-limited tab text cache
@@ -62,7 +63,7 @@ src/
       tab_export_controller.py    Handles the export workflow
       tab_export_menu.py          Builds the export popup menu
       terminal_layout.py          Combines panels, popups, and the footer
-      terminal_controller.py      Handles navigation, search, and drawing
+      terminal_controller.py      Handles navigation, filtering, and drawing
 
     logging/
       app_logging.py              Configures EDM application logging
@@ -156,8 +157,8 @@ The main responsibilities are:
 - `EDMApp` starts and stops the terminal application. It also receives
   keypresses and finished background work.
 - `KeyboardController` decides what a key means.
-- `TerminalController` changes selections, switches tabs, handles sorting and
-  search, and prepares the screen for drawing.
+- `TerminalController` changes selections, switches tabs, handles container
+  filtering, sorting, and tab searches, and prepares the screen for drawing.
 - `TabExportController` edits export choices, prepares a cached text snapshot,
   and handles the result of the file write.
 - `TabTextFilter` applies the same line-visibility rules to the terminal and
@@ -264,17 +265,40 @@ flowchart LR
 
 `_KeyboardRoutingWidget` passes each Urwid key name to `EDMApp`.
 
-`KeyboardController` handles simple key behavior, such as entering search mode
-or changing keyboard focus. It calls `TerminalController` for navigation,
-sorting, tab changes, and detail scrolling. While the export menu is open, it
-passes every key to `TabExportController`, which keeps the export rules in one
-place.
+`KeyboardController` handles simple key behavior, such as entering filter or
+search input and changing keyboard focus. It calls `TerminalController` for
+navigation, filtering, sorting, tab changes, and detail scrolling. While the
+export menu is open, it passes every key to `TabExportController`, which keeps
+the export rules in one place.
 
 The controller returns a `KeyAction`:
 
 - `NONE`: nothing visible changed.
-- `RENDER`: draw the screen again and check whether background work should start.
+- `REDRAW`: draw the screen again and check whether background work should start.
 - `QUIT`: leave the terminal application.
+
+### Container Filtering
+
+The keys and visible behavior are documented in
+[Container Filtering](README.md#container-filtering).
+
+`TerminalSessionState.container_filter_query` stores the query applied to the
+running-container list. `container_filter_query_before_editing` stores the
+previous query while input is active. `Enter` keeps the edited query. `Esc`
+restores the saved query. Other shortcuts are ignored until editing ends.
+
+`RunningContainerList` keeps the latest list received from Docker and the
+sorted, filtered list shown in the left panel. Each query change asks
+`DockerManager` to rebuild the displayed list from the Docker list. Sorting is
+applied first, followed by the filter. The comparison ignores letter case and
+checks the container name, image name, and status. It is quick because it only
+reads container summaries already held in memory.
+
+If the selected container still matches, it remains selected. Otherwise, EDM
+selects the first match and prepares that container's active tab. Containers
+hidden by the filter are still running, so their cached tab text and log
+tracking are not removed. A later Docker refresh reapplies the same sort and
+filter to the new list.
 
 ### Container Sorting
 
@@ -287,11 +311,11 @@ normal shortcuts. `TerminalSessionState.container_sort_menu_state` stores the
 choices shown in the menu. The active sort changes only when the user presses
 `Enter`, so `Esc` can close the menu without changing the list.
 
-When `Enter` applies the choice, `DockerManager` sorts the latest
-list received from Docker and finds the selected container's new position.
-The same container and loaded tab stay selected. Later refreshes use the same
-sort. `Docker order` restores an unchanged copy of the latest list received
-from Docker.
+When `Enter` applies the choice, `DockerManager` sorts the latest list received
+from Docker and then reapplies the active filter. It also finds the selected
+container's new position. The same container and loaded tab stay selected when
+that container still matches. Later refreshes use the same sort. `Docker order`
+restores Docker's order before the active filter is applied.
 
 ### Tab Export
 
@@ -382,7 +406,7 @@ Three smaller classes do the actual request tracking:
 
 | Component | What it handles |
 | --- | --- |
-| `RunningContainerListRefresher` | Container-list refreshes, sorting, selection preservation, and stopped-container cleanup |
+| `RunningContainerListRefresher` | Container-list refreshes, selection preservation, and stopped-container cleanup |
 | `SelectedTabContentLoader` | Initial tab loads, cached-tab reuse, and periodic Env, Config, and Top refreshes |
 | `ContainerLogUpdater` | Incremental log polls, Docker since timestamps, overlap removal, and log limits |
 
@@ -498,8 +522,10 @@ Important fields are:
 
 | Field | Meaning |
 | --- | --- |
-| `running_containers` | Containers currently shown in the left panel |
+| `running_container_list` | Latest Docker list and the sorted, filtered list shown in the left panel |
 | `selected_container_index` | Selected position in that list |
+| `container_filter_query` | Plain-text query matched against container names, images, and statuses |
+| `container_filter_query_before_editing` | Query to restore if filter editing is cancelled, or `None` when editing is inactive |
 | `container_sort_field` | Sort field currently applied to the container list |
 | `container_sort_descending` | Whether the active sort runs in descending order |
 | `container_sort_menu_state` | Temporary choices in the open sort menu, or `None` when it is closed |
@@ -563,7 +589,7 @@ environment keys, structured values, search matches, and errors.
 | `EDMRuntimeFactory` | Creates and connects the objects used by `EDMApp` |
 | `EDMRuntime` | Holds the objects that `EDMApp` uses directly |
 | `DockerManager` | Delegates Docker work and calculates the next overall refresh delay |
-| `RunningContainerListRefresher` | Refreshes, sorts, and maintains the running-container list |
+| `RunningContainerListRefresher` | Refreshes the running-container list, preserves selection, and removes stopped-container state |
 | `SelectedTabContentLoader` | Loads and periodically refreshes selected-tab content |
 | `ContainerLogUpdater` | Polls for new logs and updates cached log text |
 | `BackgroundExecutor` | Runs blocking functions and queues their completion callbacks |
@@ -578,6 +604,7 @@ environment keys, structured values, search matches, and errors.
 | `AppConfig` | Stores validated refresh, log, cache, timeout, worker, and color settings |
 | `AppConfigStore` | Loads, checks, and rewrites `config.json` |
 | `ContainerSummary` | Stores the container fields shown in the left panel |
+| `RunningContainerList` | Stores all running containers and builds the sorted, filtered list shown in EDM |
 | `ContainerSortField` | Names the choices shown in the container sorting menu |
 | `get_container_list_in_requested_order` | Returns a sorted copy of the latest Docker container list |
 | `ContainerProcessTable` | Stores process column names and rows from Docker top |
@@ -610,7 +637,7 @@ environment keys, structured values, search matches, and errors.
 | --- | --- |
 | `KeyboardController` | Turns keypresses into state and navigation actions |
 | `KeyAction` | Tells `EDMApp` to do nothing, redraw, or quit |
-| `TerminalController` | Handles navigation, search, menu choices, and drawing |
+| `TerminalController` | Handles navigation, filtering, search, menu choices, and drawing |
 | `TabExportController` | Handles export choices, cached text snapshots, and file-write results |
 | `TerminalLayoutView` | Combines the panels, active popup, and shortcut footer |
 | `RunningContainerListPanel` | Displays the running-container list, header, footer, and border |

@@ -28,6 +28,7 @@ With EDM, you can view:
 - container environment variables
 - a readable summary of Docker inspection data
 - the process list returned by Docker top
+- live filtering and sorting of the running-container list
 - a separate search query for each container tab
 - export of the active tab to a local text file
 - a local JSON configuration file
@@ -133,6 +134,7 @@ python -m easy_docker_manager
 | `[` | Open the previous detail tab |
 | `]` | Open the next detail tab |
 | `/` | Start editing the search for the current tab |
+| `f` | Start editing the container filter while the container panel is active |
 | `s` | Open container sorting while the container panel is active |
 | `e` | Export the active tab while the detail panel is active |
 | `Page Up` / `Page Down` | Move through the detail panel one page at a time |
@@ -140,6 +142,35 @@ python -m easy_docker_manager
 
 While entering a search, press `Enter` to keep the query and return to detail
 navigation. Press `Esc` to keep the query and return to the container list.
+
+## Container Filtering
+
+Press `f` while the container panel is active, then type part of a container
+name, image name, or status. Matching ignores letter case and updates the list
+as you type. It uses the container data already loaded in EDM and does not send
+another request to Docker.
+
+```text
+* localhost (active)
+────────────────────────
+ f  Filter: off
+ s  Sort: Docker order
+────────────────────────
+> container-one (running)
+  container-two (running)
+```
+
+Use `Backspace` to remove the last character. Press `Enter` to keep the edited
+filter, or press `Esc` to restore the filter that was active before you pressed
+`f`. Other navigation and shortcut keys are disabled until editing ends. Every
+printable key, including `q`, becomes part of the query.
+
+The filter and match count are shown below `localhost (active)`, next to the
+`f` shortcut. The active sort appears on the next line beside `s`. EDM applies
+the selected sort before the filter and reapplies both after each
+container-list refresh. If the selected container no longer matches, the first
+matching container is selected. Filtering only hides list entries; cached tab
+data for hidden running containers is kept.
 
 ## Container Sorting
 
@@ -162,8 +193,8 @@ Enter Apply     Esc Cancel
 
 Use `Up` and `Down` to choose a field. Use `Left` for ascending order and
 `Right` for descending order. `Enter` applies the choice, while `Esc` closes
-the menu without changing the list. The active sort is shown below the
-container list.
+the menu without changing the list. The active sort is shown above the
+container list, directly below the active filter.
 
 Applying a sort does not change the selected container. The sort stays active
 after the container list refreshes. Choose Docker order to restore the order

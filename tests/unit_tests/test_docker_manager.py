@@ -24,6 +24,7 @@ from easy_docker_manager.app.running_container_refresh import (
 from easy_docker_manager.app.selected_tab_load import SelectedTabContentLoader
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import ContainerSortField
+from easy_docker_manager.core.running_container_list import RunningContainerList
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import (
@@ -283,10 +284,12 @@ def test_refresh_preserves_selection_and_reapplies_active_sort(
     container_summary_factory,
 ) -> None:
     state = TerminalSessionState(
-        running_containers=[
-            container_summary_factory("one"),
-            container_summary_factory("two"),
-        ],
+        running_container_list=RunningContainerList(
+            [
+                container_summary_factory("one"),
+                container_summary_factory("two"),
+            ]
+        ),
         selected_container_index=1,
         container_sort_field=ContainerSortField.IMAGE,
         container_sort_descending=True,
@@ -299,7 +302,9 @@ def test_refresh_preserves_selection_and_reapplies_active_sort(
     test_setup.docker_manager.start_running_container_list_refresh(force=True)
 
     assert test_setup.background_executor.complete_submission(result=refreshed)
-    assert [item.container_id for item in state.running_containers] == [
+    assert [
+        item.container_id for item in state.running_container_list.displayed_containers
+    ] == [
         "three",
         "two",
     ]
@@ -317,7 +322,7 @@ def test_unchanged_refresh_clears_explicit_error_state(
     test_setup.docker_manager.start_running_container_list_refresh(force=True)
 
     assert test_setup.background_executor.complete_submission(
-        result=list(state.running_containers)
+        result=list(state.running_container_list.displayed_containers)
     )
     assert state.status_message == "1 running containers"
     assert state.container_list_refresh_error_message is None
@@ -347,7 +352,7 @@ def test_refresh_failure_keeps_existing_containers_and_shows_error(
     test_setup.docker_manager.start_running_container_list_refresh(force=True)
 
     assert test_setup.background_executor.complete_submission(exception=error)
-    assert state.running_containers
+    assert state.running_container_list.displayed_containers
     assert state.status_message == f"Container refresh failed: {error}"
     assert (
         state.container_list_refresh_error_message
@@ -431,10 +436,12 @@ def test_running_old_tab_load_finishes_before_loading_new_selection(
     container_summary_factory,
 ) -> None:
     state = TerminalSessionState(
-        running_containers=[
-            container_summary_factory("one"),
-            container_summary_factory("two"),
-        ],
+        running_container_list=RunningContainerList(
+            [
+                container_summary_factory("one"),
+                container_summary_factory("two"),
+            ]
+        ),
         selected_container_index=0,
         active_detail_tab_name=TabName.ENV,
     )
@@ -461,10 +468,12 @@ def test_queued_old_tab_load_is_cancelled_and_replaced(
     container_summary_factory,
 ) -> None:
     state = TerminalSessionState(
-        running_containers=[
-            container_summary_factory("one"),
-            container_summary_factory("two"),
-        ],
+        running_container_list=RunningContainerList(
+            [
+                container_summary_factory("one"),
+                container_summary_factory("two"),
+            ]
+        ),
         selected_container_index=0,
         active_detail_tab_name=TabName.CONFIG,
     )
@@ -792,22 +801,130 @@ def test_container_sort_keeps_selection_and_can_restore_docker_order(
     container_summary_factory,
 ) -> None:
     state = TerminalSessionState(
-        running_containers=[
-            container_summary_factory("z", name="Zulu"),
-            container_summary_factory("a", name="alpha"),
-        ],
+        running_container_list=RunningContainerList(
+            [
+                container_summary_factory("z", name="Zulu"),
+                container_summary_factory("a", name="alpha"),
+            ]
+        ),
         selected_container_index=0,
         container_sort_field=ContainerSortField.NAME,
     )
     test_setup = docker_manager_factory(state)
 
-    test_setup.docker_manager.apply_container_sort_to_current_list()
-    assert [item.container_id for item in state.running_containers] == ["a", "z"]
+    test_setup.docker_manager.rebuild_displayed_container_list()
+    assert [
+        item.container_id for item in state.running_container_list.displayed_containers
+    ] == ["a", "z"]
     assert state.selected_container_id == "z"
 
     state.container_sort_field = ContainerSortField.DOCKER_ORDER
-    test_setup.docker_manager.apply_container_sort_to_current_list()
-    assert [item.container_id for item in state.running_containers] == ["z", "a"]
+    test_setup.docker_manager.rebuild_displayed_container_list()
+    assert [
+        item.container_id for item in state.running_container_list.displayed_containers
+    ] == ["z", "a"]
+
+
+def test_container_filter_keeps_matching_containers_in_the_selected_sort_order(
+    docker_manager_factory,
+    container_summary_factory,
+) -> None:
+    state = TerminalSessionState(
+        running_container_list=RunningContainerList(
+            [
+                container_summary_factory(
+                    "worker",
+                    name="Zulu worker",
+                    image_name="redis:7",
+                ),
+                container_summary_factory(
+                    "web",
+                    name="Alpha web",
+                    image_name="python:3.12",
+                ),
+                container_summary_factory(
+                    "cache",
+                    name="Beta cache",
+                    image_name="redis:6",
+                ),
+            ]
+        ),
+        selected_container_index=1,
+        container_filter_query="REDIS",
+        container_sort_field=ContainerSortField.NAME,
+    )
+    test_setup = docker_manager_factory(state)
+
+    test_setup.docker_manager.rebuild_displayed_container_list()
+
+    assert [
+        container.container_id
+        for container in state.running_container_list.displayed_containers
+    ] == [
+        "cache",
+        "worker",
+    ]
+    assert state.running_container_list.unfiltered_container_count == 3
+    assert state.selected_container_id == "cache"
+
+
+def test_container_filter_with_no_matches_clears_selection_and_updates_status(
+    docker_manager_factory,
+    container_summary_factory,
+) -> None:
+    state = TerminalSessionState(
+        running_container_list=RunningContainerList([container_summary_factory("web")]),
+        selected_container_index=0,
+        container_filter_query="missing",
+    )
+    test_setup = docker_manager_factory(state)
+
+    test_setup.docker_manager.rebuild_displayed_container_list()
+
+    assert state.running_container_list.displayed_containers == []
+    assert state.selected_container_index is None
+    assert state.status_message == "No running containers match the filter."
+
+
+def test_container_refresh_reapplies_filter_without_removing_hidden_container_data(
+    docker_manager_factory,
+    container_summary_factory,
+) -> None:
+    state = TerminalSessionState(container_filter_query="redis")
+    hidden_container_tab_key = ContainerTabKey("web", TabName.LOGS)
+    state.tab_content_cache[hidden_container_tab_key] = "saved logs"
+    test_setup = docker_manager_factory(state)
+    refreshed_containers = [
+        container_summary_factory("web", image_name="python:3.12"),
+        container_summary_factory("cache", image_name="redis:7"),
+    ]
+    test_setup.docker_manager.start_running_container_list_refresh(force=True)
+
+    assert test_setup.background_executor.complete_submission(
+        result=refreshed_containers
+    )
+    assert [
+        container.container_id
+        for container in state.running_container_list.displayed_containers
+    ] == ["cache"]
+    assert state.running_container_list.unfiltered_container_count == 2
+    assert hidden_container_tab_key in state.tab_content_cache
+
+
+def test_first_refresh_with_no_filter_matches_replaces_loading_status(
+    docker_manager_factory,
+    container_summary_factory,
+) -> None:
+    state = TerminalSessionState(container_filter_query="redis")
+    test_setup = docker_manager_factory(state)
+    test_setup.docker_manager.start_running_container_list_refresh(force=True)
+
+    assert test_setup.background_executor.complete_submission(
+        result=[container_summary_factory("web", image_name="python:3.12")]
+    )
+    assert state.running_container_list.displayed_containers == []
+    assert state.selected_container_index is None
+    assert state.status_message == "No running containers match the filter."
 
 
 def test_log_poll_reset_cancels_queued_work_and_removes_stopped_tracking(

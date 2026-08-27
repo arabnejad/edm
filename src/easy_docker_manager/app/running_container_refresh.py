@@ -1,4 +1,4 @@
-"""Refresh, sort, and maintain the running-container list."""
+"""Refresh the running-container list and apply its display options."""
 
 from __future__ import annotations
 
@@ -10,9 +10,6 @@ from typing import Optional
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.core.config import AppConfig
-from easy_docker_manager.core.container_sorting import (
-    get_container_list_in_requested_order,
-)
 from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import DockerContainerClient
@@ -21,12 +18,13 @@ logger = logging.getLogger(__name__)
 
 
 class RunningContainerListRefresher:
-    """Keep the running-container list current and in the requested order.
+    """Refresh the running-container list and keep its selection valid.
 
     DockerManager calls this when EDM starts and whenever the refresh timer
     expires. This class tracks the current request and handles its result on the
-    UI thread. After a successful refresh, it keeps the same container selected,
-    reapplies the chosen sort, and removes saved data for stopped containers.
+    UI thread. After a successful refresh, it rebuilds the displayed list,
+    keeps the same container selected when possible, and removes saved data for
+    stopped containers.
     """
 
     def __init__(
@@ -49,7 +47,6 @@ class RunningContainerListRefresher:
 
         self._refresh_future: Optional[Future[list[ContainerSummary]]] = None
         self._next_refresh_at = 0.0
-        self._containers_in_docker_order = list(state.running_containers)
 
     def refresh_if_needed(self, current_time: float) -> None:
         """Start a container-list refresh when the next refresh time is reached."""
@@ -84,20 +81,34 @@ class RunningContainerListRefresher:
         )
         return True
 
-    def apply_container_sort_to_current_list(self) -> None:
-        """Apply the selected sort while keeping the same container selected."""
-        selected_container_id = self.state.selected_container_id
-        self.state.running_containers = self._get_sorted_containers(
-            self._containers_in_docker_order
+    def rebuild_displayed_container_list(self) -> None:
+        """Rebuild the displayed list after its sort or filter changes.
+
+        TerminalController calls this when the user applies a sort or edits the
+        container filter. The same container stays selected if it is still in
+        the displayed list. Otherwise, EDM selects the first matching container.
+        """
+        previously_selected_container_id = self.state.selected_container_id
+        displayed_containers = (
+            self.state.running_container_list.rebuild_displayed_containers(
+                self.state.container_sort_field,
+                self.state.container_sort_descending,
+                self.state.container_filter_query,
+            )
         )
         self.state.selected_container_index = self.state.find_running_container_index(
-            selected_container_id
+            previously_selected_container_id
         )
-        if (
-            self.state.selected_container_index is None
-            and self.state.running_containers
-        ):
+        if self.state.selected_container_index is None and displayed_containers:
             self.state.selected_container_index = 0
+        if not displayed_containers:
+            self.state.status_message = (
+                "No running containers match the filter."
+                if self.state.running_container_list.unfiltered_container_count
+                else "No running containers."
+            )
+        if self.state.selected_container_id != previously_selected_container_id:
+            self._prepare_selected_container_details()
 
     def _apply_running_container_list_refresh_result(
         self,
@@ -124,37 +135,57 @@ class RunningContainerListRefresher:
     ) -> bool:
         """Store a refreshed list without losing its sort or selected container."""
         previously_selected_container_id = self.state.selected_container_id
-        previous_displayed_containers = self.state.running_containers
+        container_list = self.state.running_container_list
+        previous_displayed_containers = list(container_list.displayed_containers)
+        previous_running_container_count = container_list.unfiltered_container_count
         recovered_from_refresh_error = (
             self.state.container_list_refresh_error_message is not None
         )
         self.state.container_list_refresh_error_message = None
-        self._containers_in_docker_order = list(running_containers)
-        displayed_containers = self._get_sorted_containers(running_containers)
-        running_container_ids = {
-            container.container_id for container in running_containers
-        }
+        container_list.replace_all_running_containers(running_containers)
+        displayed_containers = container_list.rebuild_displayed_containers(
+            self.state.container_sort_field,
+            self.state.container_sort_descending,
+            self.state.container_filter_query,
+        )
+        running_container_ids = container_list.all_running_container_ids
         self.state.remove_state_for_stopped_containers(running_container_ids)
         self._remove_stopped_container_log_cursors(running_container_ids)
 
-        if displayed_containers == previous_displayed_containers:
-            if (
-                not running_containers
-                and self.state.status_message != "No running containers."
-            ):
-                self.state.status_message = "No running containers."
-                return True
+        displayed_list_changed = displayed_containers != previous_displayed_containers
+        running_container_count_changed = (
+            len(running_containers) != previous_running_container_count
+        )
+        if not displayed_list_changed:
+            if not displayed_containers:
+                empty_list_message = (
+                    "No running containers match the filter."
+                    if running_containers
+                    else "No running containers."
+                )
+                status_changed = self.state.status_message != empty_list_message
+                self.state.status_message = empty_list_message
+                return (
+                    status_changed
+                    or running_container_count_changed
+                    or recovered_from_refresh_error
+                )
             if running_containers and recovered_from_refresh_error:
                 self.state.status_message = (
                     f"{len(running_containers)} running containers"
                 )
                 return True
-            return False
+            return running_container_count_changed
 
-        self.state.running_containers = displayed_containers
         if not displayed_containers:
             self.state.selected_container_index = None
-            self.state.status_message = "No running containers."
+            self.state.status_message = (
+                "No running containers match the filter."
+                if running_containers
+                else "No running containers."
+            )
+            if previously_selected_container_id is not None:
+                self._prepare_selected_container_details()
             return True
 
         self.state.selected_container_index = self.state.find_running_container_index(
@@ -163,26 +194,13 @@ class RunningContainerListRefresher:
         if self.state.selected_container_index is None:
             self.state.selected_container_index = 0
 
-        self.state.status_message = (
-            f"{len(self.state.running_containers)} running containers"
-        )
+        self.state.status_message = f"{len(running_containers)} running containers"
         if (
             self.state.selected_container_id != previously_selected_container_id
             or previously_selected_container_id is None
         ):
             self._prepare_selected_container_details()
         return True
-
-    def _get_sorted_containers(
-        self,
-        containers: list[ContainerSummary],
-    ) -> list[ContainerSummary]:
-        """Return containers in the sort order selected for this UI session."""
-        return get_container_list_in_requested_order(
-            containers,
-            self.state.container_sort_field,
-            self.state.container_sort_descending,
-        )
 
 
 __all__ = ["RunningContainerListRefresher"]

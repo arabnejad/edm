@@ -22,6 +22,7 @@ from easy_docker_manager.core.container_sorting import (
     ContainerSortMenuState,
 )
 from easy_docker_manager.core.containers import ContainerSummary
+from easy_docker_manager.core.running_container_list import RunningContainerList
 from easy_docker_manager.core.tab_content_cache import TabContentCache
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.tab_export.definitions import TabExportMenuState
@@ -53,10 +54,16 @@ class TerminalSessionState:
     the view classes read it during each redraw.
     """
 
-    # Running container summaries displayed in the left panel.
-    running_containers: list[ContainerSummary] = field(default_factory=list)
-    # Index of the selected item in running_containers, or None when empty.
+    # Latest Docker list together with the sorted and filtered list shown in EDM.
+    running_container_list: RunningContainerList = field(
+        default_factory=RunningContainerList
+    )
+    # Index of the selected item in the displayed container list, or None when empty.
     selected_container_index: Optional[int] = None
+    # Text matched against each container's name, image, and status.
+    container_filter_query: str = ""
+    # Query active before filter editing began. None means editing is inactive.
+    container_filter_query_before_editing: Optional[str] = None
     # Sort order currently applied to the container list.
     container_sort_field: ContainerSortField = ContainerSortField.DOCKER_ORDER
     container_sort_descending: bool = False
@@ -90,13 +97,19 @@ class TerminalSessionState:
     tab_content_error_messages: dict[ContainerTabKey, str] = field(default_factory=dict)
 
     @property
+    def is_editing_container_filter(self) -> bool:
+        """Return whether keyboard input is currently editing the filter."""
+        return self.container_filter_query_before_editing is not None
+
+    @property
     def selected_container_summary(self) -> Optional[ContainerSummary]:
         """Return the selected running-container summary, if the index is valid."""
+        displayed_containers = self.running_container_list.displayed_containers
         if self.selected_container_index is None:
             return None
-        if not 0 <= self.selected_container_index < len(self.running_containers):
+        if not 0 <= self.selected_container_index < len(displayed_containers):
             return None
-        return self.running_containers[self.selected_container_index]
+        return displayed_containers[self.selected_container_index]
 
     @property
     def selected_container_id(self) -> Optional[str]:
@@ -118,10 +131,12 @@ class TerminalSessionState:
         self,
         container_id: Optional[str],
     ) -> Optional[int]:
-        """Return a container's current index in running_containers."""
+        """Return a container's index in the displayed container list."""
         if container_id is None:
             return None
-        for index, container in enumerate(self.running_containers):
+        for index, container in enumerate(
+            self.running_container_list.displayed_containers
+        ):
             if container.container_id == container_id:
                 return index
         return None

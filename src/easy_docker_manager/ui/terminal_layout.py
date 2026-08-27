@@ -192,6 +192,8 @@ class TerminalLayoutView:
             ("footer", " Next Tab  "),
             ("shortcut_key", " / "),
             ("footer", " Search  "),
+            ("shortcut_key", " f "),
+            ("footer", " Filter  "),
             ("shortcut_key", " s "),
             ("footer", " Sort  "),
             ("shortcut_key", " e "),

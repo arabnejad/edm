@@ -19,11 +19,11 @@ class KeyAction(Enum):
 
 
 class KeyboardController:
-    """Handle EDM keyboard shortcuts and search input.
+    """Handle EDM keyboard shortcuts, filtering, and search input.
 
     EDMApp sends each Urwid key name here. This class handles simple focus and
-    search changes, sends navigation and sorting to TerminalController, and
-    passes export-menu keys to TabExportController.
+    text-input changes, sends navigation and container display options to
+    TerminalController, and passes export-menu keys to TabExportController.
     """
 
     def __init__(
@@ -46,6 +46,8 @@ class KeyboardController:
             return self._handle_tab_export_menu_keypress(key)
         if self.state.container_sort_menu_state is not None:
             return self._handle_container_sort_menu_keypress(key)
+        if self.state.is_editing_container_filter:
+            return self._handle_container_filter_keypress(key)
         if self.state.is_search_active:
             return (
                 KeyAction.REDRAW
@@ -118,6 +120,12 @@ class KeyboardController:
                 if self.terminal_controller.open_container_sort_menu()
                 else KeyAction.NONE
             )
+        elif key in {"f", "F"} and self.state.active_focus_area == FocusArea.CONTAINERS:
+            return (
+                KeyAction.REDRAW
+                if self.terminal_controller.start_editing_container_filter()
+                else KeyAction.NONE
+            )
         elif key in {"e", "E"} and self.state.active_focus_area == FocusArea.DETAIL:
             return (
                 KeyAction.REDRAW
@@ -161,6 +169,21 @@ class KeyboardController:
             changed = self.terminal_controller.apply_container_sort_menu()
         elif key == "esc":
             changed = self.terminal_controller.close_container_sort_menu()
+        return KeyAction.REDRAW if changed else KeyAction.NONE
+
+    def _handle_container_filter_keypress(self, key: str) -> KeyAction:
+        """Handle filter input while blocking unrelated terminal shortcuts."""
+        changed = False
+        if key == "enter":
+            changed = self.terminal_controller.finish_editing_container_filter()
+        elif key == "esc":
+            changed = self.terminal_controller.cancel_container_filter_editing()
+        elif key == "backspace":
+            changed = (
+                self.terminal_controller.remove_last_character_from_container_filter()
+            )
+        elif len(key) == 1 and key.isprintable():
+            changed = self.terminal_controller.add_character_to_container_filter(key)
         return KeyAction.REDRAW if changed else KeyAction.NONE
 
     def _handle_search_keypress(
