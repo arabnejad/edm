@@ -109,7 +109,9 @@ class RunningContainerListRefresher:
             running_containers = container_refresh_future.result()
         except Exception as exc:
             logger.warning("Container refresh failed: %s", exc)
-            self.state.status_message = f"Container refresh failed: {exc}"
+            error_message = f"Container refresh failed: {exc}"
+            self.state.running_container_list_refresh_error = error_message
+            self.state.status_message = error_message
             return True
         return self._apply_refreshed_running_container_list(running_containers)
 
@@ -120,6 +122,10 @@ class RunningContainerListRefresher:
         """Store a successful refresh while preserving sorting and selection."""
         previously_selected_container_id = self.state.selected_container_id
         previous_displayed_containers = self.state.running_containers
+        recovered_from_refresh_error = (
+            self.state.running_container_list_refresh_error is not None
+        )
+        self.state.running_container_list_refresh_error = None
         self._containers_in_docker_order = list(running_containers)
         displayed_containers = self._get_sorted_containers(running_containers)
         running_container_ids = {
@@ -135,9 +141,7 @@ class RunningContainerListRefresher:
             ):
                 self.state.status_message = "No running containers."
                 return True
-            if running_containers and self.state.status_message.startswith(
-                "Container refresh failed:"
-            ):
+            if running_containers and recovered_from_refresh_error:
                 self.state.status_message = (
                     f"{len(running_containers)} running containers"
                 )

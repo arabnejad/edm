@@ -60,6 +60,12 @@ class TabContentCache:
         """Return the UTF-8 byte count tracked for all cached text."""
         return self._total_size_bytes
 
+    def remove_cached_tab_content(self, key: ContainerTabKey) -> None:
+        """Remove one cached tab if it is present."""
+        removed_value = self._entries.pop(key, None)
+        if removed_value is not None:
+            self._total_size_bytes -= self._utf8_size(removed_value)
+
     def remove_cached_tab_content_for_stopped_containers(
         self,
         running_container_ids: set[str],

@@ -61,9 +61,9 @@ def test_active_detail_tab_display_lines_show_empty_and_error_messages(
     assert container_tab_key is not None
     assert controller.get_active_detail_tab_display_lines() == ["Loading..."]
 
-    state.tab_load_errors[container_tab_key] = "failed"
+    state.tab_content_errors[container_tab_key] = "failed"
     assert controller.get_active_detail_tab_display_lines() == ["failed"]
-    state.tab_load_errors.clear()
+    state.tab_content_errors.clear()
 
     for tab, message in [
         (TabName.LOGS, "No logs available."),
@@ -101,7 +101,7 @@ def test_render_passes_lines_and_error_state_to_the_view(
     state = session_state_factory(tab=TabName.CONFIG)
     container_tab_key = state.selected_container_tab_key
     assert container_tab_key is not None
-    state.tab_load_errors[container_tab_key] = "failed"
+    state.tab_content_errors[container_tab_key] = "failed"
     test_setup = controller_factory(state)
 
     test_setup.controller.update_terminal_view()
@@ -112,6 +112,24 @@ def test_render_passes_lines_and_error_state_to_the_view(
     assert rendered_state is state
     assert lines == ["failed"]
     assert line_markup("failed") == [("error", "failed")]
+
+
+def test_cached_tab_content_stays_visible_after_refresh_error(
+    controller_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory(tab=TabName.ENV)
+    container_tab_key = state.selected_container_tab_key
+    assert container_tab_key is not None
+    state.tab_content_cache[container_tab_key] = "VALUE=previous"
+    state.tab_content_errors[container_tab_key] = "Error loading Env: timeout"
+    test_setup = controller_factory(state)
+
+    test_setup.controller.update_terminal_view()
+
+    _, lines, format_detail_line = test_setup.terminal_layout_view.render.call_args.args
+    assert lines == ["VALUE=previous"]
+    assert format_detail_line("VALUE=previous") != [("error", "VALUE=previous")]
 
 
 @pytest.mark.parametrize(

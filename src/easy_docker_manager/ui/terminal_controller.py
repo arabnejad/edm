@@ -72,7 +72,14 @@ class TerminalController:
             if container_tab_key is not None
             else ""
         )
-        is_error = container_tab_key in self.state.tab_load_errors or (
+        has_cached_content = (
+            container_tab_key is not None
+            and container_tab_key in self.state.tab_content_cache
+        )
+        is_error = (
+            container_tab_key in self.state.tab_content_errors
+            and not has_cached_content
+        ) or (
             self.state.active_detail_tab_name == TabName.LOGS
             and self.state.selected_container_id
             in self.state.unreadable_log_container_ids
@@ -93,9 +100,9 @@ class TerminalController:
         container_tab_key = self.state.selected_container_tab_key
         if container_tab_key is None:
             return ["Select a running container."]
-        load_error = self.state.tab_load_errors.get(container_tab_key)
-        if load_error:
-            return [load_error]
+        content_error = self.state.tab_content_errors.get(container_tab_key)
+        if content_error and container_tab_key not in self.state.tab_content_cache:
+            return [content_error]
         if container_tab_key not in self.state.tab_content_cache:
             return ["Loading..."]
 

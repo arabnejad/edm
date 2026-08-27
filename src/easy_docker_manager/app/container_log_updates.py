@@ -119,15 +119,37 @@ class ContainerLogUpdater:
         *,
         update_status: bool,
     ) -> None:
-        """Cache an explanation and stop polling logs for one container."""
+        """Show why logs cannot be read and stop polling this container."""
         self.state.unreadable_log_container_ids.add(container_id)
         logs_cache_key = cache_key or ContainerTabKey(container_id, TabName.LOGS)
-        self.state.tab_content_cache[logs_cache_key] = (
-            build_logs_unavailable_error_message(error)
+        self.record_container_log_fetch_failure(
+            container_id,
+            build_logs_unavailable_error_message(error),
+            cache_key=logs_cache_key,
+            update_status=False,
         )
-        self.state.tab_load_errors.pop(logs_cache_key, None)
         if update_status:
             self.state.status_message = "Logs unavailable for selected container."
+
+    def record_container_log_fetch_failure(
+        self,
+        container_id: str,
+        message: str,
+        cache_key: Optional[ContainerTabKey] = None,
+        *,
+        update_status: bool,
+    ) -> None:
+        """Remove stale logs and store the error from a failed log request.
+
+        Initial log loads and later log polls both call this after Docker fails
+        to return logs. Removing the previous cache prevents old lines from
+        looking current while the error is active.
+        """
+        logs_cache_key = cache_key or ContainerTabKey(container_id, TabName.LOGS)
+        self.state.tab_content_cache.remove_cached_tab_content(logs_cache_key)
+        self.state.tab_content_errors[logs_cache_key] = message
+        if update_status:
+            self.state.status_message = message
 
     def remove_log_cursors_for_stopped_containers(
         self,
@@ -200,8 +222,12 @@ class ContainerLogUpdater:
             return is_logs_tab_visible
         except Exception as exc:
             logger.warning("Log fetch failed: %s", exc)
-            if is_logs_tab_visible:
-                self.state.status_message = f"Log fetch failed: {exc}"
+            error_message = f"Log fetch failed: {exc}"
+            self.record_container_log_fetch_failure(
+                container_id,
+                error_message,
+                update_status=is_logs_tab_visible,
+            )
             return is_logs_tab_visible
 
         should_redraw = self._apply_log_content_to_cache(
@@ -211,13 +237,13 @@ class ContainerLogUpdater:
         )
         self._log_cursor_by_container_id[container_id] = request_started_at
 
+        logs_cache_key = ContainerTabKey(container_id, TabName.LOGS)
         recovered_from_failure = (
-            is_logs_tab_visible
-            and self.state.status_message.startswith("Log fetch failed:")
+            self.state.tab_content_errors.pop(logs_cache_key, None) is not None
         )
-        if recovered_from_failure:
+        if recovered_from_failure and is_logs_tab_visible:
             self.state.status_message = "Loaded Logs"
-        return should_redraw or recovered_from_failure
+        return should_redraw or (is_logs_tab_visible and recovered_from_failure)
 
     def _apply_log_content_to_cache(
         self,
@@ -227,17 +253,18 @@ class ContainerLogUpdater:
         replace_existing: bool,
     ) -> bool:
         """Replace or extend one container's cached Logs content."""
-        if not content and not replace_existing:
+        cache_key = ContainerTabKey(container_id, TabName.LOGS)
+        cache_already_exists = cache_key in self.state.tab_content_cache
+        if not content and not replace_existing and cache_already_exists:
             return False
 
-        cache_key = ContainerTabKey(container_id, TabName.LOGS)
         existing_content = self.state.tab_content_cache.get(cache_key, "") or ""
         updated_content = (
             content
             if replace_existing
             else self._combine_existing_and_new_log_content(existing_content, content)
         )
-        if updated_content == existing_content:
+        if updated_content == existing_content and cache_already_exists:
             return False
 
         self.state.tab_content_cache[cache_key] = (

@@ -83,7 +83,7 @@ def test_remove_stopped_container_state_removes_all_stopped_container_data() -> 
         stopped_container_tab_key: "old",
     }
     state.unreadable_log_container_ids = {"live", "stopped"}
-    state.tab_load_errors = {
+    state.tab_content_errors = {
         live_container_tab_key: "live error",
         stopped_container_tab_key: "old error",
     }
@@ -100,5 +100,5 @@ def test_remove_stopped_container_state_removes_all_stopped_container_data() -> 
     assert stopped_container_tab_key not in state.tab_content_cache
     assert state.tab_search_queries == {live_container_tab_key: "ok"}
     assert state.unreadable_log_container_ids == {"live"}
-    assert state.tab_load_errors == {live_container_tab_key: "live error"}
+    assert state.tab_content_errors == {live_container_tab_key: "live error"}
     assert state.tab_export_menu_state is None

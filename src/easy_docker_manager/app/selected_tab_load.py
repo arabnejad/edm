@@ -96,7 +96,7 @@ class SelectedTabContentLoader:
         if self._tab_load_future is not None:
             self._tab_load_future = None
 
-        self.state.tab_load_errors.pop(container_tab_key, None)
+        self.state.tab_content_errors.pop(container_tab_key, None)
         initial_log_request_started_at = (
             int(time.time()) if container_tab_key.tab_name == TabName.LOGS else None
         )
@@ -126,9 +126,10 @@ class SelectedTabContentLoader:
             selected_tab_key is not None
             and selected_tab_key in self.state.tab_content_cache
         )
-        if has_cached_content:
-            self.state.status_message = (
-                f"Loaded {self.state.active_detail_tab_name.value}"
+        if has_cached_content and selected_tab_key is not None:
+            self.state.status_message = self.state.tab_content_errors.get(
+                selected_tab_key,
+                f"Loaded {self.state.active_detail_tab_name.value}",
             )
         self.load_selected_tab_content_if_needed(force=not has_cached_content)
 
@@ -141,8 +142,9 @@ class SelectedTabContentLoader:
             selected_tab_key is not None
             and selected_tab_key in self.state.tab_content_cache
         ):
-            self.state.status_message = (
-                f"Loaded {self.state.active_detail_tab_name.value}"
+            self.state.status_message = self.state.tab_content_errors.get(
+                selected_tab_key,
+                f"Loaded {self.state.active_detail_tab_name.value}",
             )
         self.load_selected_tab_content_if_needed(force=False)
 
@@ -228,7 +230,7 @@ class SelectedTabContentLoader:
             )
             return is_active_tab
 
-        self.state.tab_load_errors.pop(requested_tab_key, None)
+        self.state.tab_content_errors.pop(requested_tab_key, None)
         if requested_tab_key.tab_name == TabName.LOGS:
             content = self.container_log_updater.apply_configured_limits_to_log_content(
                 content
@@ -255,8 +257,22 @@ class SelectedTabContentLoader:
         *,
         update_status: bool,
     ) -> None:
-        """Store a tab error without replacing successfully cached content."""
-        self.state.tab_load_errors[container_tab_key] = message
+        """Store a tab error and remove stale content from failed Logs loads.
+
+        Env, Config, and Top keep their last successful snapshot after a
+        refresh error. Logs are different: old lines could look current, so a
+        failed Logs request clears them and displays the error instead.
+        """
+        if container_tab_key.tab_name == TabName.LOGS:
+            self.container_log_updater.record_container_log_fetch_failure(
+                container_tab_key.container_id,
+                message,
+                cache_key=container_tab_key,
+                update_status=update_status,
+            )
+            return
+
+        self.state.tab_content_errors[container_tab_key] = message
         if update_status:
             self.state.status_message = message
 

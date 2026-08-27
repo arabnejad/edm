@@ -3,7 +3,7 @@
 A terminal session starts when EDM opens and ends when the application exits.
 This state holds the running containers, selected container, active tab,
 keyboard focus, loaded tab text, search queries, open popup, status messages,
-and load errors.
+and Docker request errors.
 
 TerminalController and TabExportController change this state after keyboard
 input. The Docker data components store container lists, tab content, log
@@ -75,6 +75,8 @@ class TerminalSessionState:
     follow_log_tail: bool = True
     # Status text displayed below the right detail panel.
     status_message: str = "Loading containers..."
+    # Most recent running-container list refresh error, or None after success.
+    running_container_list_refresh_error: Optional[str] = None
     # Whether printable keyboard input is editing the active search query.
     is_search_active: bool = False
     # Loaded tab text keyed by container and detail tab.
@@ -85,8 +87,8 @@ class TerminalSessionState:
     tab_search_queries: dict[ContainerTabKey, str] = field(default_factory=dict)
     # Container IDs whose logging drivers do not support Docker log reads.
     unreadable_log_container_ids: set[str] = field(default_factory=set)
-    # Most recent loading error for each container tab.
-    tab_load_errors: dict[ContainerTabKey, str] = field(default_factory=dict)
+    # Most recent load or refresh error for each container tab.
+    tab_content_errors: dict[ContainerTabKey, str] = field(default_factory=dict)
 
     @property
     def selected_container_summary(self) -> Optional[ContainerSummary]:
@@ -155,9 +157,9 @@ class TerminalSessionState:
             if not key.container_id or key.container_id in running_container_ids
         }
         self.unreadable_log_container_ids.intersection_update(running_container_ids)
-        self.tab_load_errors = {
+        self.tab_content_errors = {
             key: message
-            for key, message in self.tab_load_errors.items()
+            for key, message in self.tab_content_errors.items()
             if key.container_id in running_container_ids
         }
         if (

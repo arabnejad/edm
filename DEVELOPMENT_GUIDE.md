@@ -389,6 +389,15 @@ flowchart TD
 | `SelectedTabContentLoader` | Initial tab loads, cached-tab reuse, and periodic Env, Config, and Top refreshes |
 | `ContainerLogUpdater` | Incremental log polls, Docker since timestamps, overlap removal, and log limits |
 
+A failed container-list refresh keeps the last successful list visible. Env,
+Config, and Top also keep their last successful text after a temporary refresh
+error because that snapshot can still be useful.
+
+Logs behave differently. If Docker cannot fetch them, EDM removes the cached
+log lines and shows the error in the Logs panel. This prevents old lines from
+looking current. Errors are stored separately from status text, so a successful
+retry can clear the correct error without comparing displayed messages.
+
 A `Future` is Python's handle for work running in another thread. Keeping the
 active Future inside its owning component prevents duplicate requests. The
 completion callback checks that it received the same Future before changing
@@ -501,7 +510,8 @@ Important fields are:
 | `tab_content_cache` | Loaded text for each container tab |
 | `tab_search_queries` | Search query for each container tab |
 | `unreadable_log_container_ids` | Containers whose logging driver cannot be read |
-| `tab_load_errors` | Latest loading error for each container tab |
+| `running_container_list_refresh_error` | Latest container-list refresh error, cleared after recovery |
+| `tab_content_errors` | Latest load, refresh, or log-poll error for each container tab |
 
 `ContainerTabKey` combines a container ID and `TabName`. It is used for cached
 text, search queries, and loading errors so each container tab keeps its own
