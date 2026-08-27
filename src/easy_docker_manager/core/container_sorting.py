@@ -38,9 +38,9 @@ def get_container_list_in_requested_order(
 ) -> list[ContainerSummary]:
     """Return containers in the requested order without changing the input list.
 
-    DockerManager calls this after Docker refreshes the container
-    list and when the user applies a choice from the sorting menu. An empty
-    image name or creation time stays at the end in either direction.
+    RunningContainerListRefresher calls this after Docker refreshes the
+    container list and when the user applies a choice from the sorting menu.
+    An empty image name or creation time stays at the end in either direction.
     """
     if sort_field == ContainerSortField.DOCKER_ORDER:
         return list(containers)

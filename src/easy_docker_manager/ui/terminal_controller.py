@@ -21,8 +21,8 @@ class TerminalController:
 
     KeyboardController handles individual keys. This class moves container and
     detail selections, switches tabs, prepares visible text, and sends the
-    current state to TerminalLayoutView. DockerManager owns Docker
-    requests and updates the state when their results are ready.
+    current state to TerminalLayoutView. DockerManager delegates Docker work
+    to the components that update session state when requests finish.
     """
 
     DETAIL_TABS = tuple(TabName)

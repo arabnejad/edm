@@ -15,9 +15,9 @@ from easy_docker_manager.tabs.config_tab_formatter import format_container_confi
 class TabDataLoader:
     """Load display text for a container's Logs, Env, Config, or Top tab.
 
-    DockerManager calls this on a worker thread. The loader reads
-    one kind of Docker data and converts it to the text shown in that tab. It
-    does not update UI state or caches.
+    SelectedTabContentLoader runs this on a worker thread. The loader reads one
+    kind of Docker data and converts it to the text shown in that tab. It does
+    not update UI state or caches.
     """
 
     def __init__(

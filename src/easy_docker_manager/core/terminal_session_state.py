@@ -6,9 +6,9 @@ keyboard focus, loaded tab text, search queries, open popup, status messages,
 and load errors.
 
 TerminalController and TabExportController change this state after keyboard
-input. DockerManager stores container lists, tab content, log updates, and
-errors after Docker requests finish. The terminal views read the state when
-drawing the screen.
+input. The Docker data components store container lists, tab content, log
+updates, and errors after requests finish. The terminal views read the state
+when drawing the screen.
 """
 
 from __future__ import annotations
@@ -49,9 +49,9 @@ class TerminalSessionState:
     """Keep the current selection, focus, search, and loaded tab text.
 
     TerminalController and TabExportController update this object after
-    keyboard input. DockerManager updates it after Docker work finishes. It
-    contains no Urwid widgets and makes no Docker calls. The terminal views
-    read this same object during each redraw.
+    keyboard input. The Docker data components update it after Docker work
+    finishes. It contains no Urwid widgets and makes no Docker calls. The
+    terminal views read this same object during each redraw.
     """
 
     # Running container summaries displayed in the left panel.
