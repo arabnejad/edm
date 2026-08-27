@@ -56,7 +56,7 @@ def apply_limits_to_log_content(
     """Apply line count and line length limits to log content.
 
     A small response can still contain a very long JSON or stack-trace line.
-    TabDataLoader limits the first Logs response in a worker thread.
+    ContainerTabTextLoader limits the first Logs response in a worker thread.
     ContainerLogUpdater limits later batches in a worker and limits the full
     cached history again after merging.
 

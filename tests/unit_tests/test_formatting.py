@@ -5,12 +5,12 @@ from easy_docker_manager.ui.formatting import (
     DetailLineRenderer,
     DetailTabTextFormatter,
     append_markup_piece,
-    log_markup,
+    format_log_line,
+    format_structured_text_line,
+    format_structured_tokens,
     markup_piece_attr_and_text,
     plain_text_match_ranges,
     regex_match_ranges,
-    structured_text_markup,
-    token_markup,
 )
 
 
@@ -75,16 +75,18 @@ def test_markup_helpers_split_and_merge_segments() -> None:
     assert markup_output == [("value", "onetwo"), "plain"]
 
 
-def test_structured_text_markup_colors_environment_key_and_value() -> None:
-    assert structured_text_markup("NAME=value=more", TabName.ENV) == [
+def test_format_structured_text_line_colors_environment_key_and_value() -> None:
+    assert format_structured_text_line("NAME=value=more", TabName.ENV) == [
         ("accent", "NAME"),
         ("muted", "="),
         ("value", "value=more"),
     ]
 
 
-def test_log_markup_colors_common_log_tokens() -> None:
-    markup = log_markup("2026-01-01T10:00:00Z INFO DEBUG WARNING ERROR GET /health 200")
+def test_format_log_line_colors_common_log_tokens() -> None:
+    markup = format_log_line(
+        "2026-01-01T10:00:00Z INFO DEBUG WARNING ERROR GET /health 200"
+    )
     style_names = [piece[0] for piece in markup if isinstance(piece, tuple)]
 
     assert style_names == [
@@ -99,8 +101,8 @@ def test_log_markup_colors_common_log_tokens() -> None:
     ]
 
 
-def test_token_markup_colors_structured_values() -> None:
-    markup = token_markup('{"count": 2, "ready": true, "value": null}')
+def test_format_structured_tokens_colors_structured_values() -> None:
+    markup = format_structured_tokens('{"count": 2, "ready": true, "value": null}')
     style_names = [piece[0] for piece in markup if isinstance(piece, tuple)]
 
     assert "muted" in style_names

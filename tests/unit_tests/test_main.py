@@ -12,7 +12,7 @@ from easy_docker_manager.core.config import AppConfig
 def test_main_configures_logging_loads_config_and_runs_app(monkeypatch) -> None:
     configure_logging = Mock()
     config_store = Mock()
-    app_config = AppConfig(refresh_interval=5)
+    app_config = AppConfig(container_list_refresh_interval_seconds=5)
     config_store.load_and_sync.return_value = app_config
     config_store_class = Mock(return_value=config_store)
     edm_app = Mock()

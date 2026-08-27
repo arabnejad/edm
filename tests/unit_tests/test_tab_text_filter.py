@@ -4,7 +4,7 @@ from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.tabs.tab_text_filter import (
     MAX_REGEX_QUERY_LENGTH,
     TabTextFilter,
-    compile_regex,
+    compile_log_filter_regex,
 )
 
 
@@ -51,13 +51,13 @@ def test_tab_text_filter_reuses_the_latest_log_result() -> None:
     assert repeated_result is first_result
 
 
-def test_compile_regex_handles_valid_invalid_and_long_queries() -> None:
-    pattern, error = compile_regex("error")
+def test_compile_log_filter_regex_handles_valid_invalid_and_long_queries() -> None:
+    pattern, error = compile_log_filter_regex("error")
     assert error is None
     assert pattern.search("ERROR")
 
-    _, error = compile_regex("[")
+    _, error = compile_log_filter_regex("[")
     assert error
 
-    _, error = compile_regex("a" * (MAX_REGEX_QUERY_LENGTH + 1))
+    _, error = compile_log_filter_regex("a" * (MAX_REGEX_QUERY_LENGTH + 1))
     assert error == "Regex query is too long."

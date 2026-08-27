@@ -15,10 +15,10 @@ from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import (
     ContainerLogFetchError,
+    ContainerLogsUnavailableError,
     DockerContainerClientError,
-    LogsUnavailableError,
 )
-from easy_docker_manager.tabs.tab_data_loader import TabDataLoader
+from easy_docker_manager.tabs.tab_data_loader import ContainerTabTextLoader
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class SelectedTabContentLoader:
         state: TerminalSessionState,
         app_config: AppConfig,
         background_executor: BackgroundExecutor,
-        tab_data_loader: TabDataLoader,
+        tab_data_loader: ContainerTabTextLoader,
         container_log_updater: ContainerLogUpdater,
     ) -> None:
         self.state = state
@@ -97,7 +97,7 @@ class SelectedTabContentLoader:
         if self._tab_load_future is not None:
             self._tab_load_future = None
 
-        self.state.tab_content_errors.pop(container_tab_key, None)
+        self.state.tab_content_error_messages.pop(container_tab_key, None)
         initial_log_request_started_at = (
             int(time.time()) if container_tab_key.tab_name == TabName.LOGS else None
         )
@@ -128,7 +128,7 @@ class SelectedTabContentLoader:
             and selected_tab_key in self.state.tab_content_cache
         )
         if has_cached_content and selected_tab_key is not None:
-            self.state.status_message = self.state.tab_content_errors.get(
+            self.state.status_message = self.state.tab_content_error_messages.get(
                 selected_tab_key,
                 f"Loaded {self.state.active_detail_tab_name.value}",
             )
@@ -143,7 +143,7 @@ class SelectedTabContentLoader:
             selected_tab_key is not None
             and selected_tab_key in self.state.tab_content_cache
         ):
-            self.state.status_message = self.state.tab_content_errors.get(
+            self.state.status_message = self.state.tab_content_error_messages.get(
                 selected_tab_key,
                 f"Loaded {self.state.active_detail_tab_name.value}",
             )
@@ -193,7 +193,7 @@ class SelectedTabContentLoader:
 
         try:
             content = tab_load_future.result()
-        except LogsUnavailableError as exc:
+        except ContainerLogsUnavailableError as exc:
             logger.info("Initial logs are unavailable: %s", exc)
             self.container_log_updater.record_container_logs_as_unavailable(
                 requested_tab_key.container_id,
@@ -231,7 +231,7 @@ class SelectedTabContentLoader:
             )
             return is_active_tab
 
-        self.state.tab_content_errors.pop(requested_tab_key, None)
+        self.state.tab_content_error_messages.pop(requested_tab_key, None)
         self.state.tab_content_cache[requested_tab_key] = content
 
         if not is_active_tab:
@@ -269,7 +269,7 @@ class SelectedTabContentLoader:
             )
             return
 
-        self.state.tab_content_errors[container_tab_key] = message
+        self.state.tab_content_error_messages[container_tab_key] = message
         if update_status:
             self.state.status_message = message
 

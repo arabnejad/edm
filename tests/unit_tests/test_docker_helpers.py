@@ -9,11 +9,11 @@ from docker.errors import DockerException, NotFound
 from easy_docker_manager.docker import client_factory
 from easy_docker_manager.docker.container_client import (
     ContainerLogFetchError,
+    ContainerLogsUnavailableError,
     ContainerNotFoundError,
     DockerContainerClient,
     DockerRequestFailedError,
     FailedDockerRequestType,
-    LogsUnavailableError,
 )
 from easy_docker_manager.docker.container_mapper import to_container_summary
 from easy_docker_manager.docker.error_mapping import raise_container_request_error
@@ -133,7 +133,7 @@ def test_docker_error_types_keep_request_details() -> None:
         "abcdefghijklmnop",
         "denied",
     )
-    logs_unavailable_error = LogsUnavailableError("none")
+    logs_unavailable_error = ContainerLogsUnavailableError("none")
 
     assert str(container_not_found_error) == "Container not found: abcdefghijkl"
     assert (
@@ -143,7 +143,7 @@ def test_docker_error_types_keep_request_details() -> None:
     assert request_failed_error.container_id == "abcdefghijklmnop"
     assert request_failed_error.reason == "denied"
     assert "Environment load failed" in str(request_failed_error)
-    assert logs_unavailable_error.driver == "none"
+    assert logs_unavailable_error.logging_driver_name == "none"
 
 
 def test_error_mapping_raises_missing_container_error() -> None:

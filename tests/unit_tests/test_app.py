@@ -80,7 +80,7 @@ def test_keyboard_render_action_redraws_and_checks_background_work(
     edm_app_setup,
 ) -> None:
     edm_app_setup.runtime.keyboard_controller.handle_keypress.return_value = (
-        KeyAction.RENDER
+        KeyAction.REDRAW
     )
     edm_app_setup.app._schedule_next_docker_data_refresh_check = Mock()
 
@@ -175,7 +175,7 @@ def test_schedule_next_check_replaces_the_existing_scheduled_check(
     edm_app_setup,
     fake_urwid_main_loop: FakeUrwidMainLoop,
 ) -> None:
-    edm_app_setup.app.ui_event_loop = fake_urwid_main_loop
+    edm_app_setup.app.urwid_main_loop = fake_urwid_main_loop
     edm_app_setup.app._pending_docker_data_refresh_timer = "old"
     docker_manager = edm_app_setup.runtime.docker_manager
     docker_manager.get_next_docker_data_refresh_delay.return_value = 0.75
@@ -198,7 +198,7 @@ def test_schedule_next_check_uses_explicit_delay_after_ui_loop_starts(
     docker_manager = edm_app_setup.runtime.docker_manager
     docker_manager.get_next_docker_data_refresh_delay.assert_not_called()
 
-    edm_app_setup.app.ui_event_loop = fake_urwid_main_loop
+    edm_app_setup.app.urwid_main_loop = fake_urwid_main_loop
     edm_app_setup.app._schedule_next_docker_data_refresh_check(delay=0)
     fake_urwid_main_loop.set_alarm_in.assert_called_once_with(
         0,

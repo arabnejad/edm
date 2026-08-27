@@ -63,7 +63,7 @@ class EDMApp:
             if background_notifier is not None
             else create_background_notifier()
         )
-        self.ui_event_loop: Optional[urwid.MainLoop] = None
+        self.urwid_main_loop: Optional[urwid.MainLoop] = None
         self._pending_docker_data_refresh_timer: Optional[Any] = None
 
         selected_runtime_factory = (
@@ -96,19 +96,19 @@ class EDMApp:
         """Open the terminal interface and clean up after it closes."""
         logger.info("Starting EDM app")
         try:
-            self.ui_event_loop = urwid.MainLoop(
+            self.urwid_main_loop = urwid.MainLoop(
                 _KeyboardRoutingWidget(self),
                 palette=self.terminal_layout_view.build_urwid_style_palette(),
                 handle_mouse=False,
             )
             self.background_notifier.start(
-                self.ui_event_loop,
+                self.urwid_main_loop,
                 self._process_completed_background_tasks,
             )
             self.docker_manager.start_running_container_list_refresh(force=True)
             self.terminal_controller.update_terminal_view()
             self._schedule_next_docker_data_refresh_check(delay=0)
-            self.ui_event_loop.run()
+            self.urwid_main_loop.run()
         finally:
             self.background_notifier.stop()
             self.background_executor.shutdown(wait=True)
@@ -124,7 +124,7 @@ class EDMApp:
         action = self.keyboard_controller.handle_keypress(key, terminal_size)
         if action == KeyAction.QUIT:
             raise urwid.ExitMainLoop()
-        if action == KeyAction.RENDER:
+        if action == KeyAction.REDRAW:
             self.terminal_controller.update_terminal_view()
             self.docker_manager.refresh_docker_data_if_needed()
             self._schedule_next_docker_data_refresh_check()
@@ -174,10 +174,10 @@ class EDMApp:
         pending. When delay is not provided, DockerManager returns the wait
         time for the next container refresh, tab refresh, or log poll.
         """
-        if self.ui_event_loop is None:
+        if self.urwid_main_loop is None:
             return
         if self._pending_docker_data_refresh_timer is not None:
-            self.ui_event_loop.remove_alarm(self._pending_docker_data_refresh_timer)
+            self.urwid_main_loop.remove_alarm(self._pending_docker_data_refresh_timer)
         next_delay = (
             self.docker_manager.get_next_docker_data_refresh_delay()
             if delay is None
@@ -185,7 +185,7 @@ class EDMApp:
         )
         # Pass the method itself, not the result of calling it. Urwid calls the
         # method after next_delay has passed.
-        self._pending_docker_data_refresh_timer = self.ui_event_loop.set_alarm_in(
+        self._pending_docker_data_refresh_timer = self.urwid_main_loop.set_alarm_in(
             next_delay,
             self._run_scheduled_docker_data_refresh_check,
         )

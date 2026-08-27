@@ -56,7 +56,9 @@ class RunningContainerListRefresher:
         if current_time < self._next_refresh_at:
             return
         self.start_running_container_list_refresh()
-        self._next_refresh_at = current_time + self.app_config.refresh_interval
+        self._next_refresh_at = (
+            current_time + self.app_config.container_list_refresh_interval_seconds
+        )
 
     def get_next_refresh_time(self) -> Optional[float]:
         """Return the next refresh time, or None while a refresh is active."""
@@ -111,7 +113,7 @@ class RunningContainerListRefresher:
         except Exception as exc:
             logger.warning("Container refresh failed: %s", exc)
             error_message = f"Container refresh failed: {exc}"
-            self.state.running_container_list_refresh_error = error_message
+            self.state.container_list_refresh_error_message = error_message
             self.state.status_message = error_message
             return True
         return self._apply_refreshed_running_container_list(running_containers)
@@ -124,15 +126,15 @@ class RunningContainerListRefresher:
         previously_selected_container_id = self.state.selected_container_id
         previous_displayed_containers = self.state.running_containers
         recovered_from_refresh_error = (
-            self.state.running_container_list_refresh_error is not None
+            self.state.container_list_refresh_error_message is not None
         )
-        self.state.running_container_list_refresh_error = None
+        self.state.container_list_refresh_error_message = None
         self._containers_in_docker_order = list(running_containers)
         displayed_containers = self._get_sorted_containers(running_containers)
         running_container_ids = {
             container.container_id for container in running_containers
         }
-        self.state.remove_stopped_container_state(running_container_ids)
+        self.state.remove_state_for_stopped_containers(running_container_ids)
         self._remove_stopped_container_log_cursors(running_container_ids)
 
         if displayed_containers == previous_displayed_containers:

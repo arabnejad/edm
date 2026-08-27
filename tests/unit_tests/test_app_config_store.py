@@ -23,8 +23,8 @@ def test_load_keeps_valid_values_and_removes_unknown_keys(tmp_path: Path) -> Non
     config_path.write_text(
         json.dumps(
             {
-                "refresh_interval": 5,
-                "log_tail": 25,
+                "container_list_refresh_interval_seconds": 5,
+                "initial_log_tail_lines": 25,
                 "colors_enabled": False,
                 "removed_setting": True,
             }
@@ -35,8 +35,8 @@ def test_load_keeps_valid_values_and_removes_unknown_keys(tmp_path: Path) -> Non
     loaded_config = AppConfigStore(config_path).load_and_sync()
     saved_config = json.loads(config_path.read_text(encoding="utf-8"))
 
-    assert loaded_config.refresh_interval == 5.0
-    assert loaded_config.log_tail == 25
+    assert loaded_config.container_list_refresh_interval_seconds == 5.0
+    assert loaded_config.initial_log_tail_lines == 25
     assert loaded_config.colors_enabled is False
     assert saved_config["tab_refresh_interval"] == 2.0
     assert "removed_setting" not in saved_config
@@ -47,8 +47,8 @@ def test_invalid_values_use_defaults_and_are_rewritten(tmp_path: Path) -> None:
     config_path.write_text(
         json.dumps(
             {
-                "log_tail": True,
-                "max_workers": -2,
+                "initial_log_tail_lines": True,
+                "max_background_worker_threads": -2,
                 "colors_enabled": "false",
             }
         ),
@@ -57,8 +57,11 @@ def test_invalid_values_use_defaults_and_are_rewritten(tmp_path: Path) -> None:
 
     loaded_config = AppConfigStore(config_path).load_and_sync()
 
-    assert loaded_config.log_tail == AppConfig().log_tail
-    assert loaded_config.max_workers == AppConfig().max_workers
+    assert loaded_config.initial_log_tail_lines == AppConfig().initial_log_tail_lines
+    assert (
+        loaded_config.max_background_worker_threads
+        == AppConfig().max_background_worker_threads
+    )
     assert loaded_config.colors_enabled is True
 
 

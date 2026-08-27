@@ -18,7 +18,7 @@ from easy_docker_manager.app.selected_tab_load import SelectedTabContentLoader
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import DockerContainerClient
-from easy_docker_manager.tabs.tab_data_loader import TabDataLoader
+from easy_docker_manager.tabs.tab_data_loader import ContainerTabTextLoader
 
 
 class DockerManager:
@@ -39,7 +39,7 @@ class DockerManager:
         state: TerminalSessionState,
         app_config: AppConfig,
         background_executor: BackgroundExecutor,
-        tab_data_loader: TabDataLoader,
+        tab_data_loader: ContainerTabTextLoader,
         docker_container_client: DockerContainerClient,
     ) -> None:
         self.state = state

@@ -13,29 +13,29 @@ from easy_docker_manager.core.tabs import TabName
 def test_app_config_uses_expected_defaults() -> None:
     config = AppConfig()
 
-    assert config.refresh_interval == 2.0
+    assert config.container_list_refresh_interval_seconds == 2.0
     assert config.tab_refresh_interval == 2.0
-    assert config.log_tail == 100
+    assert config.initial_log_tail_lines == 100
     assert config.max_log_lines == 2000
     assert config.max_log_line_chars == 4000
-    assert config.content_cache_size == 50
-    assert config.content_cache_max_bytes == 25_000_000
+    assert config.tab_content_cache_max_entries == 50
+    assert config.tab_content_cache_max_bytes == 25_000_000
     assert config.docker_request_timeout == 10.0
-    assert config.max_workers == 4
+    assert config.max_background_worker_threads == 4
     assert config.colors_enabled is True
 
 
 @pytest.mark.parametrize(
     "field_name",
     [
-        "refresh_interval",
+        "container_list_refresh_interval_seconds",
         "tab_refresh_interval",
-        "log_tail",
+        "initial_log_tail_lines",
         "max_log_lines",
-        "content_cache_size",
-        "content_cache_max_bytes",
+        "tab_content_cache_max_entries",
+        "tab_content_cache_max_bytes",
         "docker_request_timeout",
-        "max_workers",
+        "max_background_worker_threads",
     ],
 )
 def test_app_config_rejects_non_positive_values(field_name: str) -> None:
@@ -47,7 +47,7 @@ def test_app_config_is_immutable() -> None:
     config = AppConfig()
 
     with pytest.raises(FrozenInstanceError):
-        config.log_tail = 10  # type: ignore[misc]
+        config.initial_log_tail_lines = 10  # type: ignore[misc]
 
 
 def test_app_config_requires_a_practical_log_line_limit() -> None:

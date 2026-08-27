@@ -22,7 +22,7 @@ from easy_docker_manager.docker.client_factory import create_docker_client
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
 from easy_docker_manager.tab_export.writer import TabExportWriter
-from easy_docker_manager.tabs.tab_data_loader import TabDataLoader
+from easy_docker_manager.tabs.tab_data_loader import ContainerTabTextLoader
 from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.keyboard_controller import KeyboardController
@@ -63,7 +63,7 @@ class EDMRuntimeFactory:
             self.docker_container_client = LocalDockerContainerClient(
                 # This partial is equivalent to the lambda below:
                 # lambda: create_docker_client(self.app_config.docker_request_timeout)
-                create_client=partial(
+                create_docker_client=partial(
                     create_docker_client,
                     self.app_config.docker_request_timeout,
                 ),
@@ -77,16 +77,20 @@ class EDMRuntimeFactory:
         """Create and connect all objects used by one EDMApp instance."""
         state = TerminalSessionState(
             tab_content_cache=TabContentCache(
-                self.app_config.content_cache_size,
-                self.app_config.content_cache_max_bytes,
+                self.app_config.tab_content_cache_max_entries,
+                self.app_config.tab_content_cache_max_bytes,
             ),
         )
-        tab_data_loader = TabDataLoader(self.docker_container_client, self.app_config)
+        tab_data_loader = ContainerTabTextLoader(
+            self.docker_container_client, self.app_config
+        )
         tab_text_filter = TabTextFilter()
         detail_tab_text_formatter = DetailTabTextFormatter()
         background_executor = BackgroundExecutor(
-            max_workers=self.app_config.max_workers,
-            notify_completion_ready=notify_background_task_ready,
+            max_background_worker_threads=(
+                self.app_config.max_background_worker_threads
+            ),
+            notify_ui_completion_ready=notify_background_task_ready,
         )
         terminal_layout_view = TerminalLayoutView(self.app_config)
         docker_manager = DockerManager(

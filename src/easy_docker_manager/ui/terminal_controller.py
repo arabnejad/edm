@@ -25,8 +25,8 @@ class TerminalController:
     selection or tab change.
     """
 
-    DETAIL_TABS = tuple(TabName)
-    CONTAINER_SORT_FIELDS = tuple(ContainerSortField)
+    DETAIL_TAB_ORDER = tuple(TabName)
+    CONTAINER_SORT_FIELD_ORDER = tuple(ContainerSortField)
 
     def __init__(
         self,
@@ -77,7 +77,7 @@ class TerminalController:
             and container_tab_key in self.state.tab_content_cache
         )
         is_error = (
-            container_tab_key in self.state.tab_content_errors
+            container_tab_key in self.state.tab_content_error_messages
             and not has_cached_content
         ) or (
             self.state.active_detail_tab_name == TabName.LOGS
@@ -100,7 +100,7 @@ class TerminalController:
         container_tab_key = self.state.selected_container_tab_key
         if container_tab_key is None:
             return ["Select a running container."]
-        content_error = self.state.tab_content_errors.get(container_tab_key)
+        content_error = self.state.tab_content_error_messages.get(container_tab_key)
         if content_error and container_tab_key not in self.state.tab_content_cache:
             return [content_error]
         if container_tab_key not in self.state.tab_content_cache:
@@ -220,15 +220,17 @@ class TerminalController:
         if sort_menu_state is None:
             return False
         previous_field = sort_menu_state.selected_sort_field
-        previous_index = self.CONTAINER_SORT_FIELDS.index(previous_field)
+        previous_index = self.CONTAINER_SORT_FIELD_ORDER.index(previous_field)
         selected_index = max(
             0,
             min(
-                len(self.CONTAINER_SORT_FIELDS) - 1,
+                len(self.CONTAINER_SORT_FIELD_ORDER) - 1,
                 previous_index + selection_offset,
             ),
         )
-        sort_menu_state.selected_sort_field = self.CONTAINER_SORT_FIELDS[selected_index]
+        sort_menu_state.selected_sort_field = self.CONTAINER_SORT_FIELD_ORDER[
+            selected_index
+        ]
         return sort_menu_state.selected_sort_field != previous_field
 
     def set_container_sort_menu_direction(self, *, descending: bool) -> bool:
@@ -261,9 +263,11 @@ class TerminalController:
 
     def switch_active_detail_tab(self, tab_offset: int) -> bool:
         """Switch tabs, restore cached text, or schedule a missing tab load."""
-        active_tab_index = self.DETAIL_TABS.index(self.state.active_detail_tab_name)
-        self.state.active_detail_tab_name = self.DETAIL_TABS[
-            (active_tab_index + tab_offset) % len(self.DETAIL_TABS)
+        active_tab_index = self.DETAIL_TAB_ORDER.index(
+            self.state.active_detail_tab_name
+        )
+        self.state.active_detail_tab_name = self.DETAIL_TAB_ORDER[
+            (active_tab_index + tab_offset) % len(self.DETAIL_TAB_ORDER)
         ]
         self.docker_manager.prepare_active_detail_tab()
         return True

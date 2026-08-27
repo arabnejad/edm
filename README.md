@@ -234,15 +234,15 @@ cleaned configuration back to the file.
 
 | Setting | Default | Purpose |
 | --- | ---: | --- |
-| `refresh_interval` | `2.0` | Seconds between running-container refreshes |
+| `container_list_refresh_interval_seconds` | `2.0` | Seconds between running-container refreshes |
 | `tab_refresh_interval` | `2.0` | Seconds between reloads of the visible Env, Config, or Top tab |
-| `log_tail` | `100` | Number of recent lines loaded when Logs first opens |
+| `initial_log_tail_lines` | `100` | Number of recent lines loaded when Logs first opens |
 | `max_log_lines` | `2000` | Maximum log lines kept for one container |
 | `max_log_line_chars` | `4000` | Maximum characters kept from one log line (minimum `32`) |
-| `content_cache_size` | `50` | Maximum number of cached container tabs |
-| `content_cache_max_bytes` | `25000000` | Maximum UTF-8 size of all cached tab text |
+| `tab_content_cache_max_entries` | `50` | Maximum number of cached container tabs |
+| `tab_content_cache_max_bytes` | `25000000` | Maximum UTF-8 size of all cached tab text |
 | `docker_request_timeout` | `10.0` | Docker SDK request timeout in seconds |
-| `max_workers` | `4` | Maximum number of background worker threads |
+| `max_background_worker_threads` | `4` | Maximum number of background worker threads |
 | `colors_enabled` | `true` | Use terminal colors; set to `false` for monochrome output |
 
 `edm --no-color` disables colors for one run without changing `config.json`.

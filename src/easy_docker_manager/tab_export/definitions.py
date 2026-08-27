@@ -51,7 +51,7 @@ class TabExportMenuState:
     container_tab_key: ContainerTabKey
     container_name: str
     file_path: str
-    path_cursor_index: int
+    file_path_cursor_index: int
     scope: TabExportScope = TabExportScope.CURRENT_VIEW
     selected_field: TabExportMenuField = TabExportMenuField.FILE_PATH
     phase: TabExportPhase = TabExportPhase.EDITING
@@ -68,8 +68,8 @@ class TabExportRequest:
     """
 
     target_path: Path
-    content: str
-    overwrite: bool = False
+    tab_text_snapshot: str
+    allow_overwrite: bool = False
 
 
 __all__ = [

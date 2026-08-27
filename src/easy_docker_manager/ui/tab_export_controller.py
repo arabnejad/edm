@@ -21,8 +21,8 @@ from easy_docker_manager.tab_export.definitions import (
     TabExportScope,
 )
 from easy_docker_manager.tab_export.writer import (
-    ExportTargetExistsError,
-    TabExportError,
+    ExportFileAlreadyExistsError,
+    TabExportFileError,
     TabExportWriter,
 )
 from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
@@ -93,7 +93,7 @@ class TabExportController:
             container_tab_key=container_tab_key,
             container_name=selected_container.name,
             file_path=file_path,
-            path_cursor_index=len(file_path),
+            file_path_cursor_index=len(file_path),
         )
         return True
 
@@ -203,17 +203,17 @@ class TabExportController:
         ):
             return False
 
-        cursor_index = menu_state.path_cursor_index
+        cursor_index = menu_state.file_path_cursor_index
         if key == "left":
-            menu_state.path_cursor_index = max(0, cursor_index - 1)
+            menu_state.file_path_cursor_index = max(0, cursor_index - 1)
         elif key == "right":
-            menu_state.path_cursor_index = min(
+            menu_state.file_path_cursor_index = min(
                 len(menu_state.file_path), cursor_index + 1
             )
         elif key == "home":
-            menu_state.path_cursor_index = 0
+            menu_state.file_path_cursor_index = 0
         elif key == "end":
-            menu_state.path_cursor_index = len(menu_state.file_path)
+            menu_state.file_path_cursor_index = len(menu_state.file_path)
         elif key == "backspace":
             if cursor_index == 0:
                 return False
@@ -221,7 +221,7 @@ class TabExportController:
                 menu_state.file_path[: cursor_index - 1]
                 + menu_state.file_path[cursor_index:]
             )
-            menu_state.path_cursor_index -= 1
+            menu_state.file_path_cursor_index -= 1
         elif key == "delete":
             if cursor_index >= len(menu_state.file_path):
                 return False
@@ -241,7 +241,7 @@ class TabExportController:
                 + key
                 + menu_state.file_path[cursor_index:]
             )
-            menu_state.path_cursor_index += 1
+            menu_state.file_path_cursor_index += 1
         else:
             return False
 
@@ -286,15 +286,18 @@ class TabExportController:
             )
             return True
 
-        export_content = self._prepare_tab_export_content(menu_state, full_content)
+        tab_text_snapshot = self._build_export_text_snapshot(
+            menu_state,
+            full_content,
+        )
         request = TabExportRequest(
             target_path=target_path,
-            content=export_content,
-            overwrite=overwrite,
+            tab_text_snapshot=tab_text_snapshot,
+            allow_overwrite=overwrite,
         )
 
         menu_state.file_path = str(target_path)
-        menu_state.path_cursor_index = len(menu_state.file_path)
+        menu_state.file_path_cursor_index = len(menu_state.file_path)
         menu_state.error_message = ""
         menu_state.phase = TabExportPhase.WRITING
         self.state.status_message = (
@@ -334,7 +337,7 @@ class TabExportController:
         extension = ".log" if tab_name == TabName.LOGS else ".txt"
         return f"{safe_container_name}-{tab_name.value.lower()}-{timestamp}{extension}"
 
-    def _prepare_tab_export_content(
+    def _build_export_text_snapshot(
         self,
         menu_state: TabExportMenuState,
         full_content: str,
@@ -376,13 +379,13 @@ class TabExportController:
 
         try:
             saved_path = export_future.result()
-        except ExportTargetExistsError as exc:
+        except ExportFileAlreadyExistsError as exc:
             if is_matching_menu and menu_state is not None:
                 menu_state.phase = TabExportPhase.CONFIRMING_OVERWRITE
                 menu_state.error_message = ""
             self.state.status_message = f"File already exists: {exc.target_path}"
             return True
-        except TabExportError as exc:
+        except TabExportFileError as exc:
             logger.warning("Tab export failed for %s: %s", exc.target_path, exc)
             if is_matching_menu and menu_state is not None:
                 menu_state.phase = TabExportPhase.EDITING

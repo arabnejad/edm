@@ -99,7 +99,7 @@ flowchart TD
     LogUpdates[ContainerLogUpdater]
     Executor[BackgroundExecutor]
     Notifier[BackgroundNotifier]
-    Loader[TabDataLoader]
+    Loader[ContainerTabTextLoader]
     Client[LocalDockerContainerClient]
     DockerSDK[Docker SDK for Python]
     Docker[(🐳 Local Docker daemon)]
@@ -386,7 +386,7 @@ Three smaller classes do the actual request tracking:
 | `SelectedTabContentLoader` | Initial tab loads, cached-tab reuse, and periodic Env, Config, and Top refreshes |
 | `ContainerLogUpdater` | Incremental log polls, Docker since timestamps, overlap removal, and log limits |
 
-Initial logs are limited once by `TabDataLoader` while its Docker request runs
+Initial logs are limited once by `ContainerTabTextLoader` while its Docker request runs
 in a worker thread. Incremental updates need two steps: each fetched batch is
 limited in the worker, then the combined old and new log text is limited again
 before it is cached. The second step keeps the complete displayed history
@@ -454,7 +454,7 @@ flowchart TD
     Cached{Text already cached?}
     Show[Use cached text]
     Submit[SelectedTabContentLoader submits a tab load]
-    Loader[TabDataLoader]
+    Loader[ContainerTabTextLoader]
     Choose{Check TabName}
     Logs[Load recent logs]
     Env[Load and sort environment variables]
@@ -477,15 +477,15 @@ flowchart TD
     Client --> Complete --> Cache --> Filter --> Format --> Draw
 ```
 
-`TabDataLoader.load_tab_text()` checks the requested `TabName` and calls one
+`ContainerTabTextLoader.load_tab_text()` checks the requested `TabName` and calls one
 small private method. Logs loads the first group of recent lines. Env sorts
 environment variables by name. Config sends Docker inspection data to
-`format_container_config()`. Top turns Docker's process columns and rows into
+`format_container_inspection_data()`. Top turns Docker's process columns and rows into
 text.
 
 The loader returns text or lets a Docker error continue to
 `SelectedTabContentLoader`. It does not change session state, update the cache,
-or draw widgets. Later log polls do not use `TabDataLoader`;
+or draw widgets. Later log polls do not use `ContainerTabTextLoader`;
 `ContainerLogUpdater` requests and merges those lines directly.
 
 ## State And Cache
@@ -513,8 +513,8 @@ Important fields are:
 | `tab_content_cache` | Loaded text for each container tab |
 | `tab_search_queries` | Search query for each container tab |
 | `unreadable_log_container_ids` | Containers whose logging driver cannot be read |
-| `running_container_list_refresh_error` | Latest container-list refresh error, cleared after recovery |
-| `tab_content_errors` | Latest load, refresh, or log-poll error for each container tab |
+| `container_list_refresh_error_message` | Latest container-list refresh error, cleared after recovery |
+| `tab_content_error_messages` | Latest load, refresh, or log-poll error for each container tab |
 
 `ContainerTabKey` combines a container ID and `TabName`. It is used for cached
 text, search queries, and loading errors so each container tab keeps its own
@@ -522,8 +522,8 @@ data.
 
 `TabContentCache` has two limits:
 
-- `content_cache_size` limits the number of cached tabs.
-- `content_cache_max_bytes` limits the combined UTF-8 size of cached text.
+- `tab_content_cache_max_entries` limits the number of cached tabs.
+- `tab_content_cache_max_bytes` limits the combined UTF-8 size of cached text.
 
 When either limit is exceeded, the least recently used entries are removed.
 State belonging to stopped containers is also removed after a successful
@@ -600,7 +600,7 @@ environment keys, structured values, search matches, and errors.
 | Docker error classes | Describe missing containers, failed refreshes, failed requests, and unreadable logs |
 | `create_docker_client` | Creates a local Docker SDK client and rejects remote `DOCKER_HOST` transports |
 | `to_container_summary` | Converts a Docker container object to `ContainerSummary` |
-| `TabDataLoader` | Loads and formats the full text for a requested detail tab |
+| `ContainerTabTextLoader` | Loads and formats the full text for a requested detail tab |
 | `TabTextFilter` | Chooses visible lines for the terminal and Current view exports |
 | `TabExportWriter` | Writes a prepared tab snapshot without silently replacing a file |
 
@@ -625,7 +625,7 @@ environment keys, structured values, search matches, and errors.
 ## Adding A Detail Tab
 
 1. Add the new value to `TabName`.
-2. Add a private loading method in `TabDataLoader` and call it from
+2. Add a private loading method in `ContainerTabTextLoader` and call it from
    `load_tab_text()` for the new value.
 3. Update `TabTextFilter` if the tab needs different line-visibility rules.
 4. Add formatting rules only if the tab needs different colors or highlights.

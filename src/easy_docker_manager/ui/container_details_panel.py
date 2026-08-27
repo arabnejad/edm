@@ -56,7 +56,9 @@ class SelectedContainerDetailsPanel:
         )
         self.widget = self.panel
 
-        self._cached_view_key: Optional[tuple[Optional[str], TabName, str]] = None
+        self._cached_display_context: Optional[tuple[Optional[str], TabName, str]] = (
+            None
+        )
         self._cached_lines: list[str] = []
         self._cached_line_widgets: list[FocusableDetailLine] = []
 
@@ -197,10 +199,10 @@ class SelectedContainerDetailsPanel:
         often removes lines from the top and adds lines at the bottom. Rows that
         still match the previous update are reused.
         """
-        if view_key == self._cached_view_key and lines == self._cached_lines:
+        if view_key == self._cached_display_context and lines == self._cached_lines:
             return self._cached_line_widgets
 
-        if view_key != self._cached_view_key:
+        if view_key != self._cached_display_context:
             line_widgets = [
                 self._build_tab_display_line(line, format_detail_line) for line in lines
             ]
@@ -222,7 +224,7 @@ class SelectedContainerDetailsPanel:
                 ),
             ]
 
-        self._cached_view_key = view_key
+        self._cached_display_context = view_key
         self._cached_lines = list(lines)
         self._cached_line_widgets = line_widgets
         return line_widgets

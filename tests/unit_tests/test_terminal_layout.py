@@ -114,7 +114,7 @@ def test_render_shows_export_form_and_sensitive_data_warning() -> None:
             container_tab_key=ContainerTabKey("container-1", TabName.ENV),
             container_name="web",
             file_path="/tmp/web-env.txt",
-            path_cursor_index=len("/tmp/web-env.txt"),
+            file_path_cursor_index=len("/tmp/web-env.txt"),
             selected_field=TabExportMenuField.SCOPE,
         )
     )
@@ -137,7 +137,7 @@ def test_render_shows_export_overwrite_confirmation_and_progress() -> None:
         container_tab_key=ContainerTabKey("container-1", TabName.LOGS),
         container_name="web",
         file_path="/tmp/web-logs.log",
-        path_cursor_index=len("/tmp/web-logs.log"),
+        file_path_cursor_index=len("/tmp/web-logs.log"),
         phase=TabExportPhase.CONFIRMING_OVERWRITE,
     )
     state = TerminalSessionState(tab_export_menu_state=menu_state)
@@ -160,7 +160,7 @@ def test_export_path_cursor_and_validation_error_are_rendered() -> None:
         container_tab_key=ContainerTabKey("container-1", TabName.CONFIG),
         container_name="web",
         file_path="output.txt",
-        path_cursor_index=3,
+        file_path_cursor_index=3,
         error_message="Directory does not exist",
     )
     state = TerminalSessionState(tab_export_menu_state=menu_state)

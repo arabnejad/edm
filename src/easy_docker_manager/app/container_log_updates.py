@@ -17,8 +17,8 @@ from easy_docker_manager.core.log_text import (
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import (
+    ContainerLogsUnavailableError,
     DockerContainerClient,
-    LogsUnavailableError,
 )
 from easy_docker_manager.tabs.tab_data_loader import (
     build_logs_unavailable_error_message,
@@ -114,7 +114,7 @@ class ContainerLogUpdater:
     def record_container_logs_as_unavailable(
         self,
         container_id: str,
-        error: LogsUnavailableError,
+        error: ContainerLogsUnavailableError,
         cache_key: Optional[ContainerTabKey] = None,
         *,
         update_status: bool,
@@ -147,7 +147,7 @@ class ContainerLogUpdater:
         """
         logs_cache_key = cache_key or ContainerTabKey(container_id, TabName.LOGS)
         self.state.tab_content_cache.remove_cached_tab_content(logs_cache_key)
-        self.state.tab_content_errors[logs_cache_key] = message
+        self.state.tab_content_error_messages[logs_cache_key] = message
         if update_status:
             self.state.status_message = message
 
@@ -176,7 +176,7 @@ class ContainerLogUpdater:
         """Submit the next incremental log request for one container."""
         since_timestamp = self._log_cursor_by_container_id.get(container_id)
         tail_lines: Union[int, str] = (
-            self.app_config.log_tail if since_timestamp is None else "all"
+            self.app_config.initial_log_tail_lines if since_timestamp is None else "all"
         )
         replace_existing = since_timestamp is None
         request_started_at = int(time.time())
@@ -212,7 +212,7 @@ class ContainerLogUpdater:
         )
         try:
             content = log_poll_future.result()
-        except LogsUnavailableError as exc:
+        except ContainerLogsUnavailableError as exc:
             logger.info("Logs are unavailable: %s", exc)
             self.record_container_logs_as_unavailable(
                 container_id,
@@ -239,7 +239,7 @@ class ContainerLogUpdater:
 
         logs_cache_key = ContainerTabKey(container_id, TabName.LOGS)
         recovered_from_failure = (
-            self.state.tab_content_errors.pop(logs_cache_key, None) is not None
+            self.state.tab_content_error_messages.pop(logs_cache_key, None) is not None
         )
         if recovered_from_failure and is_logs_tab_visible:
             self.state.status_message = "Loaded Logs"

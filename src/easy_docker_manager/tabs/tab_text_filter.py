@@ -23,9 +23,9 @@ class TabTextFilter:
 
     def __init__(self) -> None:
         """Keep the latest Logs result so an unchanged view is quick to reuse."""
-        self._last_content: Optional[str] = None
-        self._last_query: Optional[str] = None
-        self._last_filtered_lines: Optional[list[str]] = None
+        self._last_log_content: Optional[str] = None
+        self._last_log_query: Optional[str] = None
+        self._last_visible_log_lines: Optional[list[str]] = None
 
     def get_visible_lines(
         self,
@@ -42,26 +42,26 @@ class TabTextFilter:
             return content.splitlines()
 
         if (
-            content == self._last_content
-            and query == self._last_query
-            and self._last_filtered_lines is not None
+            content == self._last_log_content
+            and query == self._last_log_query
+            and self._last_visible_log_lines is not None
         ):
-            return self._last_filtered_lines
+            return self._last_visible_log_lines
 
-        pattern, error = compile_regex(query)
+        pattern, error = compile_log_filter_regex(query)
         if error:
             return content.splitlines()
 
         matching_lines = [line for line in content.splitlines() if pattern.search(line)]
         visible_lines = matching_lines or [f"No log lines match /{query}/."]
-        self._last_content = content
-        self._last_query = query
-        self._last_filtered_lines = visible_lines
+        self._last_log_content = content
+        self._last_log_query = query
+        self._last_visible_log_lines = visible_lines
         return visible_lines
 
 
 @lru_cache(maxsize=128)
-def compile_regex(query: str) -> tuple[re.Pattern[str], Optional[str]]:
+def compile_log_filter_regex(query: str) -> tuple[re.Pattern[str], Optional[str]]:
     """Compile a case-insensitive regex, returning its error instead of raising."""
     if len(query) > MAX_REGEX_QUERY_LENGTH:
         return re.compile(r"$."), "Regex query is too long."
@@ -71,4 +71,4 @@ def compile_regex(query: str) -> tuple[re.Pattern[str], Optional[str]]:
         return re.compile(r"$."), str(exc)
 
 
-__all__ = ["MAX_REGEX_QUERY_LENGTH", "TabTextFilter", "compile_regex"]
+__all__ = ["MAX_REGEX_QUERY_LENGTH", "TabTextFilter", "compile_log_filter_regex"]

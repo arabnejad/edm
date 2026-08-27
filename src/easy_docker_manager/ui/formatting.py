@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import Optional, Union
 
 from easy_docker_manager.core.tabs import TabName
-from easy_docker_manager.tabs.tab_text_filter import compile_regex
+from easy_docker_manager.tabs.tab_text_filter import compile_log_filter_regex
 
 MarkupSegment = Union[str, tuple[Hashable, str]]
 
@@ -37,10 +37,10 @@ class DetailLineRenderer:
             return self.base_line_markup(line, tab)
 
         if tab != TabName.LOGS:
-            return self.plain_text_highlighted_markup(line, tab, query)
-        return self.regex_highlighted_markup(line, tab, query)
+            return self.highlight_plain_text_matches(line, tab, query)
+        return self.highlight_log_regex_matches(line, tab, query)
 
-    def regex_highlighted_markup(
+    def highlight_log_regex_matches(
         self,
         line: str,
         tab: TabName,
@@ -48,9 +48,9 @@ class DetailLineRenderer:
     ) -> list[MarkupSegment]:
         """Highlight every regex match in a Logs line."""
         match_ranges = regex_match_ranges(line, query)
-        return self.highlighted_markup(line, tab, match_ranges)
+        return self.apply_match_highlighting(line, tab, match_ranges)
 
-    def plain_text_highlighted_markup(
+    def highlight_plain_text_matches(
         self,
         line: str,
         tab: TabName,
@@ -58,9 +58,9 @@ class DetailLineRenderer:
     ) -> list[MarkupSegment]:
         """Highlight plain-text matches in Env, Config, or Top text."""
         match_ranges = plain_text_match_ranges(line, query)
-        return self.highlighted_markup(line, tab, match_ranges)
+        return self.apply_match_highlighting(line, tab, match_ranges)
 
-    def highlighted_markup(
+    def apply_match_highlighting(
         self,
         line: str,
         tab: TabName,
@@ -126,8 +126,8 @@ class DetailLineRenderer:
         if not line:
             return [""]
         if tab != TabName.LOGS:
-            return structured_text_markup(line, tab)
-        return log_markup(line)
+            return format_structured_text_line(line, tab)
+        return format_log_line(line)
 
 
 class DetailTabTextFormatter:
@@ -159,7 +159,7 @@ def regex_match_ranges(line: str, query: str) -> list[tuple[int, int]]:
     For example, regex_match_ranges("ERROR 500", "error|500") returns
     [(0, 5), (6, 9)]. The search is case-insensitive.
     """
-    pattern, error = compile_regex(query)
+    pattern, error = compile_log_filter_regex(query)
     if error:
         return []
     return [
@@ -220,15 +220,15 @@ def append_markup_piece(
     output[-1] = (attr, combined_text) if attr is not None else combined_text
 
 
-def structured_text_markup(line: str, tab: TabName) -> list[MarkupSegment]:
+def format_structured_text_line(line: str, tab: TabName) -> list[MarkupSegment]:
     """Return simple token markup for Env, Config, and Top lines."""
     if "=" in line and tab == TabName.ENV:
         key, value = line.split("=", 1)
         return [("accent", key), ("muted", "="), ("value", value)]
-    return token_markup(line)
+    return format_structured_tokens(line)
 
 
-def log_markup(line: str) -> list[MarkupSegment]:
+def format_log_line(line: str) -> list[MarkupSegment]:
     """Return color markup for common timestamps, levels, URLs, and numbers."""
     parts: list[MarkupSegment] = []
     for token in re.split(r"(\s+)", line):
@@ -257,7 +257,7 @@ def log_markup(line: str) -> list[MarkupSegment]:
     return parts
 
 
-def token_markup(line: str) -> list[MarkupSegment]:
+def format_structured_tokens(line: str) -> list[MarkupSegment]:
     """Color common values in Config and Top text.
 
     Punctuation, numbers, booleans, null values, and quoted text receive
@@ -288,9 +288,9 @@ __all__ = [
     "MarkupSegment",
     "append_markup_piece",
     "plain_text_match_ranges",
-    "log_markup",
+    "format_log_line",
     "markup_piece_attr_and_text",
     "regex_match_ranges",
-    "structured_text_markup",
-    "token_markup",
+    "format_structured_text_line",
+    "format_structured_tokens",
 ]

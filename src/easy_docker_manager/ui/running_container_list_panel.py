@@ -82,9 +82,12 @@ class RunningContainerListPanel:
                 urwid.Text(
                     [
                         ("muted", "Refresh "),
-                        ("value", f"{self.app_config.refresh_interval:g}s"),
+                        (
+                            "value",
+                            f"{self.app_config.container_list_refresh_interval_seconds:g}s",
+                        ),
                         ("muted", " | Logs "),
-                        ("value", f"{self.app_config.log_tail}"),
+                        ("value", f"{self.app_config.initial_log_tail_lines}"),
                         ("muted", " lines"),
                     ],
                     wrap="clip",

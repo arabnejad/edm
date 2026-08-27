@@ -36,9 +36,10 @@ class AppConfigStore:
     def load_and_sync(self) -> AppConfig:
         """Load valid settings, fill defaults, rewrite the file, and return them.
 
-        For example, if config.json contains refresh_interval and an old setting
-        that EDM no longer supports, the returned AppConfig keeps the valid
-        refresh interval and fills every missing setting from current defaults.
+        For example, the file may contain a valid container-list refresh
+        interval and an old setting that EDM no longer supports. The returned
+        AppConfig keeps the valid value and fills every missing setting from
+        current defaults.
         The rewritten file contains the current settings and drops the old one.
         """
         raw_config = self._read_json_object()

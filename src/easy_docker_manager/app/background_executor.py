@@ -39,15 +39,17 @@ class BackgroundExecutor:
 
     def __init__(
         self,
-        max_workers: int,
-        notify_completion_ready: Callable[[], None],
+        max_background_worker_threads: int,
+        notify_ui_completion_ready: Callable[[], None],
     ) -> None:
         """Create the worker pool and save the function that wakes EDMApp."""
-        self._thread_pool = ThreadPoolExecutor(max_workers=max_workers)
-        self._completed_callbacks: queue.SimpleQueue[UICompletionCallback] = (
-            queue.SimpleQueue()
+        self._thread_pool = ThreadPoolExecutor(
+            max_workers=max_background_worker_threads
         )
-        self._notify_completion_ready = notify_completion_ready
+        self._pending_ui_completion_callbacks: queue.SimpleQueue[
+            UICompletionCallback
+        ] = queue.SimpleQueue()
+        self._notify_ui_completion_ready = notify_ui_completion_ready
         self._shutdown_lock = Lock()
         self._is_shutting_down = False
 
@@ -103,7 +105,9 @@ class BackgroundExecutor:
         completion_callbacks: list[UICompletionCallback] = []
         while True:
             try:
-                completion_callbacks.append(self._completed_callbacks.get_nowait())
+                completion_callbacks.append(
+                    self._pending_ui_completion_callbacks.get_nowait()
+                )
             except queue.Empty:
                 break
         return completion_callbacks
@@ -124,8 +128,8 @@ class BackgroundExecutor:
         with self._shutdown_lock:
             if self._is_shutting_down:
                 return
-            self._completed_callbacks.put(completion_callback)
-            self._notify_completion_ready()
+            self._pending_ui_completion_callbacks.put(completion_callback)
+            self._notify_ui_completion_ready()
 
 
 __all__ = ["BackgroundExecutor", "UICompletionCallback"]

@@ -6,7 +6,7 @@ from docker.models.containers import Container
 
 
 @dataclass
-class DockerTestSetup:
+class DockerIntegrationTestContainer:
     """Hold the temporary container and the values configured on it."""
 
     container: Container

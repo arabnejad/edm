@@ -68,15 +68,17 @@ class DockerRequestFailedError(DockerContainerClientError):
         )
 
 
-class LogsUnavailableError(DockerContainerClientError):
+class ContainerLogsUnavailableError(DockerContainerClientError):
     """Raised when Docker cannot read logs for the configured logging driver."""
 
-    def __init__(self, driver: str) -> None:
-        self.driver = driver
-        super().__init__(f"Logs unavailable for Docker logging driver '{driver}'")
+    def __init__(self, logging_driver_name: str) -> None:
+        self.logging_driver_name = logging_driver_name
+        super().__init__(
+            "Logs unavailable for Docker logging driver " f"'{logging_driver_name}'"
+        )
 
 
-class ContainerRefreshError(DockerContainerClientError):
+class RunningContainerListRefreshError(DockerContainerClientError):
     """Raised when a container refresh fails before a valid list is available."""
 
 
@@ -90,14 +92,14 @@ class ContainerLogFetchError(DockerRequestFailedError):
 class DockerContainerClient(ABC):
     """List the Docker container operations that EDM can request.
 
-    DockerManager and TabDataLoader use this interface rather than importing
+    DockerManager and ContainerTabTextLoader use this interface rather than importing
     Docker SDK objects. LocalDockerContainerClient connects to Docker in the
     application, while tests can use a fake client without a Docker daemon.
     """
 
     @abstractmethod
     def list_running_containers(self) -> list[ContainerSummary]:
-        """Return running containers or raise ContainerRefreshError on failure."""
+        """Return running containers or report that the list could not load."""
 
     @abstractmethod
     def get_container_logs(
@@ -140,9 +142,9 @@ __all__ = [
     "DockerContainerClient",
     "ContainerLogFetchError",
     "ContainerNotFoundError",
-    "ContainerRefreshError",
+    "RunningContainerListRefreshError",
     "DockerContainerClientError",
     "DockerRequestFailedError",
     "FailedDockerRequestType",
-    "LogsUnavailableError",
+    "ContainerLogsUnavailableError",
 ]

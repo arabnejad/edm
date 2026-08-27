@@ -38,8 +38,8 @@ def _create_default_tab_content_cache() -> TabContentCache:
     """Create a cache from AppConfig defaults for standalone session state."""
     app_config = AppConfig()
     return TabContentCache(
-        max_entries=app_config.content_cache_size,
-        max_total_bytes=app_config.content_cache_max_bytes,
+        max_entries=app_config.tab_content_cache_max_entries,
+        max_total_bytes=app_config.tab_content_cache_max_bytes,
     )
 
 
@@ -75,7 +75,7 @@ class TerminalSessionState:
     # Status text displayed below the right detail panel.
     status_message: str = "Loading containers..."
     # Most recent running-container list refresh error, or None after success.
-    running_container_list_refresh_error: Optional[str] = None
+    container_list_refresh_error_message: Optional[str] = None
     # Whether printable keyboard input is editing the active search query.
     is_search_active: bool = False
     # Loaded tab text keyed by container and detail tab.
@@ -87,7 +87,7 @@ class TerminalSessionState:
     # Container IDs whose logging drivers do not support Docker log reads.
     unreadable_log_container_ids: set[str] = field(default_factory=set)
     # Most recent load or refresh error for each container tab.
-    tab_content_errors: dict[ContainerTabKey, str] = field(default_factory=dict)
+    tab_content_error_messages: dict[ContainerTabKey, str] = field(default_factory=dict)
 
     @property
     def selected_container_summary(self) -> Optional[ContainerSummary]:
@@ -142,7 +142,7 @@ class TerminalSessionState:
             0, min(line_count - 1, self.detail_selected_line_index)
         )
 
-    def remove_stopped_container_state(
+    def remove_state_for_stopped_containers(
         self,
         running_container_ids: set[str],
     ) -> None:
@@ -156,9 +156,9 @@ class TerminalSessionState:
             if not key.container_id or key.container_id in running_container_ids
         }
         self.unreadable_log_container_ids.intersection_update(running_container_ids)
-        self.tab_content_errors = {
+        self.tab_content_error_messages = {
             key: message
-            for key, message in self.tab_content_errors.items()
+            for key, message in self.tab_content_error_messages.items()
             if key.container_id in running_container_ids
         }
         if (

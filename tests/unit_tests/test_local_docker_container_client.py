@@ -9,23 +9,23 @@ from docker.errors import DockerException, NotFound
 from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.docker.container_client import (
     ContainerLogFetchError,
+    ContainerLogsUnavailableError,
     ContainerNotFoundError,
-    ContainerRefreshError,
     DockerRequestFailedError,
-    LogsUnavailableError,
+    RunningContainerListRefreshError,
 )
 from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
 
 
 @pytest.fixture
 def docker_client_factory():
-    def create_client(container=None):
+    def create_docker_client(container=None):
         containers = Mock()
         containers.get.return_value = container
         images = Mock()
         return SimpleNamespace(containers=containers, images=images, close=Mock())
 
-    return create_client
+    return create_docker_client
 
 
 @pytest.fixture
@@ -62,21 +62,23 @@ def docker_container_factory():
 
 def test_client_is_created_lazily_and_reused(docker_client_factory) -> None:
     client = docker_client_factory()
-    create_client = Mock(return_value=client)
-    docker_container_client = LocalDockerContainerClient(create_client=create_client)
+    create_docker_client = Mock(return_value=client)
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=create_docker_client
+    )
 
-    assert docker_container_client._docker_client_instance is None
+    assert docker_container_client._docker_client is None
     assert docker_container_client._get_or_create_docker_client() is client
     assert docker_container_client._get_or_create_docker_client() is client
-    create_client.assert_called_once_with()
+    create_docker_client.assert_called_once_with()
 
 
 def test_docker_connection_error_becomes_refresh_error() -> None:
     docker_container_client = LocalDockerContainerClient(
-        create_client=Mock(side_effect=DockerException("offline"))
+        create_docker_client=Mock(side_effect=DockerException("offline"))
     )
 
-    with pytest.raises(ContainerRefreshError, match="offline"):
+    with pytest.raises(RunningContainerListRefreshError, match="offline"):
         docker_container_client.list_running_containers()
 
 
@@ -88,7 +90,9 @@ def test_list_running_containers_filters_and_maps_containers(
     second_container = docker_container_factory(id="two", name="two")
     client = docker_client_factory()
     client.containers.list.return_value = [first_container, second_container]
-    docker_container_client = LocalDockerContainerClient(create_client=lambda: client)
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: client
+    )
 
     running_containers = docker_container_client.list_running_containers()
 
@@ -120,7 +124,9 @@ def test_list_running_containers_skips_a_container_that_cannot_be_mapped(
     second_container = docker_container_factory(id="two")
     client = docker_client_factory()
     client.containers.list.return_value = [first_container, second_container]
-    docker_container_client = LocalDockerContainerClient(create_client=lambda: client)
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: client
+    )
     expected_container = ContainerSummary(
         "two",
         "two",
@@ -147,9 +153,11 @@ def test_list_running_containers_skips_a_container_that_cannot_be_mapped(
 def test_list_running_containers_wraps_docker_failure(docker_client_factory) -> None:
     client = docker_client_factory()
     client.containers.list.side_effect = RuntimeError("offline")
-    docker_container_client = LocalDockerContainerClient(create_client=lambda: client)
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: client
+    )
 
-    with pytest.raises(ContainerRefreshError, match="offline"):
+    with pytest.raises(RunningContainerListRefreshError, match="offline"):
         docker_container_client.list_running_containers()
 
 
@@ -159,7 +167,9 @@ def test_get_container_logs_decodes_bad_bytes_and_passes_options(
 ) -> None:
     container = docker_container_factory()
     client = docker_client_factory(container)
-    docker_container_client = LocalDockerContainerClient(create_client=lambda: client)
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: client
+    )
 
     log_text = docker_container_client.get_container_logs(
         "container-id",
@@ -177,7 +187,7 @@ def test_get_container_logs_does_not_pass_since_when_it_is_missing(
 ) -> None:
     container = docker_container_factory(logs=Mock(return_value="text"))
     docker_container_client = LocalDockerContainerClient(
-        create_client=lambda: docker_client_factory(container)
+        create_docker_client=lambda: docker_client_factory(container)
     )
 
     assert (
@@ -195,18 +205,20 @@ def test_get_container_logs_rejects_none_logging_driver(
         attrs={"HostConfig": {"LogConfig": {"Type": "none"}}}
     )
     docker_container_client = LocalDockerContainerClient(
-        create_client=lambda: docker_client_factory(container)
+        create_docker_client=lambda: docker_client_factory(container)
     )
 
-    with pytest.raises(LogsUnavailableError) as error:
+    with pytest.raises(ContainerLogsUnavailableError) as error:
         docker_container_client.get_container_logs("container-id")
-    assert error.value.driver == "none"
+    assert error.value.logging_driver_name == "none"
 
 
 def test_get_container_logs_maps_missing_container(docker_client_factory) -> None:
     client = docker_client_factory()
     client.containers.get.side_effect = NotFound("missing")
-    docker_container_client = LocalDockerContainerClient(create_client=lambda: client)
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: client
+    )
 
     with pytest.raises(ContainerNotFoundError):
         docker_container_client.get_container_logs("missing")
@@ -221,12 +233,12 @@ def test_get_container_logs_maps_unreadable_driver_response_to_logs_unavailable(
         "configured logging driver does not support reading"
     )
     docker_container_client = LocalDockerContainerClient(
-        create_client=lambda: docker_client_factory(container)
+        create_docker_client=lambda: docker_client_factory(container)
     )
 
-    with pytest.raises(LogsUnavailableError) as error:
+    with pytest.raises(ContainerLogsUnavailableError) as error:
         docker_container_client.get_container_logs("container-id")
-    assert error.value.driver == "json-file"
+    assert error.value.logging_driver_name == "json-file"
 
 
 def test_get_container_logs_maps_transient_failure(
@@ -236,7 +248,7 @@ def test_get_container_logs_maps_transient_failure(
     container = docker_container_factory()
     container.logs.side_effect = RuntimeError("timeout")
     docker_container_client = LocalDockerContainerClient(
-        create_client=lambda: docker_client_factory(container)
+        create_docker_client=lambda: docker_client_factory(container)
     )
 
     with pytest.raises(ContainerLogFetchError, match="timeout"):
@@ -249,7 +261,7 @@ def test_get_container_environment_variables_returns_valid_name_value_pairs(
 ) -> None:
     container = docker_container_factory()
     docker_container_client = LocalDockerContainerClient(
-        create_client=lambda: docker_client_factory(container)
+        create_docker_client=lambda: docker_client_factory(container)
     )
 
     assert docker_container_client.get_container_environment_variables(
@@ -262,7 +274,9 @@ def test_get_container_environment_variables_maps_docker_failure(
 ) -> None:
     client = docker_client_factory()
     client.containers.get.side_effect = RuntimeError("denied")
-    docker_container_client = LocalDockerContainerClient(create_client=lambda: client)
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: client
+    )
 
     with pytest.raises(DockerRequestFailedError, match="Environment load failed"):
         docker_container_client.get_container_environment_variables("container-id")
@@ -275,7 +289,9 @@ def test_inspection_data_includes_container_and_image(
     container = docker_container_factory()
     client = docker_client_factory(container)
     client.images.get.return_value = SimpleNamespace(attrs={"RepoTags": ["web:1"]})
-    docker_container_client = LocalDockerContainerClient(create_client=lambda: client)
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: client
+    )
 
     inspection_data = docker_container_client.get_container_inspection_data(
         "container-id"
@@ -293,7 +309,9 @@ def test_missing_image_data_does_not_fail_container_inspection(
     container = docker_container_factory()
     client = docker_client_factory(container)
     client.images.get.side_effect = RuntimeError("image removed")
-    docker_container_client = LocalDockerContainerClient(create_client=lambda: client)
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: client
+    )
 
     inspection_data = docker_container_client.get_container_inspection_data(
         "container-id"
@@ -307,7 +325,7 @@ def test_container_top_process_table_is_converted_to_strings(
 ) -> None:
     container = docker_container_factory()
     docker_container_client = LocalDockerContainerClient(
-        create_client=lambda: docker_client_factory(container)
+        create_docker_client=lambda: docker_client_factory(container)
     )
 
     process_table = docker_container_client.get_container_top_process_table(
@@ -324,7 +342,7 @@ def test_container_top_process_table_failure_is_mapped(
 ) -> None:
     container = docker_container_factory(top=Mock(side_effect=RuntimeError("stopped")))
     docker_container_client = LocalDockerContainerClient(
-        create_client=lambda: docker_client_factory(container)
+        create_docker_client=lambda: docker_client_factory(container)
     )
 
     with pytest.raises(DockerRequestFailedError, match="Process list load failed"):
@@ -333,7 +351,9 @@ def test_container_top_process_table_failure_is_mapped(
 
 def test_close_releases_only_an_existing_client(docker_client_factory) -> None:
     client = docker_client_factory()
-    docker_container_client = LocalDockerContainerClient(create_client=lambda: client)
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: client
+    )
 
     docker_container_client.close()
     client.close.assert_not_called()
@@ -341,4 +361,4 @@ def test_close_releases_only_an_existing_client(docker_client_factory) -> None:
     assert docker_container_client._get_or_create_docker_client() is client
     docker_container_client.close()
     client.close.assert_called_once_with()
-    assert docker_container_client._docker_client_instance is None
+    assert docker_container_client._docker_client is None
