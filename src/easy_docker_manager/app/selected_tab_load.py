@@ -231,10 +231,6 @@ class SelectedTabContentLoader:
             return is_active_tab
 
         self.state.tab_content_errors.pop(requested_tab_key, None)
-        if requested_tab_key.tab_name == TabName.LOGS:
-            content = self.container_log_updater.apply_configured_limits_to_log_content(
-                content
-            )
         self.state.tab_content_cache[requested_tab_key] = content
 
         if not is_active_tab:

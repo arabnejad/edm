@@ -165,7 +165,7 @@ class ContainerLogUpdater:
         }
 
     def apply_configured_limits_to_log_content(self, content: str) -> str:
-        """Apply EDM's line-count and line-length limits before caching logs."""
+        """Apply EDM's line-count and line-length limits to log text."""
         return apply_limits_to_log_content(
             content,
             max_lines=self.app_config.max_log_lines,
@@ -252,7 +252,7 @@ class ContainerLogUpdater:
         *,
         replace_existing: bool,
     ) -> bool:
-        """Replace or extend one container's cached Logs content."""
+        """Merge a fetched batch, limit the result, and cache it."""
         cache_key = ContainerTabKey(container_id, TabName.LOGS)
         cache_already_exists = cache_key in self.state.tab_content_cache
         if not content and not replace_existing and cache_already_exists:

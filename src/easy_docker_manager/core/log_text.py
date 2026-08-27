@@ -56,9 +56,10 @@ def apply_limits_to_log_content(
     """Apply line count and line length limits to log content.
 
     Even a response containing only a few recent log lines can include a very
-    long JSON or stack-trace line. The tab loader and DockerManager call
-    this before caching logs, which keeps the newest lines visible without
-    making the terminal UI handle very large rows.
+    long JSON or stack-trace line. TabDataLoader applies these limits to the
+    initial Logs response in a worker thread. ContainerLogUpdater applies them
+    to each incremental response in a worker and to the combined log history
+    after merging. This keeps large responses away from the terminal UI.
 
     For example:
 

@@ -389,6 +389,12 @@ flowchart TD
 | `SelectedTabContentLoader` | Initial tab loads, cached-tab reuse, and periodic Env, Config, and Top refreshes |
 | `ContainerLogUpdater` | Incremental log polls, Docker since timestamps, overlap removal, and log limits |
 
+Initial logs are limited once by `TabDataLoader` while its Docker request runs
+in a worker thread. Incremental updates need two steps: each fetched batch is
+limited in the worker, then the combined old and new log text is limited again
+before it is cached. The second step keeps the complete displayed history
+within the configured line and character limits.
+
 A failed container-list refresh keeps the last successful list visible. Env,
 Config, and Top also keep their last successful text after a temporary refresh
 error because that snapshot can still be useful.

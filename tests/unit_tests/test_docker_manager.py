@@ -404,6 +404,26 @@ def test_tab_load_clears_old_error_and_records_initial_log_time(
     }
 
 
+def test_initial_logs_are_cached_without_applying_worker_limits_again(
+    docker_manager_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    selected_tab_key = state.selected_container_tab_key
+    assert selected_tab_key is not None
+    test_setup = docker_manager_factory(state)
+    limit_log_content = Mock()
+    test_setup.container_log_updater.apply_configured_limits_to_log_content = (
+        limit_log_content
+    )
+
+    test_setup.docker_manager.load_selected_tab_content_if_needed()
+    assert test_setup.background_executor.finish_request(result="limited by worker")
+
+    assert state.tab_content_cache[selected_tab_key] == "limited by worker"
+    limit_log_content.assert_not_called()
+
+
 def test_running_old_tab_load_finishes_before_loading_new_selection(
     docker_manager_factory,
     container_summary_factory,
@@ -631,6 +651,32 @@ def test_empty_incremental_log_poll_keeps_cached_text_and_advances_time(
         test_setup.container_log_updater._log_cursor_by_container_id["container-1"]
         == 200
     )
+
+
+def test_merged_incremental_logs_are_limited_before_caching(
+    monkeypatch,
+    docker_manager_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    selected_tab_key = state.selected_container_tab_key
+    assert selected_tab_key is not None
+    state.tab_content_cache[selected_tab_key] = "oldest\nexisting"
+    test_setup = docker_manager_factory(
+        state,
+        AppConfig(max_log_lines=2, max_log_line_chars=32),
+    )
+    test_setup.running_container_list_refresher._next_refresh_at = 100.0
+    test_setup.container_log_updater._log_cursor_by_container_id["container-1"] = 150
+    monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
+    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
+
+    test_setup.docker_manager.refresh_docker_data_if_needed()
+
+    assert test_setup.background_executor.finish_request(
+        result="incoming-1\nincoming-2"
+    )
+    assert state.tab_content_cache[selected_tab_key] == "incoming-1\nincoming-2"
 
 
 @pytest.mark.parametrize(
