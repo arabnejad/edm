@@ -1,4 +1,4 @@
-"""Map terminal keypresses to UI state actions."""
+"""Map terminal keypresses to EDM actions."""
 
 from __future__ import annotations
 
@@ -21,9 +21,9 @@ class KeyAction(Enum):
 class KeyboardController:
     """Handle EDM keyboard shortcuts and search input.
 
-    EDMApp sends each Urwid key name here. This controller updates search text
-    and keyboard focus. It sends navigation to TerminalController and export-menu
-    input to TabExportController.
+    EDMApp sends each Urwid key name here. This class handles simple focus and
+    search changes, sends navigation and sorting to TerminalController, and
+    passes export-menu keys to TabExportController.
     """
 
     def __init__(
@@ -138,7 +138,7 @@ class KeyboardController:
         return KeyAction.NONE
 
     def _handle_tab_export_menu_keypress(self, key: str) -> KeyAction:
-        """Pass an export-menu key to the controller that owns its workflow."""
+        """Pass one export-menu key to TabExportController."""
         changed = self.tab_export_controller.handle_menu_keypress(key)
         return KeyAction.RENDER if changed else KeyAction.NONE
 

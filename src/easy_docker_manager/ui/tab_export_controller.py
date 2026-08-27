@@ -1,4 +1,4 @@
-"""Manage the tab export menu and its background file write."""
+"""Handle export-menu input and save the selected tab in the background."""
 
 from __future__ import annotations
 
@@ -31,13 +31,13 @@ logger = logging.getLogger(__name__)
 
 
 class TabExportController:
-    """Handle the complete export workflow for the active container tab.
+    """Control the export menu and save a snapshot of the active tab.
 
     KeyboardController calls this object to open the export menu and passes all
-    menu keypresses to handle_menu_keypress(). This controller edits the menu,
-    copies the requested text from the existing tab cache, and sends only the
-    file write to BackgroundExecutor. It updates the menu on the UI thread when
-    writing finishes.
+    menu keypresses to handle_menu_keypress(). This class edits the menu, copies
+    the requested text from the tab cache, and sends the file write to
+    BackgroundExecutor. When the write finishes, it updates the menu on the UI
+    thread.
 
     Exporting never starts a new Docker request. It saves the content already
     loaded for the selected container and tab.
@@ -100,10 +100,10 @@ class TabExportController:
     def handle_menu_keypress(self, key: str) -> bool:
         """Handle one key while the export menu is open.
 
-        KeyboardController delegates every export-menu keypress here. The
+        KeyboardController passes every export-menu keypress here. The
         current menu phase decides whether the key edits the form, answers the
         overwrite question, or is ignored while the file is being written.
-        The return value tells EDM whether the visible menu changed.
+        It returns True when the visible menu changed and needs to be redrawn.
         """
         menu_state = self.state.tab_export_menu_state
         if menu_state is None or menu_state.phase == TabExportPhase.WRITING:
@@ -339,7 +339,7 @@ class TabExportController:
         menu_state: TabExportMenuState,
         full_content: str,
     ) -> str:
-        """Return the cached text snapshot selected by the export scope."""
+        """Copy the cached text selected by the export scope."""
         if menu_state.scope == TabExportScope.FULL_TAB:
             return full_content
 

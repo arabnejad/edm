@@ -1,9 +1,8 @@
-"""Coordinate the Docker data workflows used by the terminal interface.
+"""Give the terminal code one place to request Docker data.
 
-DockerManager remains the object used by EDMApp and TerminalController. It
-delegates container-list refreshes, selected-tab loads, and log updates to
-small components that own those request lifecycles. This keeps the public UI
-workflow unchanged while placing each Future beside its completion method.
+EDMApp and TerminalController use DockerManager instead of calling the separate
+refresh classes themselves. DockerManager forwards container-list refreshes,
+tab loads, and log polls to the class responsible for each request.
 """
 
 from __future__ import annotations
@@ -23,12 +22,13 @@ from easy_docker_manager.tabs.tab_data_loader import TabDataLoader
 
 
 class DockerManager:
-    """Provide one entry point for all Docker data used by the terminal UI.
+    """Route Docker data requests to the three request handlers.
 
-    EDMApp asks this class to start due Docker work and calculate the next
-    refresh delay. TerminalController reports container, tab, and sorting
-    changes through the same public methods as before. DockerManager delegates
-    each operation to the component that owns its request and result handling.
+    EDMApp asks when Docker data should be refreshed. TerminalController uses
+    the same object after the user changes a container, tab, or sort order.
+    RunningContainerListRefresher handles the container list,
+    SelectedTabContentLoader handles full tab loads, and ContainerLogUpdater
+    handles later log polls.
     """
 
     MINIMUM_REQUEST_CHECK_DELAY = 0.05
@@ -71,24 +71,24 @@ class DockerManager:
         )
 
     def refresh_docker_data_if_needed(self) -> None:
-        """Ask each Docker data component to start work that is now due.
+        """Start scheduled container, tab, and log requests when needed.
 
-        EDMApp calls this after startup, user input, completed work, and each
-        scheduled timer check. Every component prevents duplicate requests for
-        the work it already has in progress.
+        EDMApp calls this after startup, user input, finished worker tasks, and
+        each timed refresh check. Each handler skips work when the same type of
+        request is already running.
         """
         current_time = time.monotonic()
-        self.running_container_list_refresher.refresh_if_due(current_time)
-        self.selected_tab_content_loader.refresh_if_due(current_time)
+        self.running_container_list_refresher.refresh_if_needed(current_time)
+        self.selected_tab_content_loader.refresh_if_needed(current_time)
 
         initial_log_load_in_progress = self._is_initial_log_content_load_in_progress()
-        self.container_log_updater.poll_if_due(
+        self.container_log_updater.poll_if_needed(
             current_time,
             initial_log_load_in_progress=initial_log_load_in_progress,
         )
 
     def get_next_docker_data_refresh_delay(self) -> float:
-        """Return how long EDMApp should wait before checking Docker work again."""
+        """Return how long EDM should wait before checking Docker work again."""
         initial_log_load_in_progress = self._is_initial_log_content_load_in_progress()
         request_times = [
             request_time
@@ -109,7 +109,7 @@ class DockerManager:
         )
 
     def start_running_container_list_refresh(self, force: bool = False) -> bool:
-        """Start a running-container list refresh through its owning component."""
+        """Ask the list refresher to load the running containers."""
         return (
             self.running_container_list_refresher.start_running_container_list_refresh(
                 force
@@ -117,27 +117,27 @@ class DockerManager:
         )
 
     def load_selected_tab_content_if_needed(self, force: bool = False) -> bool:
-        """Load or reuse the selected tab through its owning component."""
+        """Ask the tab loader to load or reuse the selected container tab."""
         return self.selected_tab_content_loader.load_selected_tab_content_if_needed(
             force
         )
 
     def prepare_selected_container_details(self) -> None:
-        """Reset log polling and prepare details after container selection changes."""
+        """Prepare tab content after the user selects another container."""
         self.container_log_updater.reset_after_selection_change()
         self.selected_tab_content_loader.prepare_selected_container_details()
 
     def prepare_active_detail_tab(self) -> None:
-        """Reset log polling and prepare details after the active tab changes."""
+        """Prepare tab content after the user switches detail tabs."""
         self.container_log_updater.reset_after_selection_change()
         self.selected_tab_content_loader.prepare_active_detail_tab()
 
     def apply_container_sort_to_current_list(self) -> None:
-        """Apply the selected container order through the list refresher."""
+        """Reorder the current container list using the selected sort."""
         self.running_container_list_refresher.apply_container_sort_to_current_list()
 
     def _is_initial_log_content_load_in_progress(self) -> bool:
-        """Return whether log polling must wait for the first Logs response."""
+        """Return True while the selected container's first log load is running."""
         container_id = self.state.selected_container_id
         if not container_id:
             return False

@@ -37,11 +37,10 @@ class FocusableDetailLine(urwid.Text):
 class SelectedContainerDetailsPanel:
     """Display details for the container selected in the left panel.
 
-    TerminalLayoutView calls render() with text already prepared by
-    TerminalController. This panel shows the container name, detail tabs, search
-    query, scrollable tab content, and status message. Rows are reused when
-    possible, especially when new log lines are appended. This keeps regular
-    log updates cheaper than rebuilding every Urwid text widget.
+    TerminalLayoutView passes in text prepared by TerminalController. The panel
+    shows the container name, tabs, search query, scrollable content, and status
+    message. It reuses existing rows when possible, especially as new log lines
+    arrive, to avoid rebuilding every Urwid text widget.
     """
 
     def __init__(self) -> None:
@@ -67,7 +66,7 @@ class SelectedContainerDetailsPanel:
         detail_lines: list[str],
         format_detail_line: Callable[[str], Union[str, list[MarkupSegment]]],
     ) -> None:
-        """Update the detail header, rows, status, focus, and border."""
+        """Redraw the details panel from the current session state and lines."""
         self._update_container_name_tabs_and_search_text(state)
         self._update_visible_tab_lines_and_focus(
             state,
@@ -85,9 +84,9 @@ class SelectedContainerDetailsPanel:
     def move_focus_to_selected_detail_line(self, line_index: int) -> None:
         """Move visual focus to the selected line so it remains visible.
 
-        TerminalLayoutView calls this after TerminalController changes the selected
-        line index. If that index is beyond the available rows, the final row
-        receives focus instead.
+        TerminalLayoutView calls this after TerminalController changes the
+        selected line index. If the index is beyond the available rows, focus
+        moves to the final row instead.
         """
         if self.detail_rows:
             self.detail_rows.set_focus(min(line_index, len(self.detail_rows) - 1))
@@ -153,9 +152,9 @@ class SelectedContainerDetailsPanel:
     ) -> None:
         """Show the active tab's lines and focus its selected line.
 
-        render() calls this whenever the right panel changes. Existing line
-        widgets are reused when possible, then the selected line is highlighted
-        and kept visible. The selected index itself remains in TerminalSessionState.
+        render() calls this whenever the right panel changes. It reuses existing
+        rows where possible, highlights the selected line, and keeps it visible.
+        TerminalSessionState remains the source of the selected line index.
         """
         selected_tab_key = state.selected_container_tab_key
         search_query = (
@@ -194,10 +193,9 @@ class SelectedContainerDetailsPanel:
     ) -> list[FocusableDetailLine]:
         """Return cached tab display lines or build the lines that changed.
 
-        Switching container, tab, or query starts a fresh list. A log update
-        often removes old lines from the top and adds new lines at the bottom.
-        In that case, matching display lines from the previous update are
-        reused.
+        Switching container, tab, or query builds a fresh list. A log update
+        often removes lines from the top and adds lines at the bottom. Rows that
+        still match the previous update are reused.
         """
         if view_key == self._cached_view_key and lines == self._cached_lines:
             return self._cached_line_widgets

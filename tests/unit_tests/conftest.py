@@ -55,7 +55,7 @@ def container_summary_factory() -> Callable[..., ContainerSummary]:
 def session_state_factory(
     container_summary_factory: Callable[..., ContainerSummary],
 ) -> Callable[..., TerminalSessionState]:
-    """Create UI state with one selected container and detail tab."""
+    """Create terminal session state with one selected container and tab."""
 
     def create_session_state(
         container_id: str = "container-1",

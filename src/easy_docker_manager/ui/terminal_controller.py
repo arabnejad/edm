@@ -1,4 +1,4 @@
-"""Apply terminal navigation rules and prepare state for rendering."""
+"""Update terminal selections and prepare the next screen redraw."""
 
 from __future__ import annotations
 
@@ -17,12 +17,12 @@ from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
 
 
 class TerminalController:
-    """Handle navigation, menu choices, search, and screen rendering.
+    """Handle navigation, sorting, search results, and screen redraws.
 
     KeyboardController handles individual keys. This class moves container and
-    detail selections, switches tabs, prepares visible text, and sends the
-    current state to TerminalLayoutView. DockerManager delegates Docker work
-    to the components that update session state when requests finish.
+    detail selections, switches tabs, prepares visible text, and sends session
+    state to TerminalLayoutView. It asks DockerManager to load data after a
+    selection or tab change.
     """
 
     DETAIL_TABS = tuple(TabName)

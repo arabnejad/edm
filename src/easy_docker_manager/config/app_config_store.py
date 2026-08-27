@@ -21,10 +21,10 @@ CONFIG_FILE_NAME = "config.json"
 class AppConfigStore:
     """Load and save AppConfig in the operating system's user config directory.
 
-    AppConfig defaults define the settings supported by the installed EDM
-    version. Each load keeps valid known values, adds missing defaults, removes
-    unknown names, and rewrites the file. This updates the file after an upgrade
-    or downgrade without requiring separate migration code.
+    AppConfig defines the settings supported by the installed EDM version.
+    Loading keeps valid settings, adds missing defaults, removes unknown names,
+    and rewrites the file. This keeps config.json in sync after a normal upgrade
+    or downgrade without separate migration code.
     """
 
     def __init__(self, config_path: Optional[Path] = None) -> None:
@@ -47,7 +47,7 @@ class AppConfigStore:
         return app_config
 
     def save(self, app_config: AppConfig) -> None:
-        """Write AppConfig as readable JSON, replacing the old file at the end."""
+        """Write readable JSON to a temporary file, then replace config.json."""
         try:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
             temporary_path = self.config_path.with_suffix(

@@ -20,11 +20,11 @@ class ContainerSortField(str, Enum):
 
 @dataclass
 class ContainerSortMenuState:
-    """Keep the choices being edited in the container sorting menu.
+    """Store the choices currently shown in the container sorting menu.
 
-    TerminalController creates this object when the menu opens. The choices stay
-    separate from the active container order until the user presses Enter.
-    Pressing Esc discards this object and leaves the current order unchanged.
+    TerminalController creates this object when the menu opens. These temporary
+    choices do not change the container list until the user presses Enter.
+    Pressing Esc discards them and keeps the current order.
     """
 
     selected_sort_field: ContainerSortField

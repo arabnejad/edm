@@ -14,7 +14,7 @@ MarkupSegment = Union[str, tuple[Hashable, str]]
 
 
 class DetailLineRenderer:
-    """Add search highlights and simple tab-specific colors."""
+    """Add search highlights and tab-specific colors to one line."""
 
     def render_line(
         self,
@@ -24,10 +24,10 @@ class DetailLineRenderer:
         *,
         is_error: bool = False,
     ) -> Union[str, list[MarkupSegment]]:
-        """Return display markup for one line in the detail panel.
+        """Format one detail line for display.
 
-        The formatter calls this while rendering a tab. Error lines use the
-        error style; other lines use tab colors and search highlighting.
+        Error lines use the error style. Other lines receive the colors and
+        search highlights used by their tab.
         """
         if is_error:
             return [("error", line)]
@@ -133,9 +133,9 @@ class DetailLineRenderer:
 class DetailTabTextFormatter:
     """Add colors and search highlights to detail-tab lines.
 
-    TerminalController uses this before drawing each visible line. Logs use
-    regex highlights. Env, Config, and Top highlight plain-text matches.
-    TabTextFilter decides which lines are visible before this formatter runs.
+    TabTextFilter decides which lines are shown. TerminalController then uses
+    this class to color each line. Logs highlight regex matches. Env, Config,
+    and Top highlight matching search text.
     """
 
     def __init__(self) -> None:
@@ -149,7 +149,7 @@ class DetailTabTextFormatter:
         *,
         is_error: bool = False,
     ) -> Union[str, list[MarkupSegment]]:
-        """Return the line's colors, using the error color when is_error is True."""
+        """Format one line, using the error style when is_error is True."""
         return self.line_renderer.render_line(line, tab, query, is_error=is_error)
 
 
@@ -258,7 +258,7 @@ def log_markup(line: str) -> list[MarkupSegment]:
 
 
 def token_markup(line: str) -> list[MarkupSegment]:
-    """Add terminal colors to Config and Top values.
+    """Color common values in Config and Top text.
 
     Punctuation, numbers, booleans, null values, and quoted text receive
     separate colors so these tabs are easier to scan.

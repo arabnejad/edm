@@ -1,9 +1,8 @@
-"""Build and connect the objects used by EDMApp.
+"""Create the objects needed to run one EDMApp.
 
-EDMApp uses this module during setup. The factory creates the shared session
-state, Docker access, background processing, controllers, tab export writer,
-text filter, formatter, and terminal view. EDMRuntime returns the objects that
-EDMApp uses directly.
+The factory creates the shared session state, Docker client, worker pool,
+controllers, and terminal views. It connects them once during startup and
+returns the objects used directly by EDMApp.
 """
 
 from __future__ import annotations
@@ -34,7 +33,7 @@ from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
 
 @dataclass
 class EDMRuntime:
-    """Hold the objects EDMApp uses while the terminal interface is running."""
+    """Group the objects that EDMApp uses directly while it is running."""
 
     docker_container_client: DockerContainerClient
     background_executor: BackgroundExecutor
@@ -45,12 +44,11 @@ class EDMRuntime:
 
 
 class EDMRuntimeFactory:
-    """Create and connect the default objects used by EDMApp.
+    """Create and connect one complete set of EDM runtime objects.
 
-    The factory creates the Docker client, session state, Docker manager,
-    background executor, controllers, tab export writer, text filter, formatter,
-    and terminal view. It connects them and returns EDMApp's direct dependencies
-    in EDMRuntime. EDMApp can then focus on starting and stopping the terminal UI.
+    EDMApp uses this factory during startup. Keeping object creation here keeps
+    EDMApp focused on running the interface and also lets tests provide a
+    different config or Docker client.
     """
 
     def __init__(

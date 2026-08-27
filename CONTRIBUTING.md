@@ -81,5 +81,5 @@ individual formatting, linting, type, security, test, and package commands.
 - Keep unrelated refactoring out of the same pull request.
 - Make sure all GitHub Actions checks pass.
 
-A maintainer may ask for changes before merging. Review comments are part of
-the collaboration process, so ask when a request is unclear.
+A maintainer may ask for changes before merging. If a review comment is
+unclear, ask before changing the code.

@@ -1,18 +1,18 @@
-"""Run blocking work without holding up the terminal interface.
+"""Run slow functions without blocking the terminal interface.
 
 Docker requests and file writes can take time. BackgroundExecutor runs them in
 worker threads so the UI thread remains free to handle keys and redraw the
 screen.
 
-The caller provides two functions when submitting work:
+Each submission includes two functions:
 
 1. A worker function that may block.
-2. A completion function that applies the result to UI state.
+2. A completion function that applies the result to session state or the screen.
 
-The worker function runs in the thread pool. When it finishes, the executor
-puts its completion function in a queue and wakes EDMApp. EDMApp later runs the
-completion function on the UI thread. Worker threads therefore never update
-TerminalSessionState or Urwid widgets.
+The first function runs in the thread pool. When it finishes, the executor puts
+the second function in a queue and wakes EDMApp. EDMApp runs that completion
+function on the UI thread, so worker threads never change TerminalSessionState
+or Urwid widgets directly.
 """
 
 from __future__ import annotations
@@ -29,12 +29,12 @@ UICompletionCallback = Callable[[], bool]
 
 
 class BackgroundExecutor:
-    """Run blocking functions and queue their UI-thread completion functions.
+    """Run slow functions in workers and queue their completion callbacks.
 
     DockerManager uses this executor for Docker requests, and
-    TabExportController uses it for export file writes. Each completion
-    callback is defined beside the code that starts the work. EDMApp drains the
-    callback queue whenever BackgroundNotifier reports a finished operation.
+    TabExportController uses it for file writes. The caller supplies the
+    callback that knows how to apply each result. BackgroundNotifier wakes
+    EDMApp, which then runs the queued callbacks on the UI thread.
     """
 
     def __init__(
@@ -82,8 +82,9 @@ class BackgroundExecutor:
 
         completion_callback = partial(on_complete, future)
 
-        # A Future may already be finished when this callback is registered.
-        # Register it after releasing the lock because queueing also uses the lock.
+        # add_done_callback() runs the callback immediately if the Future has
+        # already finished. Register it after releasing _shutdown_lock because
+        # _queue_completion_callback() needs the same lock.
         future.add_done_callback(
             lambda _finished_future: self._queue_completion_callback(
                 completion_callback
@@ -94,10 +95,10 @@ class BackgroundExecutor:
     def get_and_remove_all_ui_completion_callbacks(
         self,
     ) -> list[UICompletionCallback]:
-        """Remove and return every completion waiting for the UI thread.
+        """Remove and return all callbacks waiting for the UI thread.
 
-        EDMApp calls this after the notifier wakes it. Removing callbacks here
-        ensures that each background result is handled once.
+        EDMApp calls this after the notifier wakes it. A callback is removed
+        from the queue before it runs, so each result is handled only once.
         """
         completion_callbacks: list[UICompletionCallback] = []
         while True:

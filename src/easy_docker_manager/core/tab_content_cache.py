@@ -11,9 +11,9 @@ from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 class TabContentCache:
     """Keep recently viewed tab text within count and byte limits.
 
-    Logs and Docker inspection data can be large. When either limit is exceeded,
-    the cache removes the least recently used entries. This prevents cached tab
-    content from growing without limit while the user visits many containers.
+    Logs and Docker inspection data can be large. When the cache reaches either
+    limit, it removes the entries that have gone unused the longest. This keeps
+    memory use under control as the user visits more containers and tabs.
     """
 
     def __init__(
@@ -111,9 +111,9 @@ class TabContentCache:
             encoded = encoded[-self.max_total_bytes :]
         else:
             encoded = encoded[: self.max_total_bytes]
-        # The byte slice can cut through a multibyte character. Ignore only
-        # that incomplete boundary character so decoding cannot add a larger
-        # replacement character and push the value over the byte limit again.
+        # The byte slice may split a multibyte character. Ignore that incomplete
+        # character instead of adding a replacement character that could put the
+        # value over the byte limit again.
         return encoded.decode("utf-8", errors="ignore")
 
     @staticmethod

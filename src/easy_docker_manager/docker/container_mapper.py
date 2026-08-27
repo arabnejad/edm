@@ -1,4 +1,4 @@
-"""Map Docker SDK objects into EDM core models."""
+"""Copy Docker SDK container data into EDM's ContainerSummary."""
 
 from __future__ import annotations
 

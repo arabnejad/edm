@@ -26,10 +26,11 @@ logger = logging.getLogger(__name__)
 class SelectedTabContentLoader:
     """Load text for the selected container's active detail tab.
 
-    DockerManager calls this object after the selected container or tab
-    changes. It owns the tab-load Future, reuses cached text, and periodically
-    reloads Env, Config, and Top. A result is stored under the container and tab
-    that requested it, even if the user changes selection while it is loading.
+    DockerManager calls this after the selected container or tab changes. This
+    class tracks the current tab request, reuses cached text, and periodically
+    reloads Env, Config, and Top. Results are saved under the container and tab
+    that requested them, even when the user changes selection before a request
+    finishes.
     """
 
     PERIODICALLY_REFRESHED_TABS = (TabName.ENV, TabName.CONFIG, TabName.TOP)
@@ -51,8 +52,8 @@ class SelectedTabContentLoader:
         self._tab_load_future: Optional[Future[str]] = None
         self._next_tab_refresh_at = 0.0
 
-    def refresh_if_due(self, current_time: float) -> None:
-        """Reload the visible Env, Config, or Top tab when its timer is due."""
+    def refresh_if_needed(self, current_time: float) -> None:
+        """Reload the visible Env, Config, or Top tab after its wait time passes."""
         if (
             self.state.active_detail_tab_name not in self.PERIODICALLY_REFRESHED_TABS
             or not self.state.selected_container_id
@@ -63,7 +64,7 @@ class SelectedTabContentLoader:
         self.load_selected_tab_content_if_needed(force=True)
 
     def get_next_refresh_time(self) -> Optional[float]:
-        """Return the visible tab's next refresh time when it can be scheduled."""
+        """Return when the visible tab should refresh, or None while it must wait."""
         if (
             self.state.active_detail_tab_name not in self.PERIODICALLY_REFRESHED_TABS
             or not self.state.selected_container_id
@@ -162,7 +163,7 @@ class SelectedTabContentLoader:
         initial_log_request_started_at: Optional[int],
         tab_load_future: Future[str],
     ) -> bool:
-        """Store the current tab-load result and load a newer selection next."""
+        """Store the finished tab load, then load the latest selection if needed."""
         if tab_load_future is not self._tab_load_future:
             return False
         self._tab_load_future = None
@@ -187,7 +188,7 @@ class SelectedTabContentLoader:
         requested_tab_key: ContainerTabKey,
         initial_log_request_started_at: Optional[int],
     ) -> bool:
-        """Store loaded content or its error under the tab that requested it."""
+        """Save loaded text or an error under the tab that started the request."""
         is_active_tab = requested_tab_key == self.state.selected_container_tab_key
 
         try:

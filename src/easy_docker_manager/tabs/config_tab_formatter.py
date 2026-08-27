@@ -58,7 +58,7 @@ def _add_state_section(
     container: dict[str, Any],
     state: dict[str, Any],
 ) -> None:
-    """Add runtime state and lifecycle fields."""
+    """Add current status, start time, finish time, and exit fields."""
     _add_section(lines, "State")
     _add_field(lines, "Status", state.get("Status"))
     _add_field(lines, "Running", state.get("Running"))

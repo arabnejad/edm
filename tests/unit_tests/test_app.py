@@ -111,7 +111,7 @@ def test_keyboard_quit_action_exits_main_loop(edm_app_setup) -> None:
         edm_app_setup.app.handle_keyboard_input("q")
 
 
-def test_background_check_starts_due_work_and_schedules_the_next_check(
+def test_background_check_starts_scheduled_work_and_schedules_the_next_check(
     edm_app_setup,
 ) -> None:
     edm_app_setup.app._pending_docker_data_refresh_timer = "old"

@@ -1,4 +1,4 @@
-"""Application configuration models."""
+"""Define and validate EDM's configuration settings."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ from easy_docker_manager.core.log_text import MIN_LOG_LINE_CHARS
 
 @dataclass(frozen=True)
 class AppConfig:
-    """Settings loaded at startup for the UI and background work.
+    """Store the settings EDM reads when it starts.
 
-    EDM reads these settings when it creates the Docker client, worker pool,
-    cache, data loaders, and terminal UI. AppConfig cannot be changed after it
-    is created because EDM does not apply configuration changes while it is
-    running. Edit the configuration file and restart EDM to use new settings.
+    The Docker client, worker pool, cache, loaders, and terminal interface all
+    share this object. It cannot be changed after creation because EDM does not
+    reload settings while running. Edit config.json and restart EDM to use new
+    values.
     """
 
     refresh_interval: float = 2.0

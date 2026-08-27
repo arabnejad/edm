@@ -23,7 +23,7 @@ BackgroundTaskReadyCallback = Callable[[bytes], None]
 
 
 class BackgroundNotifier(ABC):
-    """Wake EDMApp on the UI thread when worker results are ready."""
+    """Arrange for EDMApp to process finished work on the UI thread."""
 
     @abstractmethod
     def start(
@@ -31,11 +31,10 @@ class BackgroundNotifier(ABC):
         loop: urwid.MainLoop,
         callback: BackgroundTaskReadyCallback,
     ) -> None:
-        """Connect the notifier to the event loop that manages the terminal UI.
+        """Connect the notifier to Urwid's running event loop.
 
-        Urwid's MainLoop handles keyboard input, timers, and screen updates.
-        This method registers callback so completed work is handled on the same
-        thread as those UI operations.
+        MainLoop handles keyboard input, timers, and screen updates. Registering
+        callback here ensures that finished work is also handled on that thread.
         """
 
     @abstractmethod
@@ -44,7 +43,7 @@ class BackgroundNotifier(ABC):
 
     @abstractmethod
     def stop(self) -> None:
-        """Stop notifications and release any Urwid resources."""
+        """Stop notifications and remove the pipe or timer from Urwid."""
 
 
 class PipeBackgroundNotifier(BackgroundNotifier):
@@ -52,8 +51,8 @@ class PipeBackgroundNotifier(BackgroundNotifier):
 
     Linux and macOS support Urwid's watch_pipe feature. When background work
     finishes, notify() writes one byte to the pipe. Urwid detects the byte and
-    immediately runs EDMApp's callback on the UI thread. This implementation
-    does not need a timer because the pipe itself signals that work is ready.
+    immediately runs EDMApp's callback on the UI thread. No timer is needed;
+    the pipe itself tells Urwid that work is ready.
     """
 
     def __init__(self) -> None:
@@ -107,8 +106,8 @@ class PollingBackgroundNotifier(BackgroundNotifier):
     """Notify EDMApp through a repeating timer on Windows.
 
     Urwid's watch_pipe feature is unavailable on Windows. Instead, notify()
-    records that background work is ready. A timer checks that state every 0.2
-    seconds and runs EDMApp's callback on the UI thread when needed.
+    records that background work is ready. A timer checks this flag every 0.2
+    seconds and runs EDMApp's callback on the UI thread when work is waiting.
     """
 
     def __init__(self, poll_interval: float = 0.2) -> None:
@@ -154,9 +153,9 @@ class PollingBackgroundNotifier(BackgroundNotifier):
             except ValueError:
                 logger.debug("Unable to remove Urwid polling timer")
 
-    # Urwid calls timer callbacks with the event loop and optional user data.
-    # EDM does not use the loop here, but the callback must accept it to match that
-    # callback signature. The leading underscore marks it as intentionally unused.
+    # Urwid passes its event loop and optional user data to timer callbacks.
+    # EDM does not need either value here, but this method must accept them to
+    # match Urwid's callback signature. The underscores mark them as unused.
     def _check_for_task_notifications(
         self,
         _loop: urwid.MainLoop,
@@ -187,7 +186,7 @@ class PollingBackgroundNotifier(BackgroundNotifier):
 
 
 def create_background_notifier() -> BackgroundNotifier:
-    """Use polling on Windows and a pipe on other platforms."""
+    """Create the notifier supported by the current operating system."""
     # os.name is "nt" on Windows, where Urwid's watch_pipe is unavailable.
     # A short polling timer provides a Windows-compatible alternative.
     if os.name == "nt":

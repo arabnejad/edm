@@ -12,7 +12,7 @@ from easy_docker_manager.tab_export.definitions import TabExportRequest
 
 
 class ExportTargetExistsError(Exception):
-    """Report that confirmation is needed before replacing an export file."""
+    """Stop an export until the user confirms that a file may be replaced."""
 
     def __init__(self, target_path: Path) -> None:
         self.target_path = target_path
@@ -20,7 +20,7 @@ class ExportTargetExistsError(Exception):
 
 
 class TabExportError(Exception):
-    """Report why tab text could not be written to the selected path."""
+    """Report why the selected tab could not be written to a file."""
 
     def __init__(self, target_path: Path, reason: str) -> None:
         self.target_path = target_path
@@ -30,9 +30,9 @@ class TabExportError(Exception):
 class TabExportWriter:
     """Write tab text without replacing an existing file by accident.
 
-    TabExportController sends export_text() to BackgroundExecutor after the
-    user confirms an export. A confirmed replacement is written to a temporary
-    file first, so the existing file stays unchanged if the write fails.
+    TabExportController runs export_text() through BackgroundExecutor. A
+    confirmed replacement is written to a temporary file first, so a failed
+    write does not damage the existing file.
     """
 
     def export_text(self, request: TabExportRequest) -> Path:
@@ -78,7 +78,7 @@ class TabExportWriter:
         except FileExistsError as exc:
             raise ExportTargetExistsError(target_path) from exc
         except OSError as exc:
-            # A write can fail after creating the file. Remove the incomplete
+            # The write may fail after the file is created. Remove that partial
             # file so it cannot be mistaken for a successful export.
             if file_was_created:
                 with suppress(OSError):

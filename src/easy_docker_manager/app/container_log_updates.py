@@ -30,10 +30,10 @@ logger = logging.getLogger(__name__)
 class ContainerLogUpdater:
     """Fetch new log lines and merge them into each container's Logs cache.
 
-    DockerManager asks this object to poll when the selected Logs tab is due.
-    It owns the poll Future, poll timer, and Docker since timestamps. Completed
-    polls update the matching container cache even when the user has selected
-    another container before the request finishes.
+    DockerManager calls this when the selected Logs tab needs another update.
+    This class tracks the running poll, the next poll time, and the Docker
+    since timestamp for each container. A finished poll updates the container
+    that started it, even if the user selected another container meanwhile.
     """
 
     LOG_POLL_INTERVAL = 1.0
@@ -54,13 +54,13 @@ class ContainerLogUpdater:
         self._next_log_poll_at = 0.0
         self._log_cursor_by_container_id: dict[str, int] = {}
 
-    def poll_if_due(
+    def poll_if_needed(
         self,
         current_time: float,
         *,
         initial_log_load_in_progress: bool,
     ) -> None:
-        """Start a log poll when the visible Logs tab is ready for one."""
+        """Poll the visible Logs tab after its wait time has passed."""
         container_id = self.state.selected_container_id
         if (
             self.state.active_detail_tab_name != TabName.LOGS
@@ -80,7 +80,7 @@ class ContainerLogUpdater:
         *,
         initial_log_load_in_progress: bool,
     ) -> Optional[float]:
-        """Return the next useful poll time, or None when polling should wait."""
+        """Return the next log poll time, or None when polling cannot start yet."""
         container_id = self.state.selected_container_id
         if (
             self.state.active_detail_tab_name != TabName.LOGS
@@ -93,7 +93,7 @@ class ContainerLogUpdater:
         return self._next_log_poll_at
 
     def reset_after_selection_change(self) -> None:
-        """Cancel queued log work and make the new selection immediately due."""
+        """Cancel queued log work and let the new selection poll immediately."""
         if self._log_poll_future is not None:
             if not self._log_poll_future.done():
                 if self._log_poll_future.cancel():
@@ -107,7 +107,7 @@ class ContainerLogUpdater:
         container_id: str,
         request_started_at: int,
     ) -> None:
-        """Use the initial request time as the starting point for later polls."""
+        """Save where later log polls should begin after the first load succeeds."""
         self._log_cursor_by_container_id[container_id] = request_started_at
         self._next_log_poll_at = 0.0
 
@@ -119,7 +119,7 @@ class ContainerLogUpdater:
         *,
         update_status: bool,
     ) -> None:
-        """Show why logs cannot be read and stop polling this container."""
+        """Save the unreadable-logs error and stop polling this container."""
         self.state.unreadable_log_container_ids.add(container_id)
         logs_cache_key = cache_key or ContainerTabKey(container_id, TabName.LOGS)
         self.record_container_log_fetch_failure(
@@ -155,7 +155,7 @@ class ContainerLogUpdater:
         self,
         running_container_ids: set[str],
     ) -> None:
-        """Forget Docker since timestamps belonging to stopped containers."""
+        """Remove saved Docker since timestamps for containers that stopped."""
         self._log_cursor_by_container_id = {
             container_id: since_timestamp
             for container_id, since_timestamp in (
@@ -201,7 +201,7 @@ class ContainerLogUpdater:
         request_started_at: int,
         log_poll_future: Future[str],
     ) -> bool:
-        """Merge the current poll result and report whether the UI changed."""
+        """Store a finished log poll and return True when the screen should redraw."""
         if log_poll_future is not self._log_poll_future:
             return False
         self._log_poll_future = None
@@ -252,7 +252,7 @@ class ContainerLogUpdater:
         *,
         replace_existing: bool,
     ) -> bool:
-        """Merge a fetched batch, limit the result, and cache it."""
+        """Combine a fetched log batch with cached logs, then limit and save it."""
         cache_key = ContainerTabKey(container_id, TabName.LOGS)
         cache_already_exists = cache_key in self.state.tab_content_cache
         if not content and not replace_existing and cache_already_exists:
@@ -281,7 +281,7 @@ class ContainerLogUpdater:
         tail_lines: Union[int, str],
         since_timestamp: Optional[int],
     ) -> str:
-        """Fetch and limit one log-poll response in a worker thread."""
+        """Fetch one log update in a worker and limit it before returning."""
         content = self.docker_container_client.get_container_logs(
             container_id,
             tail_lines,
@@ -294,7 +294,7 @@ class ContainerLogUpdater:
         existing_content: str,
         new_content: str,
     ) -> str:
-        """Combine two log batches without repeating their shared edge lines."""
+        """Append a new log batch without repeating lines shared by both batches."""
         if not existing_content:
             return new_content
         new_lines = new_content.splitlines()

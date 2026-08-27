@@ -1,4 +1,4 @@
-"""Convert Docker SDK errors into errors understood by EDM."""
+"""Replace Docker SDK exceptions with the error types used by EDM."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def raise_container_request_error(
     container_id: str,
     exc: Exception,
 ) -> NoReturn:
-    """Raise the EDM error that matches a failed Docker request."""
+    """Raise the EDM error that best describes a failed Docker request."""
     if isinstance(exc, NotFound):
         raise ContainerNotFoundError(container_id) from exc
     if failed_request_type == FailedDockerRequestType.FETCH_LOGS:

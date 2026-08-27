@@ -131,7 +131,7 @@ def docker_manager_factory():
     return create_docker_manager
 
 
-def test_due_container_refresh_is_submitted_once(
+def test_scheduled_container_refresh_is_submitted_once(
     monkeypatch,
     docker_manager_factory,
 ) -> None:
@@ -173,7 +173,7 @@ def test_visible_non_log_tab_is_reloaded_on_its_interval(
     assert test_setup.selected_tab_content_loader._next_tab_refresh_at == 13.0
 
 
-def test_loaded_readable_logs_are_polled_when_due(
+def test_loaded_readable_logs_are_polled_after_the_interval(
     monkeypatch,
     docker_manager_factory,
     session_state_factory,
@@ -230,7 +230,7 @@ def test_next_request_check_uses_nearest_deadline_and_idle_delay(
     assert docker_manager.get_next_docker_data_refresh_delay() == 1.0
 
 
-def test_overdue_request_check_uses_small_positive_delay(
+def test_late_request_check_uses_small_positive_delay(
     monkeypatch,
     docker_manager_factory,
 ) -> None:

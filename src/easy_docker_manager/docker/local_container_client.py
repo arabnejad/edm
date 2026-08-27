@@ -1,11 +1,10 @@
-"""Send container requests to Docker running on this computer.
+"""Read container data from Docker running on this computer.
 
 LocalDockerContainerClient connects to the local Docker daemon through the
 Docker Python SDK. It lists running containers and loads their logs,
-environment variables, inspection data, and process lists. The connection is
-created when the first request is made and reused while EDM is running. EDMApp
-closes it during shutdown. Callers receive EDM error types instead of Docker
-SDK exceptions.
+environment variables, inspection data, and process lists. It opens the
+connection on the first request, reuses it while EDM runs, and closes it during
+shutdown. Callers receive EDM errors instead of raw Docker SDK exceptions.
 """
 
 from __future__ import annotations
@@ -36,18 +35,18 @@ logger = logging.getLogger(__name__)
 
 
 class LocalDockerContainerClient(DockerContainerClient):
-    """Perform EDM's container requests through the local Docker daemon."""
+    """Implement EDM's container requests with the local Docker daemon."""
 
     def __init__(
         self,
         create_client: Callable[[], docker.DockerClient],
     ) -> None:
-        """Keep the client factory and wait to connect until data is requested."""
+        """Save the client factory but do not connect until the first request."""
         self._create_docker_client = create_client
         self._docker_client_instance: Optional[docker.DockerClient] = None
 
     def _get_or_create_docker_client(self) -> docker.DockerClient:
-        """Create the Docker client on first use, then reuse it."""
+        """Open the Docker connection on first use and reuse it afterward."""
         if self._docker_client_instance is None:
             try:
                 self._docker_client_instance = self._create_docker_client()
@@ -181,12 +180,12 @@ class LocalDockerContainerClient(DockerContainerClient):
         return ContainerProcessTable(columns=columns, rows=rows)
 
     def close(self) -> None:
-        """Close the Docker SDK client if it has been created.
+        """Close the Docker SDK client if one was created.
 
-        EDMApp.run() calls this from its cleanup block after the terminal UI
-        stops and all background tasks finish. If no Docker request was made,
-        no client exists and this method does nothing. After closing the client,
-        it clears the saved reference so the closed client cannot be reused.
+        EDMApp.run() calls this after the terminal interface stops and all
+        workers finish. If EDM made no Docker request, there is no connection
+        to close. Clearing the saved reference prevents accidental reuse of a
+        closed client.
         """
         if self._docker_client_instance:
             self._docker_client_instance.close()
@@ -196,10 +195,9 @@ class LocalDockerContainerClient(DockerContainerClient):
     def _decode_log_chunk(chunk: Union[bytes, str]) -> str:
         """Return a Docker log response as a Python string.
 
-        get_container_logs() calls this because the Docker SDK may return bytes
-        or a string. Byte responses are decoded as UTF-8. Any invalid bytes are
-        replaced instead of raising an error, so malformed log output does not
-        stop the Logs tab from loading.
+        The Docker SDK may return bytes or a string. Byte responses are decoded
+        as UTF-8, and invalid bytes are replaced so malformed log output does
+        not stop the Logs tab from loading.
         """
         if isinstance(chunk, bytes):
             return chunk.decode("utf-8", errors="replace")

@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 class RunningContainerListRefresher:
     """Keep the running-container list current and in the requested order.
 
-    DockerManager asks this object to refresh the list when its timer is due or
-    when EDM starts. It owns the refresh Future and applies the completed
-    result on the UI thread. A successful refresh preserves the selected
-    container, reapplies sorting, and removes state for stopped containers.
+    DockerManager calls this when EDM starts and whenever the refresh timer
+    expires. This class tracks the current request and handles its result on the
+    UI thread. After a successful refresh, it keeps the same container selected,
+    reapplies the chosen sort, and removes saved data for stopped containers.
     """
 
     def __init__(
@@ -51,8 +51,8 @@ class RunningContainerListRefresher:
         self._next_refresh_at = 0.0
         self._containers_in_docker_order = list(state.running_containers)
 
-    def refresh_if_due(self, current_time: float) -> None:
-        """Start a container-list refresh when its scheduled time has arrived."""
+    def refresh_if_needed(self, current_time: float) -> None:
+        """Start a container-list refresh when the next refresh time is reached."""
         if current_time < self._next_refresh_at:
             return
         self.start_running_container_list_refresh()
@@ -68,8 +68,8 @@ class RunningContainerListRefresher:
         """Start loading the running-container list in a worker thread.
 
         DockerManager calls this during startup and scheduled refresh checks.
-        force bypasses the timer but never starts a second overlapping request.
-        True means a new request was submitted.
+        force skips the timer check but never starts a second request while one
+        is running. The method returns True only when it submits new work.
         """
         if self._refresh_future is not None:
             return False
@@ -101,7 +101,7 @@ class RunningContainerListRefresher:
         self,
         container_refresh_future: Future[list[ContainerSummary]],
     ) -> bool:
-        """Apply the current refresh result and report whether the UI changed."""
+        """Store the finished refresh and return True when the screen should redraw."""
         if container_refresh_future is not self._refresh_future:
             return False
         self._refresh_future = None
@@ -120,7 +120,7 @@ class RunningContainerListRefresher:
         self,
         running_containers: list[ContainerSummary],
     ) -> bool:
-        """Store a successful refresh while preserving sorting and selection."""
+        """Store a refreshed list without losing its sort or selected container."""
         previously_selected_container_id = self.state.selected_container_id
         previous_displayed_containers = self.state.running_containers
         recovered_from_refresh_error = (

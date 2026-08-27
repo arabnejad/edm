@@ -21,8 +21,8 @@ def _installed_version() -> str:
     """Read EDM's version from the installed package metadata.
 
     setuptools-scm creates this version from the Git release tag when the
-    package is built. The fallback keeps help available when the source is run
-    without installed package metadata.
+    package is built. Returning "unknown" keeps --help and --version usable when
+    the source is run without installed package metadata.
     """
     try:
         return distribution_version(DISTRIBUTION_NAME)
@@ -54,7 +54,7 @@ def _build_argument_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    """Handle command options or start the terminal application.
+    """Process command options and start EDM when no exit option is used.
 
     The installed edm command and python -m easy_docker_manager both call this
     function. Help and version options exit during argument parsing. Other

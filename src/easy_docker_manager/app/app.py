@@ -1,4 +1,4 @@
-"""Run the Easy Docker Manager terminal application."""
+"""Start, run, and stop the Easy Docker Manager terminal application."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class _KeyboardRoutingWidget(urwid.WidgetWrap):
-    """Keep keyboard input routed to EDMApp for every displayed screen."""
+    """Send every keypress to EDMApp, including keys pressed in a popup."""
 
     def __init__(self, app: EDMApp) -> None:
         """Wrap the main layout so EDMApp can handle every keypress."""
@@ -41,11 +41,12 @@ class _KeyboardRoutingWidget(urwid.WidgetWrap):
 
 
 class EDMApp:
-    """Run the terminal UI and manage the application lifecycle.
+    """Run EDM's terminal interface from startup through shutdown.
 
-    EDMApp handles keyboard input, processes completed background tasks, redraws
-    the screen when data changes, and closes application resources during
-    shutdown. The console entry point creates one EDMApp and calls run().
+    The console entry point creates one EDMApp and calls run(). EDMApp starts
+    Urwid, routes keyboard input, handles finished background work, redraws the
+    screen when needed, and closes the worker pool and Docker connection before
+    it exits.
     """
 
     def __init__(
@@ -55,8 +56,8 @@ class EDMApp:
         runtime_factory: Optional[EDMRuntimeFactory] = None,
         background_notifier: Optional[BackgroundNotifier] = None,
     ) -> None:
-        # Workers need a way to wake EDMApp before the Urwid loop exists. The
-        # notifier uses a pipe on Unix-like systems and polling on Windows.
+        # Create the notifier first because the worker pool needs its callback.
+        # The notifier is connected to Urwid later, after MainLoop is created.
         self.background_notifier = (
             background_notifier
             if background_notifier is not None
@@ -77,8 +78,7 @@ class EDMApp:
             self._notify_background_task_ready
         )
 
-        # Keep the objects used to run background work, draw the terminal, and
-        # close the Docker connection when EDM stops.
+        # EDMApp uses these objects directly while running and during shutdown.
         self.docker_container_client: DockerContainerClient = (
             runtime.docker_container_client
         )
@@ -86,16 +86,14 @@ class EDMApp:
         self.terminal_layout_view: TerminalLayoutView = runtime.terminal_layout_view
         self.layout = self.terminal_layout_view.layout
 
-        # DockerManager loads Docker data and saves finished results in the
-        # session state.
-        # The keyboard controller handles user input, and the UI controller
-        # prepares the current state for the terminal view.
+        # DockerManager loads Docker data. The two controllers turn keyboard
+        # input and session data into updates for the terminal screen.
         self.docker_manager: DockerManager = runtime.docker_manager
         self.terminal_controller: TerminalController = runtime.terminal_controller
         self.keyboard_controller: KeyboardController = runtime.keyboard_controller
 
     def run(self) -> None:
-        """Start the terminal UI, then close its resources when the UI stops."""
+        """Open the terminal interface and clean up after it closes."""
         logger.info("Starting EDM app")
         try:
             self.ui_event_loop = urwid.MainLoop(
@@ -122,7 +120,7 @@ class EDMApp:
         key: str,
         terminal_size: Optional[tuple[int, ...]] = None,
     ) -> Optional[str]:
-        """Handle one keypress, redraw when needed, or exit on Quit."""
+        """Process one keypress, then redraw or exit when the action requires it."""
         action = self.keyboard_controller.handle_keypress(key, terminal_size)
         if action == KeyAction.QUIT:
             raise urwid.ExitMainLoop()
@@ -137,24 +135,24 @@ class EDMApp:
         _loop: urwid.MainLoop,
         _data: Any = None,
     ) -> None:
-        """Run the Docker refresh check requested by the previous timer.
+        """Check which Docker requests should start when the timer expires.
 
         Urwid calls this method after the timer created by
         _schedule_next_docker_data_refresh_check() expires. The timer has
         finished at that point, so this method clears its saved reference,
-        starts any Docker refresh work that is now due, and schedules the next
-        check.
+        starts any scheduled Docker work whose start time has arrived, and
+        schedules the next check.
 
-        The next check runs later through Urwid's event loop. Calling the
-        scheduling method here therefore creates a repeating timer, not a
-        recursive function call.
+        At the end, this method starts a new timer. Urwid calls this method
+        again only after that timer expires. The method does not call itself
+        directly.
         """
         self._pending_docker_data_refresh_timer = None
         self.docker_manager.refresh_docker_data_if_needed()
         self._schedule_next_docker_data_refresh_check()
 
     def _process_completed_background_tasks(self, _data: bytes) -> None:
-        """Handle completed background tasks and redraw if the screen changed."""
+        """Apply finished worker results and redraw when they change the screen."""
         should_redraw = False
         for (
             completion_callback
@@ -169,12 +167,12 @@ class EDMApp:
         self,
         delay: Optional[float] = None,
     ) -> None:
-        """Set a timer for the next check for Docker data that needs updating.
+        """Set one timer for the next Docker data refresh check.
 
-        EDM calls this after startup, user input, completed background work,
-        and each scheduled refresh check. An existing timer is replaced so
-        only one refresh check is waiting at a time. When delay is not given,
-        DockerManager calculates how long EDM should wait.
+        EDM calls this after startup, user input, completed worker tasks, and
+        each timed check. It replaces the previous timer so only one check is
+        pending. When delay is not provided, DockerManager returns the wait
+        time for the next container refresh, tab refresh, or log poll.
         """
         if self.ui_event_loop is None:
             return
@@ -185,15 +183,15 @@ class EDMApp:
             if delay is None
             else delay
         )
-        # Pass the method without parentheses. Urwid stores this function
-        # reference and calls it after next_delay instead of calling it now.
+        # Pass the method itself, not the result of calling it. Urwid calls the
+        # method after next_delay has passed.
         self._pending_docker_data_refresh_timer = self.ui_event_loop.set_alarm_in(
             next_delay,
             self._run_scheduled_docker_data_refresh_check,
         )
 
     def _notify_background_task_ready(self) -> None:
-        """Tell the notifier that a worker result is ready for EDMApp."""
+        """Ask the notifier to wake EDMApp after a worker finishes."""
         self.background_notifier.notify()
 
 

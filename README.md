@@ -17,11 +17,11 @@
 [![mypy](https://img.shields.io/badge/type%20checked-mypy-2A6DB2?logo=python&logoColor=white)](https://mypy-lang.org/)
 [![CodeQL](https://github.com/arabnejad/edm/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/arabnejad/edm/actions/workflows/github-code-scanning/codeql)
 
-Easy Docker Manager (EDM) is a keyboard-driven terminal application for
-inspecting Docker containers running on your computer. It uses Urwid for the
-terminal interface and the Docker Python SDK to read container data.
+Easy Docker Manager (EDM) lets you inspect local Docker containers from a
+keyboard-driven terminal interface. It uses Urwid for the screen and the
+Docker Python SDK to read container data.
 
-EDM provides:
+With EDM, you can view:
 
 - a list of running containers
 - recent logs with automatic updates
@@ -165,9 +165,9 @@ Use `Up` and `Down` to choose a field. Use `Left` for ascending order and
 the menu without changing the list. The active sort is shown below the
 container list.
 
-When you apply a sort, EDM reorders the list without changing which container
-is selected. The selected sort stays active when the container list refreshes.
-Choose Docker order to show containers in the order returned by Docker.
+Applying a sort does not change the selected container. The sort stays active
+after the container list refreshes. Choose Docker order to restore the order
+returned by Docker.
 
 EDM currently shows running containers only, so they usually have the same
 status. For this reason, sorting by Status may not visibly change the list.
@@ -228,10 +228,9 @@ Typical locations are:
 | macOS | `~/Library/Application Support/EDM/config.json` |
 | Windows | `%LOCALAPPDATA%\EDM\config.json` |
 
-EDM creates the file on first use. On every later startup, it reads valid
-settings and rewrites the file using the settings supported by the installed
-version. Missing settings receive their defaults, and unrecognized or invalid
-settings are removed.
+EDM creates this file on first use. On later starts, it keeps valid settings,
+fills in missing defaults, removes unknown or invalid values, and writes the
+cleaned configuration back to the file.
 
 | Setting | Default | Purpose |
 | --- | ---: | --- |

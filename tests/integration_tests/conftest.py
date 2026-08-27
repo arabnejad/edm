@@ -75,7 +75,7 @@ def docker_test_setup(
 
 @pytest.fixture
 def local_docker_container_client() -> Iterator[LocalDockerContainerClient]:
-    """Create the production container client with its own Docker connection."""
+    """Create the real container client with a separate Docker connection."""
     docker_container_client = LocalDockerContainerClient(
         create_client=lambda: create_docker_client(request_timeout=10.0)
     )

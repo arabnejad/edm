@@ -12,13 +12,13 @@ MAX_REGEX_QUERY_LENGTH = 200
 
 
 class TabTextFilter:
-    """Apply the search rules shared by the terminal and tab exports.
+    """Choose the lines shown on screen or written by a Current view export.
 
-    TerminalController uses this class to choose the lines shown in the detail
-    panel. TabExportController uses the same class when the user exports the
-    current view. Logs searches hide lines that do not match the regular
-    expression. Searches in Env, Config, and Top keep every line visible
-    because those tabs highlight matching text instead of filtering it.
+    Logs searches keep only lines that match the regular expression. Env,
+    Config, and Top searches keep every line because those tabs highlight
+    matches instead of filtering content. TerminalController and
+    TabExportController share this class so the screen and exported Current
+    view use the same rules.
     """
 
     def __init__(self) -> None:

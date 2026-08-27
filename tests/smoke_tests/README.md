@@ -16,9 +16,10 @@ The smoke suite verifies that:
 - macOS selects the pipe background notifier
 - EDM can complete basic startup and shutdown without opening a real terminal
 
-The startup test replaces Docker with an empty local test data source. It also
-replaces Urwid's interactive event loop with one that returns immediately. The
-rest of `EDMApp` uses the normal production code.
+The startup test replaces Docker with a fake client that returns one sample
+container, logs, environment variables, inspection data, and a process table.
+It also replaces Urwid's interactive event loop with one that returns
+immediately. The rest of `EDMApp` uses the normal application code.
 
 ## Run The Tests Locally
 

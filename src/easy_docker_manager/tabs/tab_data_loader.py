@@ -1,4 +1,4 @@
-"""Load and prepare text for each container detail tab."""
+"""Load Docker data and turn it into text for the four detail tabs."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ from easy_docker_manager.tabs.config_tab_formatter import format_container_confi
 class TabDataLoader:
     """Load display text for a container's Logs, Env, Config, or Top tab.
 
-    SelectedTabContentLoader runs this on a worker thread. The loader reads one
-    kind of Docker data and converts it to the text shown in that tab. It does
-    not update UI state or caches.
+    SelectedTabContentLoader runs this in a worker thread. It loads the Docker
+    data needed by the requested tab and returns the text shown in that tab.
+    This class does not update session state, caches, or Urwid widgets.
     """
 
     def __init__(

@@ -1,14 +1,13 @@
-"""Store everything that can change while EDM is running.
+"""Store the data that changes during one EDM terminal session.
 
 A terminal session starts when EDM opens and ends when the application exits.
-This state holds the running containers, selected container, active tab,
-keyboard focus, loaded tab text, search queries, open popup, status messages,
-and Docker request errors.
+The state includes the running containers, current selection, active tab,
+keyboard focus, loaded text, search queries, open menu, status message, and
+Docker request errors.
 
-TerminalController and TabExportController change this state after keyboard
-input. The Docker data components store container lists, tab content, log
-updates, and errors after requests finish. The terminal views read the state
-when drawing the screen.
+TerminalController and TabExportController update it after keyboard input. The
+Docker request classes save lists, tab content, log updates, and errors after
+their requests finish. The view classes read it when drawing the screen.
 """
 
 from __future__ import annotations
@@ -46,12 +45,12 @@ def _create_default_tab_content_cache() -> TabContentCache:
 
 @dataclass
 class TerminalSessionState:
-    """Keep the current selection, focus, search, and loaded tab text.
+    """Keep all changing data used to draw and control the terminal screen.
 
     TerminalController and TabExportController update this object after
-    keyboard input. The Docker data components update it after Docker work
-    finishes. It contains no Urwid widgets and makes no Docker calls. The
-    terminal views read this same object during each redraw.
+    keyboard input. The Docker request classes update it when their work
+    finishes. This class contains no Urwid widgets and makes no Docker calls;
+    the view classes read it during each redraw.
     """
 
     # Running container summaries displayed in the left panel.
