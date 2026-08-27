@@ -9,7 +9,10 @@ import urwid
 
 from easy_docker_manager.core.log_text import count_repeated_lines_between_batches
 from easy_docker_manager.core.tabs import TabName
-from easy_docker_manager.core.ui_session_state import FocusArea, UISessionState
+from easy_docker_manager.core.terminal_session_state import (
+    FocusArea,
+    TerminalSessionState,
+)
 from easy_docker_manager.ui.formatting import MarkupSegment
 
 
@@ -35,7 +38,7 @@ class SelectedContainerDetailsPanel:
     """Display details for the container selected in the left panel.
 
     TerminalLayoutView calls render() with text already prepared by
-    UIController. This panel shows the container name, detail tabs, search
+    TerminalController. This panel shows the container name, detail tabs, search
     query, scrollable tab content, and status message. Rows are reused when
     possible, especially when new log lines are appended. This keeps regular
     log updates cheaper than rebuilding every Urwid text widget.
@@ -60,7 +63,7 @@ class SelectedContainerDetailsPanel:
 
     def render(
         self,
-        state: UISessionState,
+        state: TerminalSessionState,
         detail_lines: list[str],
         format_detail_line: Callable[[str], Union[str, list[MarkupSegment]]],
     ) -> None:
@@ -82,7 +85,7 @@ class SelectedContainerDetailsPanel:
     def move_focus_to_selected_detail_line(self, line_index: int) -> None:
         """Move visual focus to the selected line so it remains visible.
 
-        TerminalLayoutView calls this after UIController changes the selected
+        TerminalLayoutView calls this after TerminalController changes the selected
         line index. If that index is beyond the available rows, the final row
         receives focus instead.
         """
@@ -107,7 +110,7 @@ class SelectedContainerDetailsPanel:
 
     def _update_container_name_tabs_and_search_text(
         self,
-        state: UISessionState,
+        state: TerminalSessionState,
     ) -> None:
         """Update the selected container name, tab labels, and search text."""
         selected_container = state.selected_container_summary
@@ -144,7 +147,7 @@ class SelectedContainerDetailsPanel:
 
     def _update_visible_tab_lines_and_focus(
         self,
-        state: UISessionState,
+        state: TerminalSessionState,
         lines: list[str],
         format_detail_line: Callable[[str], Union[str, list[MarkupSegment]]],
     ) -> None:
@@ -152,7 +155,7 @@ class SelectedContainerDetailsPanel:
 
         render() calls this whenever the right panel changes. Existing line
         widgets are reused when possible, then the selected line is highlighted
-        and kept visible. The selected index itself remains in UISessionState.
+        and kept visible. The selected index itself remains in TerminalSessionState.
         """
         selected_tab_key = state.selected_container_tab_key
         search_query = (

@@ -29,6 +29,7 @@ EDM provides:
 - a readable summary of Docker inspection data
 - the process list returned by Docker top
 - a separate search query for each container tab
+- export of the active tab to a local text file
 - a local JSON configuration file
 
 ## Demo
@@ -125,7 +126,7 @@ python -m easy_docker_manager
 
 | Key | Action |
 | --- | --- |
-| `q` | Quit EDM |
+| `q` | Quit EDM from the normal screen |
 | `Up` / `Down` | Move through containers or detail lines |
 | `Enter` | Move keyboard focus to the detail panel |
 | `Esc` | Return keyboard focus to the container list |
@@ -133,6 +134,7 @@ python -m easy_docker_manager
 | `]` | Open the next detail tab |
 | `/` | Start editing the search for the current tab |
 | `s` | Open container sorting while the container panel is active |
+| `e` | Export the active tab while the detail panel is active |
 | `Page Up` / `Page Down` | Move through the detail panel one page at a time |
 | `Home` / `End` | Select the first or last detail line |
 
@@ -169,6 +171,32 @@ Choose Docker order to show containers in the order returned by Docker.
 
 EDM currently shows running containers only, so they usually have the same
 status. For this reason, sorting by Status may not visibly change the list.
+
+## Exporting Tab Content
+
+Press `e` while the detail panel is active to export the selected container's
+Logs, Env, Config, or Top tab. The popup lets you edit the destination path and
+choose one of these scopes:
+
+- **Current view** exports the lines currently shown after a Logs filter. Env,
+  Config, and Top searches highlight text without hiding lines, so their
+  current view contains all loaded text.
+- **Full loaded tab** exports all text currently held in EDM's cache. It does
+  not request more data or older logs from Docker.
+
+The suggested path starts in the directory where you launched EDM. Logs use a
+`.log` extension; the other tabs use `.txt`. Relative paths are also resolved
+from that launch directory.
+
+While File is selected, printable keys, including `q` and `Q`, edit the path.
+Use `Left` and `Right` to move its cursor, `Home` or `End` to jump to either
+end, and `Backspace` or `Delete` to remove characters. Use `Up`, `Down`, or
+`Tab` to move between File and Scope.
+
+Exports may contain passwords, tokens, URLs, command arguments, or other
+sensitive values. EDM shows a warning before every export and writes the text
+without hiding values. Review exported files before sharing them. EDM never
+replaces an existing file without asking for confirmation.
 
 ## Detail Tabs
 

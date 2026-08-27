@@ -22,7 +22,7 @@ class ContainerSortField(str, Enum):
 class ContainerSortMenuState:
     """Keep the choices being edited in the container sorting menu.
 
-    UIController creates this object when the menu opens. The choices stay
+    TerminalController creates this object when the menu opens. The choices stay
     separate from the active container order until the user presses Enter.
     Pressing Esc discards this object and leaves the current order unchanged.
     """

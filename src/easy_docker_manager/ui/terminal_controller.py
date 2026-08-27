@@ -1,4 +1,4 @@
-"""Apply UI navigation rules and prepare state for rendering."""
+"""Apply terminal navigation rules and prepare state for rendering."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from easy_docker_manager.core.container_sorting import (
     ContainerSortMenuState,
 )
 from easy_docker_manager.core.tabs import TabName
-from easy_docker_manager.core.ui_session_state import UISessionState
+from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
 
 
-class UIController:
+class TerminalController:
     """Handle navigation, menu choices, search, and screen rendering.
 
     KeyboardController handles individual keys. This class moves container and
@@ -29,7 +29,7 @@ class UIController:
 
     def __init__(
         self,
-        state: UISessionState,
+        state: TerminalSessionState,
         terminal_layout_view: TerminalLayoutView,
         detail_tab_text_formatter: DetailTabTextFormatter,
         docker_manager: DockerManager,
@@ -259,4 +259,4 @@ class UIController:
         return True
 
 
-__all__ = ["UIController"]
+__all__ = ["TerminalController"]

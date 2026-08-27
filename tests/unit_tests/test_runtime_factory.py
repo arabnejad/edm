@@ -24,7 +24,7 @@ def test_runtime_factory_uses_supplied_config_and_data_source() -> None:
 
     try:
         assert runtime.docker_container_client is docker_container_client
-        state = runtime.ui_controller.state
+        state = runtime.terminal_controller.state
         assert state.tab_content_cache.max_entries == 7
         assert state.tab_content_cache.max_total_bytes == 500
         docker_manager = runtime.docker_manager
@@ -36,7 +36,13 @@ def test_runtime_factory_uses_supplied_config_and_data_source() -> None:
             is docker_container_client
         )
         assert docker_manager.background_executor is runtime.background_executor
-        assert runtime.keyboard_controller.ui_controller is runtime.ui_controller
+        assert (
+            runtime.keyboard_controller.terminal_controller
+            is runtime.terminal_controller
+        )
+        tab_export_controller = runtime.keyboard_controller.tab_export_controller
+        assert tab_export_controller.state is state
+        assert tab_export_controller.background_executor is runtime.background_executor
     finally:
         runtime.background_executor.shutdown()
 

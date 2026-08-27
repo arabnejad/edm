@@ -13,7 +13,7 @@ from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.core import AppConfig
 from easy_docker_manager.core.container_sorting import ContainerSortField
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
-from easy_docker_manager.core.ui_session_state import UISessionState
+from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import (
     ContainerLogFetchError,
     ContainerRefreshError,
@@ -76,7 +76,7 @@ class RecordingBackgroundExecutor:
 @dataclass
 class DockerManagerTestSetup:
     docker_manager: DockerManager
-    state: UISessionState
+    state: TerminalSessionState
     background_executor: RecordingBackgroundExecutor
     tab_data_loader: Mock
     docker_container_client: Mock
@@ -85,10 +85,10 @@ class DockerManagerTestSetup:
 @pytest.fixture
 def docker_manager_factory():
     def create_docker_manager(
-        state: Optional[UISessionState] = None,
+        state: Optional[TerminalSessionState] = None,
         app_config: Optional[AppConfig] = None,
     ) -> DockerManagerTestSetup:
-        selected_state = state if state is not None else UISessionState()
+        selected_state = state if state is not None else TerminalSessionState()
         selected_config = app_config if app_config is not None else AppConfig()
         background_executor = RecordingBackgroundExecutor()
         tab_data_loader = Mock(spec=TabDataLoader)
@@ -259,7 +259,7 @@ def test_refresh_preserves_selection_and_reapplies_active_sort(
     docker_manager_factory,
     container_summary_factory,
 ) -> None:
-    state = UISessionState(
+    state = TerminalSessionState(
         running_containers=[
             container_summary_factory("one"),
             container_summary_factory("two"),
@@ -377,7 +377,7 @@ def test_running_old_tab_load_finishes_before_loading_new_selection(
     docker_manager_factory,
     container_summary_factory,
 ) -> None:
-    state = UISessionState(
+    state = TerminalSessionState(
         running_containers=[
             container_summary_factory("one"),
             container_summary_factory("two"),
@@ -407,7 +407,7 @@ def test_queued_old_tab_load_is_cancelled_and_replaced(
     docker_manager_factory,
     container_summary_factory,
 ) -> None:
-    state = UISessionState(
+    state = TerminalSessionState(
         running_containers=[
             container_summary_factory("one"),
             container_summary_factory("two"),
@@ -691,7 +691,7 @@ def test_container_sort_keeps_selection_and_can_restore_docker_order(
     docker_manager_factory,
     container_summary_factory,
 ) -> None:
-    state = UISessionState(
+    state = TerminalSessionState(
         running_containers=[
             container_summary_factory("z", name="Zulu"),
             container_summary_factory("a", name="alpha"),

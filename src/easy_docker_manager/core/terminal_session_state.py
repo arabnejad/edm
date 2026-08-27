@@ -1,14 +1,14 @@
 """Store everything that can change while EDM is running.
 
-A UI session starts when EDM opens and ends when the application exits. This
-state holds the running containers, selected container, active tab, keyboard
-focus, loaded tab text, search queries, open popup, status messages, and load
-errors.
+A terminal session starts when EDM opens and ends when the application exits.
+This state holds the running containers, selected container, active tab,
+keyboard focus, loaded tab text, search queries, open popup, status messages,
+and load errors.
 
-UIController changes this state in response to keyboard input. DockerManager
-stores container lists, tab content, log updates, and errors after Docker
-requests finish. The terminal views read the current state when drawing the
-screen.
+TerminalController and TabExportController change this state after keyboard
+input. DockerManager stores container lists, tab content, log updates, and
+errors after Docker requests finish. The terminal views read the state when
+drawing the screen.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from easy_docker_manager.core.container_sorting import (
 )
 from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.core.tab_content_cache import TabContentCache
+from easy_docker_manager.core.tab_export import TabExportMenuState
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 
 
@@ -35,7 +36,7 @@ class FocusArea(str, Enum):
 
 
 def _create_default_tab_content_cache() -> TabContentCache:
-    """Create a cache from AppConfig defaults for standalone UI state."""
+    """Create a cache from AppConfig defaults for standalone session state."""
     app_config = AppConfig()
     return TabContentCache(
         max_entries=app_config.content_cache_size,
@@ -44,13 +45,13 @@ def _create_default_tab_content_cache() -> TabContentCache:
 
 
 @dataclass
-class UISessionState:
+class TerminalSessionState:
     """Keep the current selection, focus, search, and loaded tab text.
 
-    UI controllers update this object after keyboard input, and
-    DockerManager updates it after Docker work finishes. It contains
-    no Urwid widgets and makes no Docker calls. The terminal views read this
-    same object during each redraw.
+    TerminalController and TabExportController update this object after
+    keyboard input. DockerManager updates it after Docker work finishes. It
+    contains no Urwid widgets and makes no Docker calls. The terminal views
+    read this same object during each redraw.
     """
 
     # Running container summaries displayed in the left panel.
@@ -62,6 +63,8 @@ class UISessionState:
     container_sort_descending: bool = False
     # Temporary choices in the container sort menu. None means the menu is closed.
     container_sort_menu_state: Optional[ContainerSortMenuState] = None
+    # Current choices in the tab export menu. None means the menu is closed.
+    tab_export_menu_state: Optional[TabExportMenuState] = None
     # Detail tab currently displayed in the right panel.
     active_detail_tab_name: TabName = TabName.LOGS
     # Which panel receives keyboard input.
@@ -127,8 +130,9 @@ class UISessionState:
 
         The available range starts at index 0 and ends at line_count - 1. For
         example, three displayed lines have valid indexes 0, 1, and 2.
-        UIController calls this after detail content changes and after keyboard
-        navigation. When no lines are available, the selected index resets to 0.
+        TerminalController calls this after detail content changes and after
+        keyboard navigation. When no lines are available, the selected index
+        resets to 0.
         """
         if line_count <= 0:
             self.detail_selected_line_index = 0
@@ -141,7 +145,7 @@ class UISessionState:
         self,
         running_container_ids: set[str],
     ) -> None:
-        """Remove saved UI data for containers that are no longer running."""
+        """Remove saved session data for containers that are no longer running."""
         self.tab_content_cache.remove_cached_tab_content_for_stopped_containers(
             running_container_ids
         )
@@ -156,9 +160,15 @@ class UISessionState:
             for key, message in self.tab_load_errors.items()
             if key.container_id in running_container_ids
         }
+        if (
+            self.tab_export_menu_state is not None
+            and self.tab_export_menu_state.container_tab_key.container_id
+            not in running_container_ids
+        ):
+            self.tab_export_menu_state = None
 
 
 __all__ = [
     "FocusArea",
-    "UISessionState",
+    "TerminalSessionState",
 ]

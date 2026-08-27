@@ -28,7 +28,7 @@ from easy_docker_manager.core.log_text import (
     count_repeated_lines_between_batches,
 )
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
-from easy_docker_manager.core.ui_session_state import UISessionState
+from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import (
     ContainerLogFetchError,
     DockerContainerClient,
@@ -47,13 +47,13 @@ class DockerManager:
     """Manage Docker data used by the terminal interface.
 
     EDMApp calls refresh_docker_data_if_needed() after user input, completed
-    background work, and scheduled timer checks. UIController calls the
+    background work, and scheduled timer checks. TerminalController calls the
     selection-change methods after the user chooses another container or tab.
     DockerManager starts each required background operation, tracks it until
-    it finishes, and saves the result in UISessionState. It also remembers when
+    it finishes, and saves the result in TerminalSessionState. It also remembers when
     container refreshes, tab reloads, and log polls should run next.
 
-    Completion methods run on the UI thread. They update UISessionState and
+    Completion methods run on the UI thread. They update TerminalSessionState and
     return True when the visible screen needs to be redrawn.
     """
 
@@ -64,7 +64,7 @@ class DockerManager:
 
     def __init__(
         self,
-        state: UISessionState,
+        state: TerminalSessionState,
         app_config: AppConfig,
         background_executor: BackgroundExecutor,
         tab_data_loader: TabDataLoader,
@@ -240,7 +240,7 @@ class DockerManager:
     def prepare_selected_container_details(self) -> None:
         """Prepare the detail area after the selected container changes.
 
-        UIController calls this after keyboard navigation changes the selected
+        TerminalController calls this after keyboard navigation changes the selected
         container. DockerManager also calls it when a container-list refresh
         selects a different container. It resets detail navigation and log
         polling, shows cached tab content when available, and starts a
@@ -263,7 +263,7 @@ class DockerManager:
     def prepare_active_detail_tab(self) -> None:
         """Prepare the detail area after the active tab changes.
 
-        UIController calls this after changing active_detail_tab_name. The
+        TerminalController calls this after changing active_detail_tab_name. The
         method resets detail navigation and log polling, enables log-tail
         following only for Logs, shows cached content immediately, and loads
         missing content in the background.
@@ -284,7 +284,7 @@ class DockerManager:
     def apply_container_sort_to_current_list(self) -> None:
         """Reorder the current list while keeping the same container selected.
 
-        UIController calls this after the user confirms the sorting menu. The
+        TerminalController calls this after the user confirms the sorting menu. The
         original Docker order remains available for a later Docker order choice.
         """
         selected_container_id = self.state.selected_container_id

@@ -10,7 +10,7 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as distribution_version
 from typing import Optional
 
-from easy_docker_manager.app import EDMApp
+from easy_docker_manager.app.app import EDMApp
 from easy_docker_manager.config import AppConfigStore
 from easy_docker_manager.logging.app_logging import configure_logging
 
