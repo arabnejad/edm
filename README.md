@@ -42,6 +42,7 @@ With EDM, you can view:
 - Python 3.9 or newer
 - Docker installed and running
 - permission to access the local Docker daemon
+- a terminal window of at least 120 columns by 30 rows
 
 EDM currently supports local Docker only. It accepts the platform's default
 local connection, Unix sockets, and Windows named pipes. A `DOCKER_HOST` value
@@ -107,6 +108,10 @@ Run the installed command:
 ```bash
 edm
 ```
+
+EDM checks the terminal size before it starts. If the window is smaller than
+120 columns by 30 rows, EDM prints the current size and exits. Resize the
+terminal and run the command again.
 
 Show the available command options or installed version, or start EDM without
 terminal colors:

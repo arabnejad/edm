@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import runpy
 from unittest.mock import Mock
 
@@ -7,6 +8,16 @@ import pytest
 
 from easy_docker_manager import main as main_module
 from easy_docker_manager.core.config import AppConfig
+
+
+@pytest.fixture(autouse=True)
+def terminal_is_large_enough_for_edm(monkeypatch) -> None:
+    """Give command tests EDM's minimum supported terminal size."""
+    monkeypatch.setattr(
+        main_module,
+        "get_terminal_size",
+        Mock(return_value=os.terminal_size((120, 30))),
+    )
 
 
 def test_main_configures_logging_loads_config_and_runs_app(monkeypatch) -> None:
@@ -28,6 +39,37 @@ def test_main_configures_logging_loads_config_and_runs_app(monkeypatch) -> None:
     config_store.load_and_sync.assert_called_once_with()
     edm_app_class.assert_called_once_with(app_config=app_config)
     edm_app.run.assert_called_once_with()
+
+
+@pytest.mark.parametrize("terminal_dimensions", [(119, 30), (120, 29), (80, 24)])
+def test_main_exits_before_startup_when_terminal_is_too_small(
+    monkeypatch,
+    capsys,
+    terminal_dimensions: tuple[int, int],
+) -> None:
+    configure_logging = Mock()
+    config_store_class = Mock()
+    edm_app_class = Mock()
+    monkeypatch.setattr(
+        main_module,
+        "get_terminal_size",
+        Mock(return_value=os.terminal_size(terminal_dimensions)),
+    )
+    monkeypatch.setattr(main_module, "configure_logging", configure_logging)
+    monkeypatch.setattr(main_module, "AppConfigStore", config_store_class)
+    monkeypatch.setattr(main_module, "EDMApp", edm_app_class)
+
+    assert main_module.main([]) == 1
+
+    assert capsys.readouterr().err == (
+        "Error: EDM requires a terminal size of at least 120 columns by 30 rows.\n"
+        f"Current terminal size: {terminal_dimensions[0]} columns by "
+        f"{terminal_dimensions[1]} rows.\n"
+        "Resize the terminal and run EDM again.\n"
+    )
+    configure_logging.assert_not_called()
+    config_store_class.assert_not_called()
+    edm_app_class.assert_not_called()
 
 
 def test_no_color_option_disables_colors_for_the_application_run(monkeypatch) -> None:
