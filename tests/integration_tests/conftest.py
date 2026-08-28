@@ -21,7 +21,11 @@ CONTAINER_ENVIRONMENT = {
     "EDM_TEST_VALUE": "visible",
     "EDM_EMPTY_VALUE": "",
 }
-CONTAINER_LABELS = {"edm.integration-test": "true"}
+CONTAINER_LABELS = {
+    "edm.integration-test": "true",
+    "com.docker.compose.project": "edm-integration",
+    "com.docker.compose.service": "test-container",
+}
 CONTAINER_START_TIMEOUT_SECONDS = 20.0
 
 

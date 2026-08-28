@@ -44,6 +44,8 @@ def container_summary_factory() -> Callable[..., ContainerSummary]:
         status: str = "running",
         image_name: str = "python:3.12",
         created_at: str = "2026-01-01T12:00:00Z",
+        compose_project_name: Optional[str] = None,
+        compose_service_name: Optional[str] = None,
     ) -> ContainerSummary:
         return ContainerSummary(
             container_id=container_id,
@@ -51,6 +53,8 @@ def container_summary_factory() -> Callable[..., ContainerSummary]:
             status=status,
             image_name=image_name,
             created_at=created_at,
+            compose_project_name=compose_project_name,
+            compose_service_name=compose_service_name,
         )
 
     return create_container_summary

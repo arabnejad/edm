@@ -86,7 +86,13 @@ def test_container_mapper_prefers_sdk_attributes() -> None:
         status="running",
         attrs={
             "State": {"Status": "stopped"},
-            "Config": {"Image": "nginx:latest"},
+            "Config": {
+                "Image": "nginx:latest",
+                "Labels": {
+                    "com.docker.compose.project": "example",
+                    "com.docker.compose.service": "web",
+                },
+            },
             "Created": "2026-01-01T12:00:00Z",
         },
     )
@@ -98,6 +104,8 @@ def test_container_mapper_prefers_sdk_attributes() -> None:
     assert container_summary.status == "running"
     assert container_summary.image_name == "nginx:latest"
     assert container_summary.created_at == "2026-01-01T12:00:00Z"
+    assert container_summary.compose_project_name == "example"
+    assert container_summary.compose_service_name == "web"
 
 
 def test_container_mapper_uses_inspection_fallbacks() -> None:
@@ -118,6 +126,8 @@ def test_container_mapper_uses_inspection_fallbacks() -> None:
     assert container_summary.status == "paused"
     assert container_summary.image_name == "worker:1.0"
     assert container_summary.created_at == "2025-12-01T12:00:00Z"
+    assert container_summary.compose_project_name is None
+    assert container_summary.compose_service_name is None
 
 
 def test_container_mapper_uses_unknown_when_no_name_exists() -> None:

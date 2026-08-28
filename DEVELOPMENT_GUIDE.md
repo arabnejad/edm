@@ -296,18 +296,33 @@ running-container list. `container_filter_query_before_editing` stores the
 previous query while input is active. `Enter` keeps the edited query. `Esc`
 restores the saved query. Other shortcuts are ignored until editing ends.
 
-`RunningContainerList` keeps the latest list received from Docker and the
-sorted, filtered list shown in the left panel. Each query change asks
-`DockerManager` to rebuild the displayed list from the Docker list. Sorting is
-applied first, followed by the filter. The comparison ignores letter case and
-checks the container name, image name, and status. It is quick because it only
-reads container summaries already held in memory.
+`RunningContainerList` keeps the latest list received from Docker and the list
+shown in the left panel. Each query change asks `DockerManager` to rebuild that
+displayed list. The comparison ignores letter case and checks the container
+name, image name, status, Compose project, and Compose service. It is quick
+because it only reads container summaries already held in memory.
 
 If the selected container still matches, it remains selected. Otherwise, EDM
 selects the first match and prepares that container's active tab. Containers
 hidden by the filter are still running, so their cached tab text and log
-tracking are not removed. A later Docker refresh reapplies the same sort and
-filter to the new list.
+tracking are not removed. A later Docker refresh groups the new list and
+reapplies the same sort and filter.
+
+### Docker Compose Grouping
+
+`container_mapper.py` reads the `com.docker.compose.project` and
+`com.docker.compose.service` labels during the normal container refresh. This
+does not need another Docker request.
+
+`RunningContainerList` automatically keeps containers from each project
+together, orders projects by name, and places containers without a project
+label at the end. The active sort is applied separately inside each project.
+
+The displayed container list remains flat. `RunningContainerListPanel` adds a
+project heading to the first container row in each Compose section and draws a
+separator before the next section. Containers without Compose labels receive
+no heading. Keeping headings out of the data list means selected indexes and
+keyboard navigation still refer only to containers.
 
 ### Container Sorting
 
@@ -320,11 +335,12 @@ normal shortcuts. `TerminalSessionState.container_sort_menu_state` stores the
 choices shown in the menu. The active sort changes only when the user presses
 `Enter`, so `Esc` can close the menu without changing the list.
 
-When `Enter` applies the choice, `DockerManager` sorts the latest list received
-from Docker and then reapplies the active filter. It also finds the selected
-container's new position. The same container and loaded tab stay selected when
-that container still matches. Later refreshes use the same sort. `Docker order`
-restores Docker's order before the active filter is applied.
+When `Enter` applies the choice, `DockerManager` rebuilds the latest list from
+Docker with the active filter. It also finds the selected container's new
+position. The same container and loaded tab stay selected when that container
+still matches. Later refreshes use the same choices. `Docker order` restores
+Docker's order inside each Compose project and among containers that do not
+belong to a Compose project.
 
 ### Tab Export
 
@@ -619,8 +635,8 @@ environment keys, structured values, search matches, and errors.
 | --- | --- |
 | `AppConfig` | Stores validated refresh, log, cache, timeout, worker, and color settings |
 | `AppConfigStore` | Loads, checks, and rewrites `config.json` |
-| `ContainerSummary` | Stores the container fields shown in the left panel |
-| `RunningContainerList` | Stores all running containers and builds the sorted, filtered list shown in EDM |
+| `ContainerSummary` | Stores the container and Compose fields used by the left panel |
+| `RunningContainerList` | Stores all running containers and applies grouping, sorting, and filtering |
 | `ContainerSortField` | Names the choices shown in the container sorting menu |
 | `get_container_list_in_requested_order` | Returns a sorted copy of the latest Docker container list |
 | `ContainerProcessTable` | Stores process column names and rows from Docker top |

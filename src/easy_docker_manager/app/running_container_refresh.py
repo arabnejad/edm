@@ -84,9 +84,9 @@ class RunningContainerListRefresher:
     def rebuild_displayed_container_list(self) -> None:
         """Rebuild the displayed list after its sort or filter changes.
 
-        TerminalController calls this when the user applies a sort or edits the
-        container filter. The same container stays selected if it is still in
-        the displayed list. Otherwise, EDM selects the first matching container.
+        TerminalController calls this after the user changes sorting or
+        filtering. The same container stays selected if it is still in the
+        displayed list. Otherwise, EDM selects the first matching container.
         """
         previously_selected_container_id = self.state.selected_container_id
         displayed_containers = (

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 import urwid
 
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import ContainerSortField
+from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
     TerminalSessionState,
@@ -16,12 +19,11 @@ GITHUB_REPOSITORY_TEXT = "github.com/arabnejad/edm"
 
 
 class RunningContainerListPanel:
-    """Display the running-container list and its left-panel controls.
+    """Draw the running containers and the controls shown above the list.
 
-    TerminalLayoutView creates this once and calls render() for each redraw.
-    The panel reads TerminalSessionState to update its title, rows, active
-    filter, sort summary, focus, and border. It does not change the selection
-    or start Docker requests.
+    TerminalLayoutView creates this panel once. On each redraw, render() reads
+    TerminalSessionState and updates the existing Urwid widgets. This class
+    only changes what is shown; it does not select containers or call Docker.
     """
 
     def __init__(self, app_config: AppConfig) -> None:
@@ -44,7 +46,7 @@ class RunningContainerListPanel:
         )
 
     def render(self, state: TerminalSessionState) -> None:
-        """Update the rows, filter, sort summary, focus, and panel border."""
+        """Redraw the container rows, controls, focus, and border."""
         self._rebuild_container_list_and_focus_on_selected_container(state)
         self._update_container_filter_display_text(state)
         self._update_selected_sort_display_text(state)
@@ -129,41 +131,70 @@ class RunningContainerListPanel:
     def _rebuild_container_list_and_focus_on_selected_container(
         self, state: TerminalSessionState
     ) -> None:
-        """Rebuild the list and focus its selected container row.
+        """Replace the list rows and focus the selected container.
 
-        render() calls this during each panel redraw. It creates rows from the
-        running containers, replaces the existing Urwid rows, and moves focus
-        to the selected index. It does not change the selected index stored in
-        TerminalSessionState.
+        A Compose project heading is kept with its first container row. This
+        keeps one selectable list item per container, so the row index still
+        matches selected_container_index. This method moves Urwid's focus but
+        does not change the selected index stored in the session state.
         """
-        rows: list[urwid.Widget] = []
         displayed_containers = state.running_container_list.displayed_containers
-        for index, container in enumerate(displayed_containers):
-            if index == state.selected_container_index:
-                selected_style = (
-                    "selected"
-                    if state.active_focus_area == FocusArea.CONTAINERS
-                    else "selected_inactive"
+
+        # Count each project's containers before building its heading. For
+        # example, a project with two containers is shown as "example (2)".
+        containers_per_compose_project: dict[str, int] = {}
+        for container in displayed_containers:
+            if container.compose_project_name is not None:
+                containers_per_compose_project[container.compose_project_name] = (
+                    containers_per_compose_project.get(
+                        container.compose_project_name,
+                        0,
+                    )
+                    + 1
                 )
-                rows.append(
-                    urwid.AttrMap(
-                        urwid.Text(
-                            f"> {container.name} ({container.status})",
-                            wrap="clip",
-                        ),
-                        selected_style,
+
+        rows: list[urwid.Widget] = []
+        previous_compose_project_name: Optional[str] = None
+        for index, container in enumerate(displayed_containers):
+            container_row = self._build_container_row(state, index, container)
+            compose_project_name = container.compose_project_name
+
+            # RunningContainerList has already grouped the containers. A new
+            # project name means this row starts the next section.
+            starts_new_container_section = (
+                compose_project_name != previous_compose_project_name
+            )
+            container_section_rows: list[urwid.Widget] = []
+            if starts_new_container_section and index > 0:
+                container_section_rows.append(
+                    urwid.AttrMap(urwid.Divider("─"), "muted")
+                )
+            if starts_new_container_section and compose_project_name is not None:
+                compose_project_container_count = containers_per_compose_project[
+                    compose_project_name
+                ]
+                container_section_rows.append(
+                    urwid.Text(
+                        [
+                            ("title", f" {compose_project_name}"),
+                            (
+                                "muted",
+                                f" ({compose_project_container_count})",
+                            ),
+                        ],
+                        wrap="clip",
                     )
                 )
-                continue
+            container_section_rows.append(container_row)
 
-            row_text: list[MarkupSegment] = [
-                ("muted", "  "),
-                ("container", container.name),
-                ("muted", " ("),
-                ("container_status", container.status),
-                ("muted", ")"),
-            ]
-            rows.append(urwid.Text(row_text, wrap="clip"))
+            # Keep the heading and separator with the first container in the
+            # section. Up and Down can then skip straight between containers.
+            rows.append(
+                urwid.Pile([("pack", row) for row in container_section_rows])
+                if len(container_section_rows) > 1
+                else container_row
+            )
+            previous_compose_project_name = compose_project_name
 
         if not rows:
             empty_message = "No running containers."
@@ -179,6 +210,36 @@ class RunningContainerListPanel:
         self.container_rows[:] = rows
         selected_index = state.selected_container_index or 0
         self.container_rows.set_focus(min(selected_index, len(rows) - 1))
+
+    @staticmethod
+    def _build_container_row(
+        state: TerminalSessionState,
+        container_index: int,
+        container: ContainerSummary,
+    ) -> urwid.Widget:
+        """Build one container row with its selected or normal style."""
+        if container_index == state.selected_container_index:
+            selected_style = (
+                "selected"
+                if state.active_focus_area == FocusArea.CONTAINERS
+                else "selected_inactive"
+            )
+            return urwid.AttrMap(
+                urwid.Text(
+                    f"> {container.name} ({container.status})",
+                    wrap="clip",
+                ),
+                selected_style,
+            )
+
+        row_text: list[MarkupSegment] = [
+            ("muted", "  "),
+            ("container", container.name),
+            ("muted", " ("),
+            ("container_status", container.status),
+            ("muted", ")"),
+        ]
+        return urwid.Text(row_text, wrap="clip")
 
     def _update_container_filter_display_text(
         self,

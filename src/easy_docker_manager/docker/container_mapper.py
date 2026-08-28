@@ -6,6 +6,9 @@ from typing import Any
 
 from easy_docker_manager.core.containers import ContainerSummary
 
+DOCKER_COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
+DOCKER_COMPOSE_SERVICE_LABEL = "com.docker.compose.service"
+
 
 def to_container_summary(container: Any) -> ContainerSummary:
     """Copy the container fields needed by the UI into ContainerSummary."""
@@ -23,6 +26,9 @@ def to_container_summary(container: Any) -> ContainerSummary:
     )
     image_name = container_config.get("Image", "")
     created_at = container_attributes.get("Created", "")
+    container_labels = container_config.get("Labels", {}) or {}
+    compose_project_name = container_labels.get(DOCKER_COMPOSE_PROJECT_LABEL) or None
+    compose_service_name = container_labels.get(DOCKER_COMPOSE_SERVICE_LABEL) or None
 
     return ContainerSummary(
         container_id=container_id,
@@ -30,6 +36,8 @@ def to_container_summary(container: Any) -> ContainerSummary:
         status=status,
         image_name=image_name,
         created_at=created_at,
+        compose_project_name=compose_project_name,
+        compose_service_name=compose_service_name,
     )
 
 

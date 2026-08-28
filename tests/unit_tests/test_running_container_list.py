@@ -172,3 +172,67 @@ def test_empty_filter_keeps_the_full_container_list(
 
     assert displayed_containers == containers_for_filtering
     assert displayed_containers is not containers_for_filtering
+
+
+def test_compose_projects_are_grouped_and_other_containers_are_kept_at_the_end(
+    container_summary_factory,
+) -> None:
+    running_container_list = RunningContainerList(
+        [
+            container_summary_factory(
+                "project-z-worker",
+                name="worker",
+                compose_project_name="project-z",
+                compose_service_name="worker",
+            ),
+            container_summary_factory("standalone", name="agent"),
+            container_summary_factory(
+                "project-a-web",
+                name="web",
+                compose_project_name="project-a",
+                compose_service_name="web",
+            ),
+            container_summary_factory(
+                "project-z-api",
+                name="api",
+                compose_project_name="project-z",
+                compose_service_name="api",
+            ),
+        ]
+    )
+
+    displayed_containers = running_container_list.rebuild_displayed_containers(
+        ContainerSortField.NAME,
+        False,
+        "",
+    )
+
+    assert [container.container_id for container in displayed_containers] == [
+        "project-a-web",
+        "project-z-api",
+        "project-z-worker",
+        "standalone",
+    ]
+
+
+@pytest.mark.parametrize("filter_query", ["ACCOUNTS", "web-service"])
+def test_filter_matches_compose_project_and_service_names(
+    container_summary_factory,
+    filter_query: str,
+) -> None:
+    compose_container = container_summary_factory(
+        "compose-web",
+        compose_project_name="accounts",
+        compose_service_name="web-service",
+    )
+    running_container_list = RunningContainerList(
+        [compose_container, container_summary_factory("standalone")]
+    )
+
+    displayed_containers = running_container_list.rebuild_displayed_containers(
+        ContainerSortField.DOCKER_ORDER,
+        False,
+        filter_query,
+    )
+
+    assert displayed_containers == [compose_container]
