@@ -854,6 +854,34 @@ def test_container_sort_keeps_selection_and_can_restore_docker_order(
     ] == ["z", "a"]
 
 
+def test_compose_grouping_keeps_the_same_container_selected(
+    docker_manager_factory,
+    container_summary_factory,
+) -> None:
+    state = TerminalSessionState(
+        running_container_list=RunningContainerList(
+            [
+                container_summary_factory("standalone", name="agent"),
+                container_summary_factory(
+                    "compose-web",
+                    name="web",
+                    compose_project_name="example",
+                ),
+            ]
+        ),
+        selected_container_index=0,
+    )
+    test_setup = docker_manager_factory(state)
+
+    test_setup.docker_manager.rebuild_displayed_container_list()
+
+    assert [
+        container.container_id
+        for container in state.running_container_list.displayed_containers
+    ] == ["compose-web", "standalone"]
+    assert state.selected_container_id == "standalone"
+
+
 def test_container_filter_keeps_matching_containers_in_the_selected_sort_order(
     docker_manager_factory,
     container_summary_factory,

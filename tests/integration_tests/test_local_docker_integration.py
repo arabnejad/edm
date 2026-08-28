@@ -23,6 +23,8 @@ def test_running_container_is_returned_by_container_listing(
     assert matching_container is not None
     assert matching_container.name == docker_test_setup.container.name
     assert matching_container.status == "running"
+    assert matching_container.compose_project_name == "edm-integration"
+    assert matching_container.compose_service_name == "test-container"
 
 
 def test_container_logs_are_read_from_docker(

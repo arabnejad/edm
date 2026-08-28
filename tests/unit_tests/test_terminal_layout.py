@@ -255,6 +255,54 @@ def test_container_panel_shows_filter_query_match_count_and_editing_state(
     assert " f  Filter" in view.shortcut_footer_text.get_text()[0]
 
 
+def test_container_panel_shows_compose_sections_and_plain_container_rows(
+    container_summary_factory,
+) -> None:
+    view = TerminalLayoutView(AppConfig())
+    running_container_list = RunningContainerList(
+        [
+            container_summary_factory(
+                "api",
+                name="example-api-1",
+                compose_project_name="example",
+            ),
+            container_summary_factory(
+                "worker",
+                name="example-worker-1",
+                compose_project_name="example",
+            ),
+            container_summary_factory(
+                "monitor",
+                name="monitor-web-1",
+                compose_project_name="monitor",
+            ),
+            container_summary_factory("standalone", name="cadvisor"),
+        ]
+    )
+    running_container_list.rebuild_displayed_containers(
+        ContainerSortField.DOCKER_ORDER,
+        False,
+        "",
+    )
+    state = TerminalSessionState(
+        running_container_list=running_container_list,
+        selected_container_index=0,
+    )
+
+    view.render(state, ["Loading..."], lambda line: line)
+
+    container_rows = view.running_container_list_panel.container_rows
+    rendered_container_rows = "\n".join(
+        line.decode() for row in container_rows for line in row.render((60,)).text
+    )
+    assert len(container_rows) == 4
+    assert "example (2)" in rendered_container_rows
+    assert "monitor (1)" in rendered_container_rows
+    assert "Standalone" not in rendered_container_rows
+    assert "cadvisor (running)" in rendered_container_rows
+    assert "─" in rendered_container_rows
+
+
 def test_container_panel_explains_when_no_running_container_matches_filter(
     container_summary_factory,
 ) -> None:

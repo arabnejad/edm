@@ -152,9 +152,9 @@ navigation. Press `Esc` to keep the query and return to the container list.
 ## Container Filtering
 
 Press `f` while the container panel is active, then type part of a container
-name, image name, or status. Matching ignores letter case and updates the list
-as you type. It uses the container data already loaded in EDM and does not send
-another request to Docker.
+name, image name, status, Compose project, or Compose service. Matching ignores
+letter case and updates the list as you type. It uses the container data
+already loaded in EDM and does not send another request to Docker.
 
 ```text
 * localhost (active)
@@ -172,11 +172,33 @@ filter, or press `Esc` to restore the filter that was active before you pressed
 printable key, including `q`, becomes part of the query.
 
 The filter and match count are shown below `localhost (active)`, next to the
-`f` shortcut. The active sort appears on the next line beside `s`. EDM applies
-the selected sort before the filter and reapplies both after each
-container-list refresh. If the selected container no longer matches, the first
-matching container is selected. Filtering only hides list entries; cached tab
-data for hidden running containers is kept.
+`f` shortcut. The active sort appears on the following line. EDM reapplies the
+filter and sort after each container-list refresh. If the selected container
+no longer matches, the first matching container is selected. Filtering only
+hides list entries; cached tab data for hidden running containers is kept.
+
+## Docker Compose Grouping
+
+Docker Compose grouping is automatic. Containers with the same
+`com.docker.compose.project` label appear together under the project name:
+
+```text
+accounts (2)
+  > accounts-api-1 (running)
+    accounts-worker-1 (running)
+────────────────────────
+monitoring (1)
+    monitoring-grafana-1 (running)
+────────────────────────
+    cadvisor (running)
+```
+
+Containers started without Docker Compose stay at the end of the list. They
+are shown as normal container rows without a `Standalone` heading.
+
+Project headings and separator lines are not selectable. `Up` and `Down` move
+directly between containers. EDM keeps the current container selected after a
+list refresh when that container is still running and still matches the filter.
 
 ## Container Sorting
 
@@ -203,8 +225,9 @@ the menu without changing the list. The active sort is shown above the
 container list, directly below the active filter.
 
 Applying a sort does not change the selected container. The sort stays active
-after the container list refreshes. Choose Docker order to restore the order
-returned by Docker.
+after the container list refreshes. Compose projects stay in name order. Docker
+order restores the order returned by Docker inside each project and among the
+containers without a Compose project at the end.
 
 EDM currently shows running containers only, so they usually have the same
 status. For this reason, sorting by Status may not visibly change the list.

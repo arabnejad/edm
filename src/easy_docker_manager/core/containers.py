@@ -12,9 +12,8 @@ class ContainerSummary:
     """Container details displayed and sorted in the terminal UI.
 
     Docker supplies the id, name, status, image name, and creation time for
-    every listed container, so all five fields are required. The sorting code
-    still handles an explicitly empty image name or creation time by placing
-    that container at the end in container-id order.
+    every listed container. Compose project and service names come from
+    labels, so they are None for containers started without Docker Compose.
     """
 
     container_id: str
@@ -22,6 +21,8 @@ class ContainerSummary:
     status: str
     image_name: str
     created_at: str
+    compose_project_name: Optional[str] = None
+    compose_service_name: Optional[str] = None
 
 
 @dataclass

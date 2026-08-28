@@ -20,9 +20,9 @@ class TerminalController:
     """Handle navigation, container display options, and screen redraws.
 
     KeyboardController handles individual keys. This class moves container and
-    detail selections, filters and sorts the container list, switches tabs,
-    prepares visible text, and sends session state to TerminalLayoutView. It
-    asks DockerManager to load data after a selection or tab change.
+    detail selections, groups, filters, and sorts the container list, switches
+    tabs, prepares visible text, and sends session state to TerminalLayoutView.
+    It asks DockerManager to load data after a selection or tab change.
     """
 
     DETAIL_TAB_ORDER = tuple(TabName)

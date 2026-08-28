@@ -133,7 +133,7 @@ class DockerManager:
         self.selected_tab_content_loader.prepare_active_detail_tab()
 
     def rebuild_displayed_container_list(self) -> None:
-        """Rebuild the displayed container list after its sort or filter changes."""
+        """Rebuild the grouped list after its sort or filter changes."""
         self.running_container_list_refresher.rebuild_displayed_container_list()
 
     def _is_initial_log_content_load_in_progress(self) -> bool:
