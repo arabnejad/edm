@@ -199,18 +199,28 @@ flowchart TD
 
     Start --> ParseOptions
     ParseOptions -->|help or version| ShowInfo
+    ParseOptions -->|diagnostics| ShowInfo
     ParseOptions -->|start EDM| CheckTerminal
     CheckTerminal -->|too small| SizeError
     CheckTerminal -->|large enough| Logging --> LoadConfig --> BuildApp --> StartNotifier
     StartNotifier --> FirstRefresh --> FirstDraw --> StartTimer --> RunUI
 ```
 
-`easy_docker_manager.main` first parses the command options. `--help` and
-`--version` print their output and exit without starting the application.
-`--no-color` starts EDM with a temporary no-color override. Before startup,
-EDM checks that the terminal has at least 120 columns and 30 rows. A smaller
-terminal receives an error showing its current size, and no application or
-Docker work is started. EDM then performs three steps:
+`easy_docker_manager.main` reads the command-line options before it builds the
+terminal interface:
+
+- `--help` prints the available commands and exits.
+- `--version` prints the installed EDM version and exits.
+- `--diagnostics` prints application and Docker information, then exits. It
+  asks Docker for its daemon version, but it does not read, create, or update
+  `config.json`.
+- `--no-color` continues normal startup with colors disabled for that run. It
+  does not save this choice in the config file.
+
+When EDM is going to start the terminal interface, it checks for at least 120
+columns and 30 rows. If the terminal is smaller, EDM prints its current size
+and exits before starting any application or Docker work. EDM then performs
+three steps:
 
 1. Configure EDM's application log.
 2. Load `AppConfig` from `config.json`.
@@ -260,6 +270,7 @@ flowchart LR
     Keyboard[KeyboardController]
     UI[TerminalController]
     Export[TabExportController]
+    Diagnostics[DiagnosticsController]
     State[(TerminalSessionState)]
     View[TerminalLayoutView]
 
@@ -267,8 +278,10 @@ flowchart LR
     Keyboard --> State
     Keyboard --> UI
     Keyboard --> Export
+    Keyboard --> Diagnostics
     UI --> State
     Export --> State
+    Diagnostics --> State
     UI --> View
 ```
 
@@ -278,7 +291,14 @@ flowchart LR
 search input and changing keyboard focus. It calls `TerminalController` for
 navigation, filtering, sorting, tab changes, and detail scrolling. While the
 export menu is open, it passes every key to `TabExportController`, which keeps
-the export rules in one place.
+the export rules in one place. `h` or `H` asks `DiagnosticsController` to open
+the help and diagnostics popup. While that popup is open, only `Esc` is
+handled.
+
+`DiagnosticsController` fills the report with application versions and file
+paths before the first redraw. It sends the Docker daemon version request to
+`BackgroundExecutor`, then updates the open popup when the request finishes.
+This keeps the terminal responsive when Docker is slow or unavailable.
 
 The controller returns a `KeyAction`:
 
@@ -629,7 +649,7 @@ environment keys, structured values, search matches, and errors.
 | `PipeBackgroundNotifier` | Provides immediate notification on Unix-like systems |
 | `PollingBackgroundNotifier` | Checks for notification every 0.2 seconds on Windows |
 
-### Config And Core
+### Config, Diagnostics, And Core
 
 | Class or module | What it does |
 | --- | --- |
@@ -644,6 +664,7 @@ environment keys, structured values, search matches, and errors.
 | `TabName` | Names the five detail tabs |
 | `FocusArea` | Names the container and detail keyboard focus areas |
 | `TerminalSessionState` | Stores changing data for the current terminal session |
+| `DiagnosticsReport` | Stores application, file, connection, and Docker daemon details |
 | `ContainerTabKey` | Identifies one tab for one container |
 | `TabContentCache` | Keeps recently used tab text within count and byte limits |
 | `TabExportMenuState` | Stores the path and scope while the export popup is open |
@@ -654,8 +675,8 @@ environment keys, structured values, search matches, and errors.
 
 | Class or module | What it does |
 | --- | --- |
-| `DockerContainerClient` | Defines the container data EDM needs |
-| `LocalDockerContainerClient` | Implements that interface with the local Docker SDK |
+| `DockerContainerClient` | Defines the container data and daemon details EDM needs |
+| `LocalDockerContainerClient` | Reads that information through the local Docker SDK |
 | `FailedDockerRequestType` | Identifies the Docker request that failed |
 | Docker error classes | Describe missing containers, failed refreshes, failed requests, and unreadable logs |
 | `create_docker_client` | Creates a local Docker SDK client and rejects remote `DOCKER_HOST` transports |
@@ -674,12 +695,14 @@ environment keys, structured values, search matches, and errors.
 | `KeyAction` | Tells `EDMApp` to do nothing, redraw, or quit |
 | `TerminalController` | Handles navigation, filtering, search, menu choices, and drawing |
 | `TabExportController` | Handles export choices, cached text snapshots, and file-write results |
+| `DiagnosticsController` | Opens diagnostics and applies the background Docker version result |
 | `TerminalLayoutView` | Combines the panels, active popup, and shortcut footer |
 | `RunningContainerListPanel` | Displays the running-container list, header, footer, and border |
 | `SelectedContainerDetailsPanel` | Displays the selected container's tabs, rows, status, and border |
 | `ContainerSortMenuState` | Holds choices being edited in the sort menu |
 | `build_container_sort_popup_menu` | Builds the sort popup menu over the main layout |
 | `build_tab_export_popup_menu` | Builds the export popup menu over the main layout |
+| `build_diagnostics_popup` | Builds the read-only diagnostics popup over the main layout |
 | `FocusableDetailLine` | Lets keyboard navigation select one line of detail text |
 | `DetailTabTextFormatter` | Adds tab colors and search highlights to visible lines |
 | `DetailLineRenderer` | Adds tab colors, search highlights, and error colors |

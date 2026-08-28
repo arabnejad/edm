@@ -11,6 +11,7 @@ from easy_docker_manager.docker.container_client import (
     ContainerLogFetchError,
     ContainerLogsUnavailableError,
     ContainerNotFoundError,
+    DockerDaemonDetails,
     DockerRequestFailedError,
     RunningContainerListRefreshError,
 )
@@ -23,7 +24,19 @@ def docker_client_factory():
         containers = Mock()
         containers.get.return_value = container
         images = Mock()
-        return SimpleNamespace(containers=containers, images=images, close=Mock())
+        return SimpleNamespace(
+            containers=containers,
+            images=images,
+            version=Mock(
+                return_value={
+                    "Version": "28.3.3",
+                    "ApiVersion": "1.51",
+                    "Os": "linux",
+                    "Arch": "amd64",
+                }
+            ),
+            close=Mock(),
+        )
 
     return create_docker_client
 
@@ -434,3 +447,33 @@ def test_close_releases_only_an_existing_client(docker_client_factory) -> None:
     client.close.assert_called_once_with()
     assert docker_container_client._docker_client is None
     assert docker_container_client._last_resource_stats_snapshot_by_container_id == {}
+
+
+def test_docker_daemon_details_are_read_from_the_version_response(
+    docker_client_factory,
+) -> None:
+    client = docker_client_factory()
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: client
+    )
+
+    assert docker_container_client.get_docker_daemon_details() == DockerDaemonDetails(
+        daemon_version="28.3.3",
+        api_version="1.51",
+        operating_system="linux",
+        architecture="amd64",
+    )
+    client.version.assert_called_once_with()
+
+
+def test_docker_daemon_details_reject_an_unknown_response_format(
+    docker_client_factory,
+) -> None:
+    client = docker_client_factory()
+    client.version.return_value = "unexpected"
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: client
+    )
+
+    with pytest.raises(TypeError, match="unknown format"):
+        docker_container_client.get_docker_daemon_details()

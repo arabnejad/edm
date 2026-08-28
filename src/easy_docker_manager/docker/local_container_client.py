@@ -26,6 +26,7 @@ from easy_docker_manager.docker.container_client import (
     ContainerLogsUnavailableError,
     ContainerNotFoundError,
     DockerContainerClient,
+    DockerDaemonDetails,
     FailedDockerRequestType,
     RunningContainerListRefreshError,
 )
@@ -226,6 +227,23 @@ class LocalDockerContainerClient(DockerContainerClient):
                 exc,
             )
 
+    def get_docker_daemon_details(self) -> DockerDaemonDetails:
+        """Ask the local daemon for the version details used by diagnostics."""
+        try:
+            version_response = self._get_or_create_docker_client().version()
+        except Exception as exc:
+            logger.warning("Unable to read Docker daemon version: %s", exc)
+            raise
+
+        if not isinstance(version_response, dict):
+            raise TypeError("Docker returned daemon details in an unknown format")
+        return DockerDaemonDetails(
+            daemon_version=_get_non_empty_text(version_response.get("Version")),
+            api_version=_get_non_empty_text(version_response.get("ApiVersion")),
+            operating_system=_get_non_empty_text(version_response.get("Os")),
+            architecture=_get_non_empty_text(version_response.get("Arch")),
+        )
+
     def close(self) -> None:
         """Close the Docker SDK client if one was created.
 
@@ -287,6 +305,11 @@ class LocalDockerContainerClient(DockerContainerClient):
         )
         for container_id in stopped_container_ids:
             del self._last_resource_stats_snapshot_by_container_id[container_id]
+
+
+def _get_non_empty_text(value: Any) -> Optional[str]:
+    """Return a non-empty string from Docker, or None for a missing value."""
+    return value if isinstance(value, str) and value else None
 
 
 __all__ = ["LocalDockerContainerClient"]

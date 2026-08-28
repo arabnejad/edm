@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import os
 import runpy
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
 from easy_docker_manager import main as main_module
 from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.diagnostics import DiagnosticsReport
+from easy_docker_manager.docker.container_client import DockerDaemonDetails
 
 
 @pytest.fixture(autouse=True)
@@ -99,9 +102,10 @@ def test_help_prints_usage_without_starting_the_application(
     output = capsys.readouterr().out
     single_line_output = " ".join(output.split())
     assert exit_info.value.code == 0
-    assert "usage: edm [-h] [--version] [--no-color]" in output
+    assert "usage: edm [-h] [--version] [--no-color] [--diagnostics]" in output
     assert "Run without options to start EDM." in single_line_output
     assert "--no-color" in output
+    assert "--diagnostics" in output
     configure_logging.assert_not_called()
 
 
@@ -123,14 +127,91 @@ def test_version_prints_installed_version_without_starting_the_application(
 def test_installed_version_returns_unknown_without_package_metadata(
     monkeypatch,
 ) -> None:
-    package_not_found = main_module.PackageNotFoundError("easy-docker-manager")
     monkeypatch.setattr(
         main_module,
-        "distribution_version",
-        Mock(side_effect=package_not_found),
+        "get_installed_edm_version",
+        Mock(return_value="unknown"),
     )
 
     assert main_module._installed_version() == "unknown"
+
+
+def test_diagnostics_option_exits_without_starting_the_terminal(monkeypatch) -> None:
+    print_diagnostics = Mock(return_value=0)
+    configure_logging = Mock()
+    monkeypatch.setattr(main_module, "_print_diagnostics", print_diagnostics)
+    monkeypatch.setattr(main_module, "configure_logging", configure_logging)
+
+    assert main_module.main(["--diagnostics"]) == 0
+
+    print_diagnostics.assert_called_once_with()
+    configure_logging.assert_not_called()
+
+
+def test_print_diagnostics_closes_client_and_returns_success(
+    monkeypatch, capsys
+) -> None:
+    report = DiagnosticsReport(
+        edm_version="1.2.0",
+        python_version="3.12.3",
+        docker_sdk_version="7.1.0",
+        config_file_path=Path("/tmp/EDM/config.json"),
+        application_log_file_path=Path("/tmp/EDM/edm.log"),
+    )
+    docker_daemon_details = DockerDaemonDetails("28.3.3", "1.51", "linux", "amd64")
+    docker_container_client = Mock()
+    docker_container_client.get_docker_daemon_details.return_value = (
+        docker_daemon_details
+    )
+    monkeypatch.setattr(
+        main_module,
+        "create_initial_diagnostics_report",
+        lambda: report,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "LocalDockerContainerClient",
+        Mock(return_value=docker_container_client),
+    )
+
+    assert main_module._print_diagnostics() == 0
+
+    docker_container_client.close.assert_called_once_with()
+    assert "Connection:           Connected" in capsys.readouterr().out
+
+
+def test_print_diagnostics_returns_failure_when_docker_is_unavailable(
+    monkeypatch,
+    capsys,
+) -> None:
+    report = DiagnosticsReport(
+        edm_version="1.2.0",
+        python_version="3.12.3",
+        docker_sdk_version="7.1.0",
+        config_file_path=Path("/tmp/EDM/config.json"),
+        application_log_file_path=Path("/tmp/EDM/edm.log"),
+    )
+    docker_container_client = Mock()
+    docker_container_client.get_docker_daemon_details.side_effect = RuntimeError(
+        "Docker is unavailable"
+    )
+    monkeypatch.setattr(
+        main_module,
+        "create_initial_diagnostics_report",
+        lambda: report,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "LocalDockerContainerClient",
+        Mock(return_value=docker_container_client),
+    )
+
+    assert main_module._print_diagnostics() == 1
+
+    docker_container_client.close.assert_called_once_with()
+    output = capsys.readouterr().out
+    assert "Connection:           Failed" in output
+    assert "Error:                Docker is unavailable" in output
 
 
 def test_package_module_calls_main(monkeypatch) -> None:

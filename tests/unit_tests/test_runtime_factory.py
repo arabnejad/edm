@@ -43,6 +43,10 @@ def test_runtime_factory_uses_supplied_config_and_data_source() -> None:
         tab_export_controller = runtime.keyboard_controller.tab_export_controller
         assert tab_export_controller.state is state
         assert tab_export_controller.background_executor is runtime.background_executor
+        diagnostics_controller = runtime.keyboard_controller.diagnostics_controller
+        assert diagnostics_controller.state is state
+        assert diagnostics_controller.background_executor is runtime.background_executor
+        assert diagnostics_controller.docker_container_client is docker_container_client
     finally:
         runtime.background_executor.shutdown()
 

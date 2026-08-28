@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Union
+from typing import Optional, Union
 
 import urwid
 
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import ContainerSortMenuState
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.diagnostics import get_installed_edm_version
 from easy_docker_manager.tab_export.definitions import TabExportMenuState
 from easy_docker_manager.ui.container_details_panel import (
     SelectedContainerDetailsPanel,
@@ -17,6 +18,7 @@ from easy_docker_manager.ui.container_details_panel import (
 from easy_docker_manager.ui.container_sort_menu import (
     build_container_sort_popup_menu,
 )
+from easy_docker_manager.ui.diagnostics_popup import build_diagnostics_popup
 from easy_docker_manager.ui.formatting import MarkupSegment
 from easy_docker_manager.ui.running_container_list_panel import (
     RunningContainerListPanel,
@@ -30,13 +32,26 @@ class TerminalLayoutView:
     TerminalController calls render() with the current session state and the
     lines to display. RunningContainerListPanel updates the left side,
     SelectedContainerDetailsPanel updates the right side, and this object
-    chooses whether a sorting or export menu appears above them. This class
-    does not load Docker data, write files, or change navigation state.
+    chooses whether a sorting, export, or diagnostics popup appears above
+    them. This class does not load Docker data, write files, or change
+    navigation state.
     """
 
-    def __init__(self, app_config: AppConfig) -> None:
+    def __init__(
+        self,
+        app_config: AppConfig,
+        installed_edm_version: Optional[str] = None,
+    ) -> None:
         self.app_config = app_config
-        self.running_container_list_panel = RunningContainerListPanel(app_config)
+        resolved_edm_version = (
+            installed_edm_version
+            if installed_edm_version is not None
+            else get_installed_edm_version()
+        )
+        self.running_container_list_panel = RunningContainerListPanel(
+            app_config,
+            resolved_edm_version,
+        )
         self.selected_container_details_panel = SelectedContainerDetailsPanel()
         self.shortcut_footer_text = urwid.Text(
             self._build_keyboard_shortcut_footer_content(), wrap="clip"
@@ -103,6 +118,8 @@ class TerminalLayoutView:
             ("export_menu_selected", "white,bold", "light cyan"),
             ("export_path_cursor", "black", "white"),
             ("export_warning", "yellow,bold", "default"),
+            ("diagnostics_popup", "light gray", "default"),
+            ("diagnostics_value", "yellow", "default"),
         ]
         if self.app_config.colors_enabled:
             return color_palette
@@ -158,7 +175,12 @@ class TerminalLayoutView:
             format_detail_line,
         )
 
-        if isinstance(state.tab_export_menu_state, TabExportMenuState):
+        if state.diagnostics_popup_report is not None:
+            self.layout.original_widget = build_diagnostics_popup(
+                state.diagnostics_popup_report,
+                self._main_layout,
+            )
+        elif isinstance(state.tab_export_menu_state, TabExportMenuState):
             self.layout.original_widget = build_tab_export_popup_menu(
                 state.tab_export_menu_state,
                 self._main_layout,
@@ -182,23 +204,25 @@ class TerminalLayoutView:
         """Return the key labels shown across the bottom of the screen."""
         return [
             ("shortcut_key", " q "),
-            ("footer", " Quit  "),
+            ("footer", " Quit "),
             ("shortcut_key", " Enter "),
-            ("footer", " Detail  "),
+            ("footer", " Detail "),
             ("shortcut_key", " Esc "),
-            ("footer", " Containers  "),
+            ("footer", " List "),
             ("shortcut_key", " [ "),
-            ("footer", " Previous Tab  "),
+            ("footer", " Prev Tab "),
             ("shortcut_key", " ] "),
-            ("footer", " Next Tab  "),
+            ("footer", " Next Tab "),
             ("shortcut_key", " / "),
-            ("footer", " Search  "),
+            ("footer", " Search "),
             ("shortcut_key", " f "),
-            ("footer", " Filter  "),
+            ("footer", " Filter "),
             ("shortcut_key", " s "),
-            ("footer", " Sort  "),
+            ("footer", " Sort "),
             ("shortcut_key", " e "),
-            ("footer", " Export"),
+            ("footer", " Export "),
+            ("shortcut_key", " h "),
+            ("footer", " Help"),
         ]
 
 

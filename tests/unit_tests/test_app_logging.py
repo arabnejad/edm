@@ -33,6 +33,14 @@ def test_default_log_path_uses_the_edm_platform_directory(monkeypatch) -> None:
     assert app_logging.default_log_file_path() == Path("/tmp/user-config/EDM/edm.log")
 
 
+def test_configured_log_path_uses_environment_override(monkeypatch) -> None:
+    monkeypatch.setenv("EDM_LOG_FILE", "~/edm-custom.log")
+
+    assert app_logging.get_configured_log_file_path() == (
+        Path.home() / "edm-custom.log"
+    )
+
+
 def test_configure_logging_creates_a_rotating_file_handler(
     tmp_path: Path,
     monkeypatch,
