@@ -8,6 +8,7 @@ import platform
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -24,7 +25,11 @@ from easy_docker_manager.app.background_notifier import (
 from easy_docker_manager.config.app_config_store import default_config_path
 from easy_docker_manager.constants import APP_NAME
 from easy_docker_manager.core.config import AppConfig
-from easy_docker_manager.core.containers import ContainerProcessTable, ContainerSummary
+from easy_docker_manager.core.containers import (
+    ContainerProcessTable,
+    ContainerResourceStatsSnapshot,
+    ContainerSummary,
+)
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.logging.app_logging import default_log_file_path
 
@@ -120,6 +125,41 @@ class SmokeTestDockerContainerClient(DockerContainerClient):
                 ("1", "root", "python app.py"),
                 ("2", "app", "python worker.py"),
             ),
+        )
+
+    def get_container_resource_stats(
+        self,
+        container_id: str,
+    ) -> ContainerResourceStatsSnapshot:
+        return ContainerResourceStatsSnapshot(
+            collected_at=datetime(2026, 1, 1, 14, 32, 18, tzinfo=timezone.utc),
+            container_uptime_seconds=60.0,
+            container_health_status="healthy",
+            container_restart_count=0,
+            cpu_usage_percent=1.0,
+            cpu_cores_used=0.01,
+            cpu_limit_cores=None,
+            cpu_limit_usage_percent=None,
+            cpu_throttled_period_count=0,
+            cpu_throttled_time_seconds=0.0,
+            memory_usage_bytes=16 * 1024**2,
+            memory_cache_bytes=1024**2,
+            memory_limit_bytes=512 * 1024**2,
+            memory_available_bytes=496 * 1024**2,
+            memory_usage_percent=3.125,
+            memory_swap_bytes=0,
+            network_received_bytes=1024,
+            network_receive_rate_bytes_per_second=None,
+            network_sent_bytes=512,
+            network_send_rate_bytes_per_second=None,
+            network_received_packet_count=10,
+            network_sent_packet_count=5,
+            block_read_bytes=4096,
+            block_read_rate_bytes_per_second=None,
+            block_written_bytes=2048,
+            block_write_rate_bytes_per_second=None,
+            current_process_and_thread_count=2,
+            process_and_thread_limit=None,
         )
 
     def close(self) -> None:

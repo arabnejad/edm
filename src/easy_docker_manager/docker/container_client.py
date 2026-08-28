@@ -11,7 +11,11 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional, Union
 
-from easy_docker_manager.core.containers import ContainerProcessTable, ContainerSummary
+from easy_docker_manager.core.containers import (
+    ContainerProcessTable,
+    ContainerResourceStatsSnapshot,
+    ContainerSummary,
+)
 
 
 class DockerContainerClientError(RuntimeError):
@@ -47,6 +51,7 @@ class FailedDockerRequestType(str, Enum):
     FETCH_LOGS = "Log fetch"
     LOAD_ENVIRONMENT = "Environment load"
     LOAD_CONFIGURATION = "Config load"
+    LOAD_CONTAINER_RESOURCE_STATS = "Resource statistics load"
     LOAD_PROCESS_LIST = "Process list load"
 
 
@@ -92,9 +97,9 @@ class ContainerLogFetchError(DockerRequestFailedError):
 class DockerContainerClient(ABC):
     """List the Docker container operations that EDM can request.
 
-    DockerManager and ContainerTabTextLoader use this interface rather than importing
-    Docker SDK objects. LocalDockerContainerClient connects to Docker in the
-    application, while tests can use a fake client without a Docker daemon.
+    DockerManager and ContainerTabTextLoader use this interface instead of
+    importing Docker SDK objects. LocalDockerContainerClient connects to Docker
+    when EDM runs. Tests can provide a fake client without a Docker daemon.
     """
 
     @abstractmethod
@@ -132,6 +137,13 @@ class DockerContainerClient(ABC):
         container_id: str,
     ) -> ContainerProcessTable:
         """Return the columns and process rows reported by Docker top."""
+
+    @abstractmethod
+    def get_container_resource_stats(
+        self,
+        container_id: str,
+    ) -> ContainerResourceStatsSnapshot:
+        """Return one current resource-usage sample for a container."""
 
     @abstractmethod
     def close(self) -> None:

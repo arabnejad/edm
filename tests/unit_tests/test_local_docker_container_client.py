@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 from docker.errors import DockerException, NotFound
@@ -47,6 +47,7 @@ def docker_container_factory():
                 "HostConfig": {"LogConfig": {"Type": "json-file"}},
             },
             "logs": Mock(return_value=b"hello\xff"),
+            "stats": Mock(return_value={"read": "2026-01-01T14:32:18Z"}),
             "top": Mock(
                 return_value={
                     "Titles": ["PID", "CMD"],
@@ -349,6 +350,73 @@ def test_container_top_process_table_failure_is_mapped(
         docker_container_client.get_container_top_process_table("container-id")
 
 
+def test_container_resource_stats_use_the_last_sample_for_transfer_rates(
+    docker_client_factory,
+    docker_container_factory,
+) -> None:
+    container = docker_container_factory()
+    container.stats.side_effect = [
+        {
+            "read": "2026-01-01T14:32:16Z",
+            "networks": {
+                "eth0": {
+                    "rx_bytes": 100,
+                    "tx_bytes": 200,
+                    "rx_packets": 1,
+                    "tx_packets": 2,
+                }
+            },
+        },
+        {
+            "read": "2026-01-01T14:32:18Z",
+            "networks": {
+                "eth0": {
+                    "rx_bytes": 500,
+                    "tx_bytes": 800,
+                    "rx_packets": 3,
+                    "tx_packets": 4,
+                }
+            },
+        },
+    ]
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: docker_client_factory(container)
+    )
+
+    first_snapshot = docker_container_client.get_container_resource_stats(
+        "container-id"
+    )
+    second_snapshot = docker_container_client.get_container_resource_stats(
+        "container-id"
+    )
+
+    assert first_snapshot.network_receive_rate_bytes_per_second is None
+    assert second_snapshot.network_receive_rate_bytes_per_second == 200
+    assert second_snapshot.network_send_rate_bytes_per_second == 300
+    assert container.stats.call_args_list == [
+        call(stream=False),
+        call(stream=False),
+    ]
+
+
+def test_container_resource_stats_failure_is_mapped(
+    docker_client_factory,
+    docker_container_factory,
+) -> None:
+    container = docker_container_factory(
+        stats=Mock(side_effect=RuntimeError("stats unavailable"))
+    )
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: docker_client_factory(container)
+    )
+
+    with pytest.raises(
+        DockerRequestFailedError,
+        match="Resource statistics load failed",
+    ):
+        docker_container_client.get_container_resource_stats("container-id")
+
+
 def test_close_releases_only_an_existing_client(docker_client_factory) -> None:
     client = docker_client_factory()
     docker_container_client = LocalDockerContainerClient(
@@ -359,6 +427,10 @@ def test_close_releases_only_an_existing_client(docker_client_factory) -> None:
     client.close.assert_not_called()
 
     assert docker_container_client._get_or_create_docker_client() is client
+    docker_container_client._last_resource_stats_snapshot_by_container_id[
+        "container-id"
+    ] = Mock()
     docker_container_client.close()
     client.close.assert_called_once_with()
     assert docker_container_client._docker_client is None
+    assert docker_container_client._last_resource_stats_snapshot_by_container_id == {}

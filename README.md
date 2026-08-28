@@ -27,6 +27,7 @@ With EDM, you can view:
 - recent logs with automatic updates
 - container environment variables
 - a readable summary of Docker inspection data
+- current CPU, memory, network, disk, and process statistics
 - the process list returned by Docker top
 - live filtering and sorting of the running-container list
 - a separate search query for each container tab
@@ -211,11 +212,11 @@ status. For this reason, sorting by Status may not visibly change the list.
 ## Exporting Tab Content
 
 Press `e` while the detail panel is active to export the selected container's
-Logs, Env, Config, or Top tab. The popup lets you edit the destination path and
-choose one of these scopes:
+Logs, Env, Config, Stats, or Top tab. The popup lets you edit the destination
+path and choose one of these scopes:
 
 - **Current view** exports the lines currently shown after a Logs filter. Env,
-  Config, and Top searches highlight text without hiding lines, so their
+  Config, Stats, and Top searches highlight text without hiding lines, so their
   current view contains all loaded text.
 - **Full loaded tab** exports all text currently held in EDM's cache. It does
   not request more data or older logs from Docker.
@@ -242,13 +243,19 @@ replaces an existing file without asking for confirmation.
 | Logs | Recent container logs followed by new log output |
 | Env | Configured environment variables and their values |
 | Config | Selected container and image inspection data |
+| Stats | CPU, memory, network, block I/O, and process usage from Docker |
 | Top | Processes reported by Docker top |
+
+Stats reloads every two seconds by default while that tab is visible. Network
+and block I/O rates need two samples, so the first sample shows `N/A` for those
+rates. Docker does not report every counter on every operating system or cgroup
+version; unavailable values also appear as `N/A`.
 
 Each container and tab keeps its own search query:
 
 - Logs treats the query as a case-insensitive regular expression and hides
   lines that do not match.
-- Env, Config, and Top use case-insensitive plain-text search. Matches are
+- Env, Config, Stats, and Top use case-insensitive plain-text search. Matches are
   highlighted, but no lines are removed.
 - An invalid Logs regular expression leaves the log text visible.
 - Log regular expressions are limited to 200 characters.
@@ -272,7 +279,7 @@ cleaned configuration back to the file.
 | Setting | Default | Purpose |
 | --- | ---: | --- |
 | `container_list_refresh_interval_seconds` | `2.0` | Seconds between running-container refreshes |
-| `tab_refresh_interval` | `2.0` | Seconds between reloads of the visible Env, Config, or Top tab |
+| `tab_refresh_interval` | `2.0` | Seconds between reloads of the visible Env, Config, Stats, or Top tab |
 | `initial_log_tail_lines` | `100` | Number of recent lines loaded when Logs first opens |
 | `max_log_lines` | `2000` | Maximum log lines kept for one container |
 | `max_log_line_chars` | `4000` | Maximum characters kept from one log line (minimum `32`) |

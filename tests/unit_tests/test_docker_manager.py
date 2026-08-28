@@ -149,12 +149,17 @@ def test_scheduled_container_refresh_is_submitted_once(
     assert test_setup.running_container_list_refresher._next_refresh_at == 12.0
 
 
-def test_visible_non_log_tab_is_reloaded_on_its_interval(
+@pytest.mark.parametrize(
+    "tab_name",
+    [TabName.ENV, TabName.CONFIG, TabName.STATS, TabName.TOP],
+)
+def test_visible_periodically_refreshed_tab_is_reloaded_on_its_interval(
+    tab_name: TabName,
     monkeypatch,
     docker_manager_factory,
     session_state_factory,
 ) -> None:
-    state = session_state_factory(tab=TabName.ENV)
+    state = session_state_factory(tab=tab_name)
     selected_tab_key = state.selected_container_tab_key
     assert selected_tab_key is not None
     state.tab_content_cache[selected_tab_key] = "OLD=value"
@@ -170,7 +175,7 @@ def test_visible_non_log_tab_is_reloaded_on_its_interval(
 
     request = test_setup.background_executor.requests[0]
     assert request.fn == test_setup.tab_data_loader.load_tab_text
-    assert request.arguments == ("container-1", TabName.ENV)
+    assert request.arguments == ("container-1", tab_name)
     assert test_setup.selected_tab_content_loader._next_tab_refresh_at == 13.0
 
 
@@ -593,6 +598,30 @@ def test_non_log_tab_refresh_errors_keep_cached_content(
     assert state.tab_content_cache[selected_tab_key] == "VALUE=previous"
     assert state.tab_content_error_messages[selected_tab_key].startswith(
         "Error loading Env:"
+    )
+
+
+def test_stats_refresh_error_removes_the_previous_resource_sample(
+    docker_manager_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory(tab=TabName.STATS)
+    selected_tab_key = state.selected_container_tab_key
+    assert selected_tab_key is not None
+    state.tab_content_cache[selected_tab_key] = "old resource sample"
+    test_setup = docker_manager_factory(state)
+    test_setup.docker_manager.load_selected_tab_content_if_needed(force=True)
+
+    assert test_setup.background_executor.complete_submission(
+        exception=DockerRequestFailedError(
+            FailedDockerRequestType.LOAD_CONTAINER_RESOURCE_STATS,
+            "container-1",
+            "timeout",
+        )
+    )
+    assert selected_tab_key not in state.tab_content_cache
+    assert state.tab_content_error_messages[selected_tab_key].startswith(
+        "Error loading Stats:"
     )
 
 

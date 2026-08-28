@@ -1,4 +1,4 @@
-"""Load Docker data and turn it into text for the four detail tabs."""
+"""Load Docker data and turn it into text for the container detail tabs."""
 
 from __future__ import annotations
 
@@ -13,10 +13,13 @@ from easy_docker_manager.docker.container_client import (
 from easy_docker_manager.tabs.config_tab_formatter import (
     format_container_inspection_data,
 )
+from easy_docker_manager.tabs.resource_stats_formatter import (
+    format_container_resource_stats_tab_text,
+)
 
 
 class ContainerTabTextLoader:
-    """Load display text for a container's Logs, Env, Config, or Top tab.
+    """Load display text for a container's Logs, Env, Config, Stats, or Top tab.
 
     SelectedTabContentLoader runs this in a worker thread. It loads the Docker
     data needed by the requested tab and returns the text shown in that tab.
@@ -39,6 +42,8 @@ class ContainerTabTextLoader:
             return self._load_container_environment_tab_text(container_id)
         if tab_name == TabName.CONFIG:
             return self._load_container_config_tab_text(container_id)
+        if tab_name == TabName.STATS:
+            return self._load_container_resource_stats_tab_text(container_id)
         if tab_name == TabName.TOP:
             return self._load_container_top_tab_text(container_id)
         raise ValueError(f"Unsupported tab: {tab_name!r}")
@@ -79,6 +84,16 @@ class ContainerTabTextLoader:
             container_id
         )
         return _format_process_table(process_table)
+
+    def _load_container_resource_stats_tab_text(self, container_id: str) -> str:
+        """Load and format one current sample for the container's Stats tab."""
+        resource_stats_snapshot = (
+            self.docker_container_client.get_container_resource_stats(container_id)
+        )
+        return format_container_resource_stats_tab_text(
+            resource_stats_snapshot,
+            self.app_config.tab_refresh_interval,
+        )
 
 
 def _format_process_table(processes: ContainerProcessTable) -> str:

@@ -28,12 +28,17 @@ class SelectedTabContentLoader:
 
     DockerManager calls this after the selected container or tab changes. This
     class tracks the current tab request, reuses cached text, and periodically
-    reloads Env, Config, and Top. Results are saved under the container and tab
-    that requested them, even when the user changes selection before a request
-    finishes.
+    reloads Env, Config, Stats, and Top. Results are saved under the container
+    and tab that requested them, even when the user changes selection before a
+    request finishes.
     """
 
-    PERIODICALLY_REFRESHED_TABS = (TabName.ENV, TabName.CONFIG, TabName.TOP)
+    PERIODICALLY_REFRESHED_TABS = (
+        TabName.ENV,
+        TabName.CONFIG,
+        TabName.STATS,
+        TabName.TOP,
+    )
 
     def __init__(
         self,
@@ -53,7 +58,7 @@ class SelectedTabContentLoader:
         self._next_tab_refresh_at = 0.0
 
     def refresh_if_needed(self, current_time: float) -> None:
-        """Reload the visible Env, Config, or Top tab after its wait time passes."""
+        """Refresh the visible Env, Config, Stats, or Top tab when its interval ends."""
         if (
             self.state.active_detail_tab_name not in self.PERIODICALLY_REFRESHED_TABS
             or not self.state.selected_container_id
@@ -254,11 +259,11 @@ class SelectedTabContentLoader:
         *,
         update_status: bool,
     ) -> None:
-        """Store a tab error and remove stale content from failed Logs loads.
+        """Store a tab error and clear old Logs or Stats text.
 
-        Env, Config, and Top keep their last successful snapshot after a
-        refresh error. Logs are different: old lines could look current, so a
-        failed Logs request clears them and displays the error instead.
+        Env, Config, and Top can still be useful after a failed refresh, so
+        their last text stays visible. Logs and Stats change over time. Their
+        old text is removed so it cannot be mistaken for current data.
         """
         if container_tab_key.tab_name == TabName.LOGS:
             self.container_log_updater.record_container_log_fetch_failure(
@@ -268,6 +273,9 @@ class SelectedTabContentLoader:
                 update_status=update_status,
             )
             return
+
+        if container_tab_key.tab_name == TabName.STATS:
+            self.state.tab_content_cache.remove_cached_tab_content(container_tab_key)
 
         self.state.tab_content_error_messages[container_tab_key] = message
         if update_status:

@@ -12,6 +12,7 @@ class TabName(str, Enum):
     LOGS = "Logs"
     ENV = "Env"
     CONFIG = "Config"
+    STATS = "Stats"
     TOP = "Top"
 
 

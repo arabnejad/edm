@@ -56,7 +56,7 @@ class DetailLineRenderer:
         tab: TabName,
         query: str,
     ) -> list[MarkupSegment]:
-        """Highlight plain-text matches in Env, Config, or Top text."""
+        """Highlight plain-text matches in Env, Config, Stats, or Top text."""
         match_ranges = plain_text_match_ranges(line, query)
         return self.apply_match_highlighting(line, tab, match_ranges)
 
@@ -135,7 +135,7 @@ class DetailTabTextFormatter:
 
     TabTextFilter decides which lines are shown. TerminalController then uses
     this class to color each line. Logs highlight regex matches. Env, Config,
-    and Top highlight matching search text.
+    Stats, and Top highlight matching search text.
     """
 
     def __init__(self) -> None:
@@ -221,10 +221,16 @@ def append_markup_piece(
 
 
 def format_structured_text_line(line: str, tab: TabName) -> list[MarkupSegment]:
-    """Return simple token markup for Env, Config, and Top lines."""
+    """Return simple token markup for Env, Config, Stats, and Top lines."""
     if "=" in line and tab == TabName.ENV:
         key, value = line.split("=", 1)
         return [("accent", key), ("muted", "="), ("value", value)]
+    # Stats fields start with two spaces and use a colon between the label and
+    # value. For example, "  Usage           : 12.45%" matches, while
+    # "== CPU ==" and blank lines do not.
+    if tab == TabName.STATS and line.startswith("  ") and ":" in line:
+        label, value = line.split(":", 1)
+        return [("accent", label), ("muted", ":"), ("value", value)]
     return format_structured_tokens(line)
 
 
@@ -258,7 +264,7 @@ def format_log_line(line: str) -> list[MarkupSegment]:
 
 
 def format_structured_tokens(line: str) -> list[MarkupSegment]:
-    """Color common values in Config and Top text.
+    """Color common values in Config, Stats, and Top text.
 
     Punctuation, numbers, booleans, null values, and quoted text receive
     separate colors so these tabs are easier to scan.

@@ -77,4 +77,10 @@ def test_container_models_store_summary_and_process_data() -> None:
 
 
 def test_tab_names_match_the_visible_labels() -> None:
-    assert [tab.value for tab in TabName] == ["Logs", "Env", "Config", "Top"]
+    assert [tab.value for tab in TabName] == [
+        "Logs",
+        "Env",
+        "Config",
+        "Stats",
+        "Top",
+    ]
