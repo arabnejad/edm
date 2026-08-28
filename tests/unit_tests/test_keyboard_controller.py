@@ -14,7 +14,9 @@ from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
     TerminalSessionState,
 )
+from easy_docker_manager.diagnostics import create_initial_diagnostics_report
 from easy_docker_manager.tab_export.definitions import TabExportMenuState
+from easy_docker_manager.ui.diagnostics_controller import DiagnosticsController
 from easy_docker_manager.ui.keyboard_controller import KeyAction, KeyboardController
 from easy_docker_manager.ui.tab_export_controller import TabExportController
 
@@ -24,6 +26,7 @@ class KeyboardControllerTestSetup:
     keyboard_controller: KeyboardController
     terminal_controller: Mock
     tab_export_controller: Mock
+    diagnostics_controller: Mock
 
 
 @pytest.fixture
@@ -32,17 +35,49 @@ def keyboard_controller_factory():
         terminal_controller = Mock()
         terminal_controller.state = state
         tab_export_controller = Mock(spec=TabExportController)
+        diagnostics_controller = Mock(spec=DiagnosticsController)
         keyboard_controller = KeyboardController(
             terminal_controller,
             tab_export_controller,
+            diagnostics_controller,
         )
         return KeyboardControllerTestSetup(
             keyboard_controller=keyboard_controller,
             terminal_controller=terminal_controller,
             tab_export_controller=tab_export_controller,
+            diagnostics_controller=diagnostics_controller,
         )
 
     return create_keyboard_controller
+
+
+def test_h_opens_diagnostics_popup(keyboard_controller_factory) -> None:
+    test_setup = keyboard_controller_factory(TerminalSessionState())
+    test_setup.diagnostics_controller.open_diagnostics_popup.return_value = True
+
+    assert test_setup.keyboard_controller.handle_keypress("h") == KeyAction.REDRAW
+    test_setup.diagnostics_controller.open_diagnostics_popup.assert_called_once_with()
+
+
+def test_uppercase_h_opens_diagnostics_popup(keyboard_controller_factory) -> None:
+    test_setup = keyboard_controller_factory(TerminalSessionState())
+    test_setup.diagnostics_controller.open_diagnostics_popup.return_value = True
+
+    assert test_setup.keyboard_controller.handle_keypress("H") == KeyAction.REDRAW
+    test_setup.diagnostics_controller.open_diagnostics_popup.assert_called_once_with()
+
+
+def test_diagnostics_popup_accepts_only_escape(keyboard_controller_factory) -> None:
+    state = TerminalSessionState(
+        diagnostics_popup_report=create_initial_diagnostics_report()
+    )
+    test_setup = keyboard_controller_factory(state)
+    test_setup.diagnostics_controller.close_diagnostics_popup.return_value = True
+
+    assert test_setup.keyboard_controller.handle_keypress("q") == KeyAction.NONE
+    assert test_setup.keyboard_controller.handle_keypress("down") == KeyAction.NONE
+    assert test_setup.keyboard_controller.handle_keypress("esc") == KeyAction.REDRAW
+    test_setup.diagnostics_controller.close_diagnostics_popup.assert_called_once_with()
 
 
 @pytest.mark.parametrize("pressed_key", ["q", "Q"])
@@ -375,4 +410,4 @@ def test_page_navigation_is_ignored_while_running_container_list_panel_is_active
 
 def test_unknown_key_does_nothing(keyboard_controller_factory) -> None:
     test_setup = keyboard_controller_factory(TerminalSessionState())
-    assert test_setup.keyboard_controller.handle_keypress("f1") == KeyAction.NONE
+    assert test_setup.keyboard_controller.handle_keypress("f12") == KeyAction.NONE

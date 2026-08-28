@@ -13,6 +13,7 @@ from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
     TerminalSessionState,
 )
+from easy_docker_manager.diagnostics import create_initial_diagnostics_report
 from easy_docker_manager.tab_export.definitions import (
     TabExportMenuField,
     TabExportMenuState,
@@ -31,7 +32,10 @@ def test_focusable_detail_line_accepts_focus_and_returns_unhandled_keys() -> Non
 
 def test_layout_builds_all_named_palette_entries() -> None:
     view = TerminalLayoutView(AppConfig())
-    names = {entry[0] for entry in view.build_urwid_style_palette()}
+    palette = {
+        name: (foreground, background)
+        for name, foreground, background in view.build_urwid_style_palette()
+    }
 
     assert view.layout is not None
     assert {
@@ -45,7 +49,10 @@ def test_layout_builds_all_named_palette_entries() -> None:
         "error",
         "export_menu_selected",
         "export_path_cursor",
-    } <= names
+        "diagnostics_value",
+    } <= palette.keys()
+    assert palette["diagnostics_popup"] == ("light gray", "default")
+    assert palette["diagnostics_value"] == ("yellow", "default")
 
 
 def test_no_color_palette_uses_terminal_defaults_and_keeps_selection_visible() -> None:
@@ -65,18 +72,42 @@ def test_no_color_palette_uses_terminal_defaults_and_keeps_selection_visible() -
 
 
 def test_title_panel_shows_github_repository_text_inside_complete_border() -> None:
-    view = TerminalLayoutView(AppConfig())
+    view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
     title_panel = view.running_container_list_panel.widget.contents[0][0]
 
     rendered_title_lines = [line.decode() for line in title_panel.render((80,)).text]
     rendered_title = "\n".join(rendered_title_lines)
 
     assert "github.com/arabnejad/edm" in rendered_title
+    assert "Easy Docker Manager (v1.2.0)" in rendered_title
     assert "https://" not in rendered_title
     assert "\x1b" not in rendered_title
     assert len(rendered_title_lines) == 5
     assert rendered_title_lines[2].strip("│ ") == ""
     assert "─" in rendered_title_lines[-1]
+
+
+def test_render_shows_diagnostics_above_other_popups() -> None:
+    state = TerminalSessionState(
+        diagnostics_popup_report=create_initial_diagnostics_report(),
+        container_sort_menu_state=ContainerSortMenuState(
+            selected_sort_field=ContainerSortField.DOCKER_ORDER,
+            sort_descending=False,
+        ),
+    )
+    view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
+
+    view.render(state, ["Select a running container."], lambda line: line)
+
+    assert isinstance(view.layout.original_widget, urwid.Overlay)
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert "Help & Diagnostics" in rendered_text
+    assert "Keyboard shortcuts" in rendered_text
+    assert "EDM version:" in rendered_text
+    assert "Connection:" in rendered_text
+    assert "Checking..." in rendered_text
+    assert "Esc Close" in rendered_text
+    assert "Sort Containers" not in rendered_text
 
 
 def test_render_shows_empty_container_state() -> None:

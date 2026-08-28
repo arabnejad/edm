@@ -13,6 +13,7 @@ from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
     TerminalSessionState,
 )
+from easy_docker_manager.diagnostics import build_edm_title
 from easy_docker_manager.ui.formatting import MarkupSegment
 
 GITHUB_REPOSITORY_TEXT = "github.com/arabnejad/edm"
@@ -26,8 +27,9 @@ class RunningContainerListPanel:
     only changes what is shown; it does not select containers or call Docker.
     """
 
-    def __init__(self, app_config: AppConfig) -> None:
+    def __init__(self, app_config: AppConfig, installed_edm_version: str) -> None:
         self.app_config = app_config
+        self.application_title = build_edm_title(installed_edm_version)
         self.container_rows: urwid.SimpleFocusListWalker = urwid.SimpleFocusListWalker(
             []
         )
@@ -65,7 +67,7 @@ class RunningContainerListPanel:
                     "pack",
                     urwid.AttrMap(
                         urwid.Text(
-                            "Easy Docker Manager",
+                            self.application_title,
                             align="center",
                             wrap="clip",
                         ),

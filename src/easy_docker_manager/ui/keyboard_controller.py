@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Optional
 
 from easy_docker_manager.core.terminal_session_state import FocusArea
+from easy_docker_manager.ui.diagnostics_controller import DiagnosticsController
 from easy_docker_manager.ui.tab_export_controller import TabExportController
 from easy_docker_manager.ui.terminal_controller import TerminalController
 
@@ -23,17 +24,19 @@ class KeyboardController:
 
     EDMApp sends each Urwid key name here. This class handles simple focus and
     text-input changes, sends navigation and container display options to
-    TerminalController, and passes export-menu keys to TabExportController.
+    TerminalController, and passes popup actions to their controllers.
     """
 
     def __init__(
         self,
         terminal_controller: TerminalController,
         tab_export_controller: TabExportController,
+        diagnostics_controller: DiagnosticsController,
     ) -> None:
-        """Keep both UI controllers and their shared session state."""
+        """Keep the UI controllers and their shared session state."""
         self.terminal_controller = terminal_controller
         self.tab_export_controller = tab_export_controller
+        self.diagnostics_controller = diagnostics_controller
         self.state = terminal_controller.state
 
     def handle_keypress(
@@ -42,6 +45,8 @@ class KeyboardController:
         terminal_size: Optional[tuple[int, ...]] = None,
     ) -> KeyAction:
         """Handle one keypress and tell EDMApp whether to redraw or quit."""
+        if self.state.diagnostics_popup_report is not None:
+            return self._handle_diagnostics_popup_keypress(key)
         if self.state.tab_export_menu_state is not None:
             return self._handle_tab_export_menu_keypress(key)
         if self.state.container_sort_menu_state is not None:
@@ -55,6 +60,12 @@ class KeyboardController:
                 else KeyAction.NONE
             )
 
+        if key in {"h", "H"}:
+            return (
+                KeyAction.REDRAW
+                if self.diagnostics_controller.open_diagnostics_popup()
+                else KeyAction.NONE
+            )
         if key in {"q", "Q"}:
             return KeyAction.QUIT
         if key == "enter":
@@ -144,6 +155,16 @@ class KeyboardController:
                 else KeyAction.NONE
             )
         return KeyAction.NONE
+
+    def _handle_diagnostics_popup_keypress(self, key: str) -> KeyAction:
+        """Close diagnostics with Esc and ignore other keys while it is open."""
+        if key != "esc":
+            return KeyAction.NONE
+        return (
+            KeyAction.REDRAW
+            if self.diagnostics_controller.close_diagnostics_popup()
+            else KeyAction.NONE
+        )
 
     def _handle_tab_export_menu_keypress(self, key: str) -> KeyAction:
         """Pass one export-menu key to TabExportController."""

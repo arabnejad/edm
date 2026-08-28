@@ -30,7 +30,10 @@ from easy_docker_manager.core.containers import (
     ContainerResourceStatsSnapshot,
     ContainerSummary,
 )
-from easy_docker_manager.docker.container_client import DockerContainerClient
+from easy_docker_manager.docker.container_client import (
+    DockerContainerClient,
+    DockerDaemonDetails,
+)
 from easy_docker_manager.logging.app_logging import default_log_file_path
 
 pytestmark = pytest.mark.smoke
@@ -162,6 +165,14 @@ class SmokeTestDockerContainerClient(DockerContainerClient):
             process_and_thread_limit=None,
         )
 
+    def get_docker_daemon_details(self) -> DockerDaemonDetails:
+        return DockerDaemonDetails(
+            daemon_version="28.0.0",
+            api_version="1.48",
+            operating_system="linux",
+            architecture="amd64",
+        )
+
     def close(self) -> None:
         self.closed = True
 
@@ -268,8 +279,11 @@ def test_installed_cli_supports_help_version_and_package_module() -> None:
         [sys.executable, "-m", "easy_docker_manager", "--version"]
     )
 
-    assert "usage: edm [-h] [--version] [--no-color]" in help_result.stdout
+    assert (
+        "usage: edm [-h] [--version] [--no-color] [--diagnostics]" in help_result.stdout
+    )
     assert "--no-color" in help_result.stdout
+    assert "--diagnostics" in help_result.stdout
     assert command_version_result.stdout == f"edm {installed_version}\n"
     assert module_version_result.stdout == f"edm {installed_version}\n"
 

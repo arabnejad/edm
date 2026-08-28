@@ -8,6 +8,7 @@ containers, unreadable logs, and other Docker request problems.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional, Union
 
@@ -94,6 +95,16 @@ class ContainerLogFetchError(DockerRequestFailedError):
         super().__init__(FailedDockerRequestType.FETCH_LOGS, container_id, reason)
 
 
+@dataclass
+class DockerDaemonDetails:
+    """Store version and platform details returned by the Docker daemon."""
+
+    daemon_version: Optional[str]
+    api_version: Optional[str]
+    operating_system: Optional[str]
+    architecture: Optional[str]
+
+
 class DockerContainerClient(ABC):
     """List the Docker container operations that EDM can request.
 
@@ -146,6 +157,10 @@ class DockerContainerClient(ABC):
         """Return one current resource-usage sample for a container."""
 
     @abstractmethod
+    def get_docker_daemon_details(self) -> DockerDaemonDetails:
+        """Return version and platform details from the local Docker daemon."""
+
+    @abstractmethod
     def close(self) -> None:
         """Close the Docker connection if this client opened one."""
 
@@ -157,6 +172,7 @@ __all__ = [
     "RunningContainerListRefreshError",
     "DockerContainerClientError",
     "DockerRequestFailedError",
+    "DockerDaemonDetails",
     "FailedDockerRequestType",
     "ContainerLogsUnavailableError",
 ]

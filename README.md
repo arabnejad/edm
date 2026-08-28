@@ -120,6 +120,7 @@ terminal colors:
 ```bash
 edm --help
 edm --version
+edm --diagnostics
 edm --no-color
 ```
 
@@ -134,6 +135,7 @@ python -m easy_docker_manager
 | Key | Action |
 | --- | --- |
 | `q` | Quit EDM from the normal screen |
+| `h` or `H` | Open application help and Docker diagnostics |
 | `Up` / `Down` | Move through containers or detail lines |
 | `Enter` | Move keyboard focus to the detail panel |
 | `Esc` | Return keyboard focus to the container list |
@@ -148,6 +150,27 @@ python -m easy_docker_manager
 
 While entering a search, press `Enter` to keep the query and return to detail
 navigation. Press `Esc` to keep the query and return to the container list.
+
+## Help And Diagnostics
+
+Press `h` or `H` to open the keyboard shortcut list and diagnostics without
+leaving EDM. Application versions and file paths appear immediately. Docker
+details are loaded in the background, so an unavailable daemon does not stop
+keyboard input. Press `Esc` to close the popup. The Docker check runs again
+each time the popup opens. The title panel also shows the installed EDM
+version.
+
+Use the command-line report when the terminal interface cannot start:
+
+```bash
+edm --diagnostics
+```
+
+The report includes the EDM, Python, Docker SDK, and Docker daemon versions. It
+also shows the config path, application log path, Docker API version, platform,
+and connection result. A failed Docker check prints its error and exits with
+status `1`; a successful check exits with status `0`. This command does not
+create or rewrite `config.json`.
 
 ## Container Filtering
 

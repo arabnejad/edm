@@ -24,6 +24,16 @@ def default_log_file_path() -> Path:
     return Path(user_config_dir(appname=APP_NAME, appauthor=False)) / LOG_FILE_NAME
 
 
+def get_configured_log_file_path() -> Path:
+    """Return the log path selected by EDM_LOG_FILE or the platform default."""
+    configured_log_file = os.getenv("EDM_LOG_FILE")
+    return (
+        Path(configured_log_file).expanduser()
+        if configured_log_file
+        else default_log_file_path()
+    )
+
+
 def configure_logging() -> logging.Logger:
     """Configure EDM's rotating log file and optional terminal output.
 
@@ -33,12 +43,7 @@ def configure_logging() -> logging.Logger:
     """
     level_name = os.getenv("EDM_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper()
     level = getattr(logging, level_name, logging.INFO)
-    configured_log_file = os.getenv("EDM_LOG_FILE")
-    log_file = (
-        Path(configured_log_file).expanduser()
-        if configured_log_file
-        else default_log_file_path()
-    )
+    log_file = get_configured_log_file_path()
     stdout_enabled = os.getenv("EDM_LOG_STDOUT", "0").lower() not in {
         "0",
         "false",
@@ -91,4 +96,8 @@ def configure_logging() -> logging.Logger:
     return logger
 
 
-__all__ = ["configure_logging", "default_log_file_path"]
+__all__ = [
+    "configure_logging",
+    "default_log_file_path",
+    "get_configured_log_file_path",
+]

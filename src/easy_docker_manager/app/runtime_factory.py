@@ -18,12 +18,14 @@ from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.tab_content_cache import TabContentCache
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.diagnostics import get_installed_edm_version
 from easy_docker_manager.docker.client_factory import create_docker_client
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
 from easy_docker_manager.tab_export.writer import TabExportWriter
 from easy_docker_manager.tabs.tab_data_loader import ContainerTabTextLoader
 from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
+from easy_docker_manager.ui.diagnostics_controller import DiagnosticsController
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.keyboard_controller import KeyboardController
 from easy_docker_manager.ui.tab_export_controller import TabExportController
@@ -92,7 +94,10 @@ class EDMRuntimeFactory:
             ),
             notify_ui_completion_ready=notify_background_task_ready,
         )
-        terminal_layout_view = TerminalLayoutView(self.app_config)
+        terminal_layout_view = TerminalLayoutView(
+            self.app_config,
+            installed_edm_version=get_installed_edm_version(),
+        )
         docker_manager = DockerManager(
             state,
             self.app_config,
@@ -114,9 +119,15 @@ class EDMRuntimeFactory:
             TabExportWriter(),
             self.launch_directory,
         )
+        diagnostics_controller = DiagnosticsController(
+            state,
+            background_executor,
+            self.docker_container_client,
+        )
         keyboard_controller = KeyboardController(
             terminal_controller,
             tab_export_controller,
+            diagnostics_controller,
         )
         return EDMRuntime(
             docker_container_client=self.docker_container_client,
