@@ -124,6 +124,8 @@ class TerminalController:
             return "No environment variables."
         if tab_name == TabName.CONFIG:
             return "No container configuration."
+        if tab_name == TabName.STATS:
+            return "No resource statistics available."
         if tab_name == TabName.TOP:
             return "No processes."
         return "No content available."

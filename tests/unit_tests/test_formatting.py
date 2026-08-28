@@ -83,6 +83,14 @@ def test_format_structured_text_line_colors_environment_key_and_value() -> None:
     ]
 
 
+def test_format_structured_text_line_colors_stats_label_and_value() -> None:
+    assert format_structured_text_line("  Usage           : 12.45%", TabName.STATS) == [
+        ("accent", "  Usage           "),
+        ("muted", ":"),
+        ("value", " 12.45%"),
+    ]
+
+
 def test_format_log_line_colors_common_log_tokens() -> None:
     markup = format_log_line(
         "2026-01-01T10:00:00Z INFO DEBUG WARNING ERROR GET /health 200"

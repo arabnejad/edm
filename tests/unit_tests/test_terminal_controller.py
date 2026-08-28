@@ -70,6 +70,7 @@ def test_active_detail_tab_display_lines_show_empty_and_error_messages(
         (TabName.LOGS, "No logs available."),
         (TabName.ENV, "No environment variables."),
         (TabName.CONFIG, "No container configuration."),
+        (TabName.STATS, "No resource statistics available."),
         (TabName.TOP, "No processes."),
     ]:
         state.active_detail_tab_name = tab

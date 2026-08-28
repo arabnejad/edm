@@ -2,9 +2,10 @@
 
 LocalDockerContainerClient connects to the local Docker daemon through the
 Docker Python SDK. It lists running containers and loads their logs,
-environment variables, inspection data, and process lists. It opens the
-connection on the first request, reuses it while EDM runs, and closes it during
-shutdown. Callers receive EDM errors instead of raw Docker SDK exceptions.
+environment variables, inspection data, resource statistics, and process
+lists. It opens the connection on the first request, reuses it while EDM runs,
+and closes it during shutdown. Callers receive EDM errors instead of raw Docker
+SDK exceptions.
 """
 
 from __future__ import annotations
@@ -16,7 +17,11 @@ from typing import Any, Optional, Union
 import docker
 from docker.errors import DockerException, NotFound
 
-from easy_docker_manager.core.containers import ContainerProcessTable, ContainerSummary
+from easy_docker_manager.core.containers import (
+    ContainerProcessTable,
+    ContainerResourceStatsSnapshot,
+    ContainerSummary,
+)
 from easy_docker_manager.docker.container_client import (
     ContainerLogsUnavailableError,
     ContainerNotFoundError,
@@ -25,6 +30,9 @@ from easy_docker_manager.docker.container_client import (
     RunningContainerListRefreshError,
 )
 from easy_docker_manager.docker.container_mapper import to_container_summary
+from easy_docker_manager.docker.container_resource_stats_builder import (
+    build_container_resource_stats_snapshot,
+)
 from easy_docker_manager.docker.error_mapping import raise_container_request_error
 from easy_docker_manager.docker.log_availability import (
     docker_error_indicates_logs_are_unavailable,
@@ -44,6 +52,9 @@ class LocalDockerContainerClient(DockerContainerClient):
         """Save the client factory but do not connect until the first request."""
         self._create_docker_client = create_docker_client
         self._docker_client: Optional[docker.DockerClient] = None
+        self._last_resource_stats_snapshot_by_container_id: dict[
+            str, ContainerResourceStatsSnapshot
+        ] = {}
 
     def _get_or_create_docker_client(self) -> docker.DockerClient:
         """Open the Docker connection on first use and reuse it afterward."""
@@ -72,6 +83,9 @@ class LocalDockerContainerClient(DockerContainerClient):
                 container_summaries.append(to_container_summary(container))
             except Exception as exc:
                 logger.warning("Skipping container summary: %s", exc)
+        self._remove_last_resource_stats_samples_for_stopped_containers(
+            {container.container_id for container in container_summaries}
+        )
         return container_summaries
 
     def get_container_logs(
@@ -179,6 +193,39 @@ class LocalDockerContainerClient(DockerContainerClient):
         )
         return ContainerProcessTable(columns=columns, rows=rows)
 
+    def get_container_resource_stats(
+        self,
+        container_id: str,
+    ) -> ContainerResourceStatsSnapshot:
+        """Fetch current stats and calculate rates from the last saved sample."""
+        try:
+            container = self._get_or_create_docker_client().containers.get(container_id)
+            docker_stats_response = container.stats(stream=False)
+            if not isinstance(docker_stats_response, dict):
+                raise TypeError(
+                    "Docker returned resource statistics in an unknown format"
+                )
+
+            current_resource_stats_snapshot = build_container_resource_stats_snapshot(
+                docker_stats_response,
+                container.attrs,
+                self._last_resource_stats_snapshot_by_container_id.get(container_id),
+            )
+            self._last_resource_stats_snapshot_by_container_id[container_id] = (
+                current_resource_stats_snapshot
+            )
+            return current_resource_stats_snapshot
+        except Exception as exc:
+            logger.exception(
+                "Error fetching resource statistics for container %s",
+                container_id,
+            )
+            raise_container_request_error(
+                FailedDockerRequestType.LOAD_CONTAINER_RESOURCE_STATS,
+                container_id,
+                exc,
+            )
+
     def close(self) -> None:
         """Close the Docker SDK client if one was created.
 
@@ -190,6 +237,7 @@ class LocalDockerContainerClient(DockerContainerClient):
         if self._docker_client:
             self._docker_client.close()
             self._docker_client = None
+        self._last_resource_stats_snapshot_by_container_id.clear()
 
     @staticmethod
     def _decode_container_log_response(
@@ -227,6 +275,18 @@ class LocalDockerContainerClient(DockerContainerClient):
                 exc,
             )
             return {}
+
+    def _remove_last_resource_stats_samples_for_stopped_containers(
+        self,
+        running_container_ids: set[str],
+    ) -> None:
+        """Remove saved rate samples for containers that are no longer running."""
+        stopped_container_ids = (
+            self._last_resource_stats_snapshot_by_container_id.keys()
+            - running_container_ids
+        )
+        for container_id in stopped_container_ids:
+            del self._last_resource_stats_snapshot_by_container_id[container_id]
 
 
 __all__ = ["LocalDockerContainerClient"]

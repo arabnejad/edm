@@ -79,3 +79,23 @@ def test_container_process_information_is_returned(
     assert process_table.rows
     assert all(len(row) == len(process_table.columns) for row in process_table.rows)
     assert any("sh" in " ".join(row) for row in process_table.rows)
+
+
+def test_container_resource_statistics_are_read_from_docker(
+    docker_test_setup: DockerIntegrationTestContainer,
+    local_docker_container_client: LocalDockerContainerClient,
+) -> None:
+    first_snapshot = local_docker_container_client.get_container_resource_stats(
+        docker_test_setup.container.id
+    )
+    second_snapshot = local_docker_container_client.get_container_resource_stats(
+        docker_test_setup.container.id
+    )
+
+    assert first_snapshot.cpu_usage_percent is not None
+    assert first_snapshot.cpu_usage_percent >= 0
+    assert first_snapshot.memory_usage_bytes is not None
+    assert first_snapshot.memory_usage_bytes >= 0
+    assert first_snapshot.current_process_and_thread_count is not None
+    assert first_snapshot.current_process_and_thread_count >= 1
+    assert second_snapshot.collected_at >= first_snapshot.collected_at

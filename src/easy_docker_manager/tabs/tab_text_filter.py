@@ -15,7 +15,7 @@ class TabTextFilter:
     """Choose the lines shown on screen or written by a Current view export.
 
     Logs searches keep only lines that match the regular expression. Env,
-    Config, and Top searches keep every line because those tabs highlight
+    Config, Stats, and Top searches keep every line because those tabs highlight
     matches instead of filtering content. TerminalController and
     TabExportController share this class so the screen and exported Current
     view use the same rules.

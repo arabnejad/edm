@@ -30,7 +30,7 @@ src/
       config.py                   AppConfig values and validation
       running_container_list.py  Keeps Docker's list and the displayed list
       container_sorting.py       Container sort fields and ordering
-      containers.py               Container and process data classes
+      containers.py               Container, process, and resource data classes
       tab_content_cache.py        Size-limited tab text cache
       log_text.py                 Log trimming and duplicate-line handling
       tabs.py                     Detail tab names
@@ -43,10 +43,13 @@ src/
       error_mapping.py            Converts Docker SDK errors to EDM errors
       local_container_client.py   Sends requests to the local Docker daemon
       log_availability.py         Checks whether Docker can read container logs
+      container_resource_stats_builder.py
+                                   Converts Docker resource counters into EDM data
 
     tabs/
       config_tab_formatter.py     Formats Docker inspection data
-      tab_data_loader.py          Loads text for Logs, Env, Config, and Top
+      resource_stats_formatter.py Formats the Stats tab
+      tab_data_loader.py          Loads text for all container detail tabs
       tab_text_filter.py          Chooses the lines visible after a search
 
     tab_export/
@@ -328,9 +331,9 @@ restores Docker's order before the active filter is applied.
 The popup and its keyboard controls are documented in
 [Exporting Tab Content](README.md#exporting-tab-content).
 
-One `TabExportController` handles exports for Logs, Env, Config, and Top. The
-active `ContainerTabKey` records which container and tab the export belongs to.
-An export follows these steps:
+One `TabExportController` handles exports for Logs, Env, Config, Stats, and Top.
+The active `ContainerTabKey` records which container and tab the export belongs
+to. An export follows these steps:
 
 1. The user presses `e` while the details panel is active.
 2. `KeyboardController` asks `TabExportController` to open the popup.
@@ -341,7 +344,7 @@ An export follows these steps:
 5. When the user presses `Enter`, the controller reads the tab text already in
    `TabContentCache`. It does not make another Docker request.
 6. Current view applies the active Logs filter. Full loaded tab keeps all
-   cached text. Searches on Env, Config, and Top do not remove lines.
+   cached text. Searches on Env, Config, Stats, and Top do not remove lines.
 7. The controller creates a `TabExportRequest` containing that fixed text
    snapshot and sends `TabExportWriter.export_text()` to
    `BackgroundExecutor`.
@@ -413,7 +416,7 @@ Three smaller classes do the actual request tracking:
 | Component | What it handles |
 | --- | --- |
 | `RunningContainerListRefresher` | Container-list refreshes, selection preservation, and stopped-container cleanup |
-| `SelectedTabContentLoader` | Initial tab loads, cached-tab reuse, and periodic Env, Config, and Top refreshes |
+| `SelectedTabContentLoader` | Initial tab loads, cached-tab reuse, and periodic Env, Config, Stats, and Top refreshes |
 | `ContainerLogUpdater` | Incremental log polls, Docker since timestamps, overlap removal, and log limits |
 
 Initial logs are limited once by `ContainerTabTextLoader` while its Docker request runs
@@ -426,10 +429,10 @@ A failed container-list refresh keeps the last successful list visible. Env,
 Config, and Top also keep their last successful text after a temporary refresh
 error because that snapshot can still be useful.
 
-Logs behave differently. If Docker cannot fetch them, EDM removes the cached
-log lines and shows the error in the Logs panel. This prevents old lines from
-looking current. Errors are stored separately from status text, so a successful
-retry can clear the correct error without comparing displayed messages.
+Logs and Stats show changing data. If Docker cannot refresh either tab, EDM
+removes its old text and shows the error instead. Errors are stored separately
+from status text, so a successful retry can clear the correct error without
+comparing displayed messages.
 
 A `Future` represents work running in another thread. Each Docker refresh class
 keeps its active `Future` so it cannot start the same request twice. Before a
@@ -448,7 +451,7 @@ does not skip output. Docker can repeat lines where two requests meet;
 `count_repeated_lines_between_batches()` removes that repeated section before
 new lines are added to the cache.
 
-Env, Config, and Top reload while they are visible, using
+Env, Config, Stats, and Top reload while they are visible, using
 `tab_refresh_interval`. Hidden tabs are left alone. Logs has a separate polling
 path that asks only for newer lines.
 
@@ -489,6 +492,7 @@ flowchart TD
     Logs[Load recent logs]
     Env[Load and sort environment variables]
     Config[Load and format inspection data]
+    Stats[Load and format resource statistics]
     Top[Load and format the process table]
     Client[DockerContainerClient]
     Complete[SelectedTabContentLoader stores the result]
@@ -503,15 +507,21 @@ flowchart TD
     Choose --> Logs --> Client
     Choose --> Env --> Client
     Choose --> Config --> Client
+    Choose --> Stats --> Client
     Choose --> Top --> Client
     Client --> Complete --> Cache --> Filter --> Format --> Draw
 ```
 
-`ContainerTabTextLoader.load_tab_text()` checks the requested `TabName` and calls one
-small private method. Logs loads the first group of recent lines. Env sorts
-environment variables by name. Config sends Docker inspection data to
-`format_container_inspection_data()`. Top turns Docker's process columns and rows into
-text.
+`ContainerTabTextLoader.load_tab_text()` checks the requested `TabName` and
+calls one small private method. Logs loads the first group of recent lines. Env
+sorts environment variables by name. Config formats Docker inspection data.
+Stats formats one current resource sample. Top turns Docker's process columns
+and rows into text.
+
+`LocalDockerContainerClient` keeps the last Stats sample for each running
+container. It uses two samples to calculate network and block I/O rates. The
+first sample has no earlier counters, so those rates are `N/A`. Samples for
+stopped containers are removed during the next successful container refresh.
 
 The loader returns text or lets a Docker error continue to
 `SelectedTabContentLoader`. It does not change session state, update the cache,
@@ -536,7 +546,7 @@ Important fields are:
 | `container_sort_descending` | Whether the active sort runs in descending order |
 | `container_sort_menu_state` | Temporary choices in the open sort menu, or `None` when it is closed |
 | `tab_export_menu_state` | Path, scope, selection, and phase of the open export menu, or `None` when it is closed |
-| `active_detail_tab_name` | Logs, Env, Config, or Top |
+| `active_detail_tab_name` | Logs, Env, Config, Stats, or Top |
 | `active_focus_area` | Panel that receives navigation keys |
 | `detail_selected_line_index` | Selected line in the detail panel |
 | `follow_log_tail` | Whether Logs stays on the newest line |
@@ -571,11 +581,11 @@ or loaded text.
 
 - Logs uses a case-insensitive regular expression. Lines that do not match are
   hidden. Invalid expressions leave the full log text visible.
-- Env, Config, and Top keep every line visible.
+- Env, Config, Stats, and Top keep every line visible.
 
 `DetailTabTextFormatter` then adds terminal colors and highlights matching
-text. Env, Config, and Top use case-insensitive plain-text highlighting. Logs
-highlights the regular expression matches that passed the filter.
+text. Env, Config, Stats, and Top use case-insensitive plain-text highlighting.
+Logs highlights the regular expression matches that passed the filter.
 
 Queries are stored by `ContainerTabKey`, so switching away and back restores
 the same search. Log regular expressions are limited to 200 characters.
@@ -614,7 +624,8 @@ environment keys, structured values, search matches, and errors.
 | `ContainerSortField` | Names the choices shown in the container sorting menu |
 | `get_container_list_in_requested_order` | Returns a sorted copy of the latest Docker container list |
 | `ContainerProcessTable` | Stores process column names and rows from Docker top |
-| `TabName` | Names the four detail tabs |
+| `ContainerResourceStatsSnapshot` | Stores one resource sample returned by Docker |
+| `TabName` | Names the five detail tabs |
 | `FocusArea` | Names the container and detail keyboard focus areas |
 | `TerminalSessionState` | Stores changing data for the current terminal session |
 | `ContainerTabKey` | Identifies one tab for one container |
@@ -634,6 +645,8 @@ environment keys, structured values, search matches, and errors.
 | `create_docker_client` | Creates a local Docker SDK client and rejects remote `DOCKER_HOST` transports |
 | `to_container_summary` | Converts a Docker container object to `ContainerSummary` |
 | `ContainerTabTextLoader` | Loads and formats the full text for a requested detail tab |
+| `build_container_resource_stats_snapshot` | Converts Docker resource counters into one Stats sample |
+| `format_container_resource_stats_tab_text` | Builds the grouped text shown in the Stats tab |
 | `TabTextFilter` | Chooses visible lines for the terminal and Current view exports |
 | `TabExportWriter` | Writes a prepared tab snapshot without silently replacing a file |
 

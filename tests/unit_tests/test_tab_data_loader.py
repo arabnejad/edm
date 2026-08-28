@@ -80,6 +80,23 @@ def test_container_inspection_data_is_formatted_for_the_config_tab(
     assert "web" in result
 
 
+def test_container_resource_stats_are_formatted_for_the_stats_tab(
+    docker_container_client: Mock,
+    tab_data_loader: ContainerTabTextLoader,
+    container_resource_stats_snapshot_factory,
+) -> None:
+    docker_container_client.get_container_resource_stats.return_value = (
+        container_resource_stats_snapshot_factory()
+    )
+
+    result = tab_data_loader.load_tab_text("abc", TabName.STATS)
+
+    docker_container_client.get_container_resource_stats.assert_called_once_with("abc")
+    assert "== CPU ==" in result
+    assert "Usage           : 12.45%" in result
+    assert "Refresh interval: 2.0 seconds" in result
+
+
 def test_process_columns_and_rows_are_formatted_for_the_top_tab(
     docker_container_client: Mock,
     tab_data_loader: ContainerTabTextLoader,
