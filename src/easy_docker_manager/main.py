@@ -12,7 +12,7 @@ from shutil import get_terminal_size
 from typing import Optional
 
 from easy_docker_manager.app.app import EDMApp
-from easy_docker_manager.config import AppConfigStore
+from easy_docker_manager.config.app_config_store import AppConfigStore
 from easy_docker_manager.constants import (
     MINIMUM_TERMINAL_COLUMNS,
     MINIMUM_TERMINAL_ROWS,
@@ -130,11 +130,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if not _check_minimum_terminal_size():
         return 1
 
+    # Start logging before reading config.json so invalid-file warnings are kept.
     configure_logging()
-    app_config = AppConfigStore().load_and_sync()
+    app_config_store = AppConfigStore()
+    app_config = app_config_store.load_and_sync()
+    default_config = AppConfig()
+    saved_logging_settings = (
+        app_config.application_log_level,
+        app_config.application_log_to_stdout,
+    )
+    default_logging_settings = (
+        default_config.application_log_level,
+        default_config.application_log_to_stdout,
+    )
+    if saved_logging_settings != default_logging_settings:
+        configure_logging(app_config)
     if command_options.no_color:
         app_config = replace(app_config, colors_enabled=False)
-    app = EDMApp(app_config=app_config)
+    app = EDMApp(app_config=app_config, app_config_store=app_config_store)
     app.run()
     return 0
 

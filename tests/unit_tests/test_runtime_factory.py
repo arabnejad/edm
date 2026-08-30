@@ -4,6 +4,7 @@ from functools import partial
 from unittest.mock import Mock
 
 from easy_docker_manager.app.runtime_factory import EDMRuntimeFactory
+from easy_docker_manager.config.app_config_store import AppConfigStore
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.docker.client_factory import create_docker_client
 from easy_docker_manager.docker.container_client import DockerContainerClient
@@ -18,9 +19,12 @@ def test_runtime_factory_uses_supplied_config_and_data_source() -> None:
     )
     docker_container_client = Mock(spec=DockerContainerClient)
     notify_background_work_ready = Mock()
-    runtime = EDMRuntimeFactory(config, docker_container_client).create_runtime(
-        notify_background_work_ready
-    )
+    app_config_store = Mock(spec=AppConfigStore)
+    runtime = EDMRuntimeFactory(
+        config,
+        docker_container_client,
+        app_config_store,
+    ).create_runtime(notify_background_work_ready)
 
     try:
         assert runtime.docker_container_client is docker_container_client
@@ -47,6 +51,9 @@ def test_runtime_factory_uses_supplied_config_and_data_source() -> None:
         assert diagnostics_controller.state is state
         assert diagnostics_controller.background_executor is runtime.background_executor
         assert diagnostics_controller.docker_container_client is docker_container_client
+        settings_controller = runtime.keyboard_controller.settings_controller
+        assert settings_controller.state is state
+        assert settings_controller.app_config_store is app_config_store
     finally:
         runtime.background_executor.shutdown()
 

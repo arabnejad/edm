@@ -47,8 +47,13 @@ class AppConfigStore:
         self.save(app_config)
         return app_config
 
-    def save(self, app_config: AppConfig) -> None:
-        """Write readable JSON to a temporary file, then replace config.json."""
+    def save(self, app_config: AppConfig) -> bool:
+        """Write config.json and report whether the file was saved.
+
+        Startup does not need the return value because EDM can keep running
+        with defaults when the file cannot be written. The settings editor
+        checks it so a failed save is shown to the user.
+        """
         try:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
             temporary_path = self.config_path.with_suffix(
@@ -61,6 +66,8 @@ class AppConfigStore:
             temporary_path.replace(self.config_path)
         except OSError as exc:
             logger.warning("Unable to save config file %s: %s", self.config_path, exc)
+            return False
+        return True
 
     def _read_json_object(self) -> dict[str, Any]:
         """Read the JSON object, or return an empty object if it cannot be used."""

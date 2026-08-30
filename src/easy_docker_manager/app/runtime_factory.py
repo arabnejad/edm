@@ -15,6 +15,7 @@ from typing import Optional
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.app.docker_manager import DockerManager
+from easy_docker_manager.config.app_config_store import AppConfigStore
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.tab_content_cache import TabContentCache
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
@@ -28,6 +29,7 @@ from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
 from easy_docker_manager.ui.diagnostics_controller import DiagnosticsController
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.keyboard_controller import KeyboardController
+from easy_docker_manager.ui.settings_controller import SettingsController
 from easy_docker_manager.ui.tab_export_controller import TabExportController
 from easy_docker_manager.ui.terminal_controller import TerminalController
 from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
@@ -57,6 +59,7 @@ class EDMRuntimeFactory:
         self,
         app_config: Optional[AppConfig] = None,
         docker_container_client: Optional[DockerContainerClient] = None,
+        app_config_store: Optional[AppConfigStore] = None,
     ) -> None:
         self.app_config = app_config if app_config is not None else AppConfig()
         if docker_container_client is not None:
@@ -71,6 +74,9 @@ class EDMRuntimeFactory:
                 ),
             )
         self.launch_directory = Path.cwd().resolve()
+        self.app_config_store = (
+            app_config_store if app_config_store is not None else AppConfigStore()
+        )
 
     def create_runtime(
         self,
@@ -124,10 +130,12 @@ class EDMRuntimeFactory:
             background_executor,
             self.docker_container_client,
         )
+        settings_controller = SettingsController(state, self.app_config_store)
         keyboard_controller = KeyboardController(
             terminal_controller,
             tab_export_controller,
             diagnostics_controller,
+            settings_controller,
         )
         return EDMRuntime(
             docker_container_client=self.docker_container_client,

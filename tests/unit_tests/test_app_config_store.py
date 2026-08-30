@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from pathlib import Path
+from unittest.mock import Mock
 
 from easy_docker_manager.config import app_config_store
 from easy_docker_manager.config.app_config_store import AppConfigStore
@@ -92,6 +93,14 @@ def test_save_failure_does_not_prevent_config_loading(
 
     assert loaded_config == AppConfig()
     assert "Unable to save config file" in caplog.text
+
+
+def test_save_reports_success_and_failure(tmp_path: Path, monkeypatch) -> None:
+    config_store = AppConfigStore(tmp_path / "config.json")
+    assert config_store.save(AppConfig()) is True
+
+    monkeypatch.setattr(Path, "write_text", Mock(side_effect=OSError("read only")))
+    assert config_store.save(AppConfig()) is False
 
 
 def test_default_config_path_uses_the_edm_platform_directory(monkeypatch) -> None:

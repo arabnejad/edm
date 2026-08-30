@@ -96,6 +96,7 @@ flowchart TD
     Keyboard[KeyboardController]
     UI[TerminalController]
     ExportController[TabExportController]
+    SettingsController[SettingsController]
     State[(TerminalSessionState)]
     DockerManager[DockerManager]
     ContainerRefresh[RunningContainerListRefresher]
@@ -118,6 +119,7 @@ flowchart TD
     User --> App --> Keyboard
     Keyboard --> UI
     Keyboard --> ExportController
+    Keyboard --> SettingsController
 
     UI --> Filter
     UI --> Formatter
@@ -126,6 +128,7 @@ flowchart TD
     ExportController --> Filter
     ExportController --> State
     ExportController --> Executor
+    SettingsController --> State
 
     App --> DockerManager
     UI --> DockerManager
@@ -150,7 +153,7 @@ flowchart TD
     classDef thirdParty fill:#fff8c5,stroke:#9a6700,color:#1f2328
     classDef external fill:#f6f8fa,stroke:#57606a,color:#1f2328
 
-    class App,Keyboard,UI,ExportController,State,DockerManager,ContainerRefresh,TabLoad,LogUpdates,Executor,Notifier,Loader,Client,Filter,Formatter,Exporter,View edm
+    class App,Keyboard,UI,ExportController,SettingsController,State,DockerManager,ContainerRefresh,TabLoad,LogUpdates,Executor,Notifier,Loader,Client,Filter,Formatter,Exporter,View edm
     class DockerSDK,Urwid thirdParty
     class User,Docker,Terminal,File external
 ```
@@ -164,6 +167,8 @@ The main responsibilities are:
   filtering, sorting, and tab searches, and prepares the screen for drawing.
 - `TabExportController` edits export choices, prepares a cached text snapshot,
   and handles the result of the file write.
+- `SettingsController` edits a configuration draft and saves it for the next
+  EDM run.
 - `TabTextFilter` applies the same line-visibility rules to the terminal and
   Current view exports.
 - `DockerManager` gives the rest of EDM one place to request Docker data. It
@@ -220,11 +225,13 @@ terminal interface:
 When EDM is going to start the terminal interface, it checks for at least 120
 columns and 30 rows. If the terminal is smaller, EDM prints its current size
 and exits before starting any application or Docker work. EDM then performs
-three steps:
+these steps:
 
-1. Configure EDM's application log.
+1. Start EDM's application log with its default or environment settings.
 2. Load `AppConfig` from `config.json`.
-3. Create `EDMApp` and call `run()`.
+3. Apply a saved application log level or stdout setting when it differs from
+   the default.
+4. Create `EDMApp` and call `run()`.
 
 `EDMApp` uses `EDMRuntimeFactory` to create and connect the state, Docker
 client, background executor, controllers, formatter, and terminal view. This
@@ -258,7 +265,10 @@ a new setting unless `AppConfigStore` contains a specific migration for it.
 
 `configure_logging()` runs before config loading so it can also report config
 errors. It writes EDM's own messages to a rotating `edm.log` file. Container
-logs are shown in the Logs tab and are not written to this file.
+logs are shown in the Logs tab and are not written to this file. If the saved
+application log settings differ from the defaults, startup calls
+`configure_logging()` again with the loaded `AppConfig`. Logging environment
+variables take priority over the saved values.
 
 ## Keyboard Input
 
@@ -271,6 +281,7 @@ flowchart LR
     UI[TerminalController]
     Export[TabExportController]
     Diagnostics[DiagnosticsController]
+    Settings[SettingsController]
     State[(TerminalSessionState)]
     View[TerminalLayoutView]
 
@@ -279,9 +290,11 @@ flowchart LR
     Keyboard --> UI
     Keyboard --> Export
     Keyboard --> Diagnostics
+    Keyboard --> Settings
     UI --> State
     Export --> State
     Diagnostics --> State
+    Settings --> State
     UI --> View
 ```
 
@@ -295,10 +308,31 @@ the export rules in one place. `h` or `H` asks `DiagnosticsController` to open
 the help and diagnostics popup. While that popup is open, only `Esc` is
 handled.
 
+`p` or `P` asks `SettingsController` to load the current `config.json` values.
+While the settings popup is open, `KeyboardController` passes every key to that
+controller. This prevents normal shortcuts from running while a value is being
+edited.
+
 `DiagnosticsController` fills the report with application versions and file
 paths before the first redraw. It sends the Docker daemon version request to
 `BackgroundExecutor`, then updates the open popup when the request finishes.
 This keeps the terminal responsive when Docker is slow or unavailable.
+
+### Settings Editor
+
+The popup and its keyboard controls are documented in
+[Configuration](README.md#configuration).
+
+`SettingsController` works with a draft `AppConfig`. Numeric text is checked
+before it replaces a value in that draft. Boolean settings and the log level
+change directly because each choice is already valid. `d` replaces the draft
+with `AppConfig` defaults but does not save them.
+
+Saving writes the draft through `AppConfigStore`. The running application does
+not switch to the new object because the Docker client, background executor,
+cache, and Urwid palette were already created from the startup config. The
+popup stays open and tells the user to restart EDM. `Esc` closes the popup and
+leaves the running application unchanged.
 
 The controller returns a `KeyAction`:
 
@@ -653,8 +687,10 @@ environment keys, structured values, search matches, and errors.
 
 | Class or module | What it does |
 | --- | --- |
-| `AppConfig` | Stores validated refresh, log, cache, timeout, worker, and color settings |
-| `AppConfigStore` | Loads, checks, and rewrites `config.json` |
+| `AppConfig` | Stores validated refresh, log, cache, timeout, worker, display, and application logging settings |
+| `AppConfigStore` | Loads, checks, saves, and rewrites `config.json` |
+| `SettingDefinition` | Describes one field shown in the settings popup |
+| `SettingsMenuState` | Stores the selected field and draft config while settings are open |
 | `ContainerSummary` | Stores the container and Compose fields used by the left panel |
 | `RunningContainerList` | Stores all running containers and applies grouping, sorting, and filtering |
 | `ContainerSortField` | Names the choices shown in the container sorting menu |
@@ -696,6 +732,7 @@ environment keys, structured values, search matches, and errors.
 | `TerminalController` | Handles navigation, filtering, search, menu choices, and drawing |
 | `TabExportController` | Handles export choices, cached text snapshots, and file-write results |
 | `DiagnosticsController` | Opens diagnostics and applies the background Docker version result |
+| `SettingsController` | Edits and saves a validated config draft for the next EDM run |
 | `TerminalLayoutView` | Combines the panels, active popup, and shortcut footer |
 | `RunningContainerListPanel` | Displays the running-container list, header, footer, and border |
 | `SelectedContainerDetailsPanel` | Displays the selected container's tabs, rows, status, and border |
@@ -703,6 +740,7 @@ environment keys, structured values, search matches, and errors.
 | `build_container_sort_popup_menu` | Builds the sort popup menu over the main layout |
 | `build_tab_export_popup_menu` | Builds the export popup menu over the main layout |
 | `build_diagnostics_popup` | Builds the read-only diagnostics popup over the main layout |
+| `build_settings_popup_menu` | Builds the editable settings popup over the main layout |
 | `FocusableDetailLine` | Lets keyboard navigation select one line of detail text |
 | `DetailTabTextFormatter` | Adds tab colors and search highlights to visible lines |
 | `DetailLineRenderer` | Adds tab colors, search highlights, and error colors |
@@ -719,9 +757,10 @@ environment keys, structured values, search matches, and errors.
 ## Adding A Config Setting
 
 1. Add the field and validation to `AppConfig`.
-2. Use that field where the setting is needed.
-3. Run EDM once and inspect the rewritten `config.json`.
-4. Update the README configuration table.
+2. Add its label and input type to `SETTINGS_FIELD_DEFINITIONS`.
+3. Use that field where the setting is needed.
+4. Run EDM once and inspect the rewritten `config.json`.
+5. Update the README configuration table.
 
 If a setting is renamed, the old key is removed and the new key receives its
 default. Add a migration in `AppConfigStore` only when the old value must be

@@ -5,6 +5,8 @@ from unittest.mock import Mock
 
 import pytest
 
+from easy_docker_manager.config.settings_definitions import SettingsMenuState
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     ContainerSortMenuState,
@@ -18,6 +20,7 @@ from easy_docker_manager.diagnostics import create_initial_diagnostics_report
 from easy_docker_manager.tab_export.definitions import TabExportMenuState
 from easy_docker_manager.ui.diagnostics_controller import DiagnosticsController
 from easy_docker_manager.ui.keyboard_controller import KeyAction, KeyboardController
+from easy_docker_manager.ui.settings_controller import SettingsController
 from easy_docker_manager.ui.tab_export_controller import TabExportController
 
 
@@ -27,6 +30,7 @@ class KeyboardControllerTestSetup:
     terminal_controller: Mock
     tab_export_controller: Mock
     diagnostics_controller: Mock
+    settings_controller: Mock
 
 
 @pytest.fixture
@@ -36,16 +40,19 @@ def keyboard_controller_factory():
         terminal_controller.state = state
         tab_export_controller = Mock(spec=TabExportController)
         diagnostics_controller = Mock(spec=DiagnosticsController)
+        settings_controller = Mock(spec=SettingsController)
         keyboard_controller = KeyboardController(
             terminal_controller,
             tab_export_controller,
             diagnostics_controller,
+            settings_controller,
         )
         return KeyboardControllerTestSetup(
             keyboard_controller=keyboard_controller,
             terminal_controller=terminal_controller,
             tab_export_controller=tab_export_controller,
             diagnostics_controller=diagnostics_controller,
+            settings_controller=settings_controller,
         )
 
     return create_keyboard_controller
@@ -65,6 +72,31 @@ def test_uppercase_h_opens_diagnostics_popup(keyboard_controller_factory) -> Non
 
     assert test_setup.keyboard_controller.handle_keypress("H") == KeyAction.REDRAW
     test_setup.diagnostics_controller.open_diagnostics_popup.assert_called_once_with()
+
+
+@pytest.mark.parametrize("pressed_key", ["p", "P"])
+def test_p_opens_settings_menu(
+    pressed_key: str,
+    keyboard_controller_factory,
+) -> None:
+    test_setup = keyboard_controller_factory(TerminalSessionState())
+    test_setup.settings_controller.open_settings_menu.return_value = True
+
+    assert (
+        test_setup.keyboard_controller.handle_keypress(pressed_key) == KeyAction.REDRAW
+    )
+    test_setup.settings_controller.open_settings_menu.assert_called_once_with()
+
+
+def test_settings_menu_delegates_all_keys_to_its_controller(
+    keyboard_controller_factory,
+) -> None:
+    state = TerminalSessionState(settings_menu_state=SettingsMenuState(AppConfig()))
+    test_setup = keyboard_controller_factory(state)
+    test_setup.settings_controller.handle_menu_keypress.return_value = True
+
+    assert test_setup.keyboard_controller.handle_keypress("q") == KeyAction.REDRAW
+    test_setup.settings_controller.handle_menu_keypress.assert_called_once_with("q")
 
 
 def test_diagnostics_popup_accepts_only_escape(keyboard_controller_factory) -> None:

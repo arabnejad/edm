@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.logging import app_logging
 
 
@@ -74,6 +75,44 @@ def test_stdout_logging_can_be_enabled(tmp_path: Path, monkeypatch) -> None:
         and not isinstance(handler, logging.FileHandler)
         for handler in logger.handlers
     )
+
+
+def test_saved_level_and_stdout_settings_are_used_without_environment_overrides(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("EDM_LOG_FILE", str(tmp_path / "edm.log"))
+    monkeypatch.delenv("EDM_LOG_LEVEL", raising=False)
+    monkeypatch.delenv("EDM_LOG_STDOUT", raising=False)
+
+    logger = app_logging.configure_logging(
+        AppConfig(
+            application_log_level="ERROR",
+            application_log_to_stdout=True,
+        )
+    )
+
+    assert logger.level == logging.ERROR
+    assert len(logger.handlers) == 2
+
+
+def test_logging_environment_variables_override_saved_settings(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("EDM_LOG_FILE", str(tmp_path / "edm.log"))
+    monkeypatch.setenv("EDM_LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv("EDM_LOG_STDOUT", "off")
+
+    logger = app_logging.configure_logging(
+        AppConfig(
+            application_log_level="ERROR",
+            application_log_to_stdout=True,
+        )
+    )
+
+    assert logger.level == logging.DEBUG
+    assert len(logger.handlers) == 1
 
 
 def test_invalid_log_level_falls_back_to_info(tmp_path: Path, monkeypatch) -> None:

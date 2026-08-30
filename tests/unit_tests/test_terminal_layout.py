@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import urwid
 
+from easy_docker_manager.config.settings_definitions import SettingsMenuState
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
@@ -50,9 +51,15 @@ def test_layout_builds_all_named_palette_entries() -> None:
         "export_menu_selected",
         "export_path_cursor",
         "diagnostics_value",
+        "settings_menu_selected",
+        "settings_value",
     } <= palette.keys()
     assert palette["diagnostics_popup"] == ("light gray", "default")
     assert palette["diagnostics_value"] == ("yellow", "default")
+    assert palette["settings_menu_selected"] == (
+        "white,bold",
+        "light cyan",
+    )
 
 
 def test_no_color_palette_uses_terminal_defaults_and_keeps_selection_visible() -> None:
@@ -87,6 +94,16 @@ def test_title_panel_shows_github_repository_text_inside_complete_border() -> No
     assert "─" in rendered_title_lines[-1]
 
 
+def test_shortcut_footer_fits_settings_at_minimum_terminal_width() -> None:
+    view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
+    state = TerminalSessionState()
+
+    view.render(state, [], lambda line: line)
+
+    footer_line = view.layout.render((120, 30)).text[-1].decode()
+    assert " p  Settings" in footer_line
+
+
 def test_render_shows_diagnostics_above_other_popups() -> None:
     state = TerminalSessionState(
         diagnostics_popup_report=create_initial_diagnostics_report(),
@@ -108,6 +125,38 @@ def test_render_shows_diagnostics_above_other_popups() -> None:
     assert "Checking..." in rendered_text
     assert "Esc Close" in rendered_text
     assert "Sort Containers" not in rendered_text
+
+
+def test_render_shows_editable_settings_popup() -> None:
+    menu_state = SettingsMenuState(AppConfig())
+    state = TerminalSessionState(settings_menu_state=menu_state)
+    view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
+
+    view.render(state, ["Select a running container."], lambda line: line)
+
+    assert isinstance(view.layout.original_widget, urwid.Overlay)
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert "Settings" in rendered_text
+    assert "Container list interval: 2.0 seconds" in rendered_text
+    assert "Application logging" in rendered_text
+    assert "Log level: INFO" in rendered_text
+    assert "s Save" in rendered_text
+
+
+def test_settings_popup_shows_numeric_editing_and_save_message() -> None:
+    menu_state = SettingsMenuState(
+        AppConfig(),
+        editing_value_text="3.5",
+        status_message="Settings saved. Restart EDM to apply them.",
+    )
+    state = TerminalSessionState(settings_menu_state=menu_state)
+    view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
+
+    view.render(state, [], lambda line: line)
+
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert "Container list interval: 3.5_" in rendered_text
+    assert "Settings saved. Restart EDM to apply them." in rendered_text
 
 
 def test_render_shows_empty_container_state() -> None:

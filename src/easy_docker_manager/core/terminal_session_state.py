@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from easy_docker_manager.config.settings_definitions import SettingsMenuState
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
@@ -74,6 +75,8 @@ class TerminalSessionState:
     tab_export_menu_state: Optional[TabExportMenuState] = None
     # Application, file, and Docker details shown while the popup is open.
     diagnostics_popup_report: Optional[DiagnosticsReport] = None
+    # Values being changed in the settings popup. None means the popup is closed.
+    settings_menu_state: Optional[SettingsMenuState] = None
     # Detail tab currently displayed in the right panel.
     active_detail_tab_name: TabName = TabName.LOGS
     # Which panel receives keyboard input.
