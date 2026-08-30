@@ -14,6 +14,7 @@ from easy_docker_manager.app.background_notifier import (
 )
 from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.app.runtime_factory import EDMRuntimeFactory
+from easy_docker_manager.config.app_config_store import AppConfigStore
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.ui.keyboard_controller import KeyAction, KeyboardController
@@ -55,6 +56,7 @@ class EDMApp:
         docker_container_client: Optional[DockerContainerClient] = None,
         runtime_factory: Optional[EDMRuntimeFactory] = None,
         background_notifier: Optional[BackgroundNotifier] = None,
+        app_config_store: Optional[AppConfigStore] = None,
     ) -> None:
         # Create the notifier first because the worker pool needs its callback.
         # The notifier is connected to Urwid later, after MainLoop is created.
@@ -72,6 +74,7 @@ class EDMApp:
             else EDMRuntimeFactory(
                 app_config=app_config,
                 docker_container_client=docker_container_client,
+                app_config_store=app_config_store,
             )
         )
         runtime = selected_runtime_factory.create_runtime(

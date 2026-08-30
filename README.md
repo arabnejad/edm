@@ -136,6 +136,7 @@ python -m easy_docker_manager
 | --- | --- |
 | `q` | Quit EDM from the normal screen |
 | `h` or `H` | Open application help and Docker diagnostics |
+| `p` or `P` | Open the settings editor |
 | `Up` / `Down` | Move through containers or detail lines |
 | `Enter` | Move keyboard focus to the detail panel |
 | `Esc` | Return keyboard focus to the container list |
@@ -308,6 +309,20 @@ Each container and tab keeps its own search query:
 
 ## Configuration
 
+Press `p` or `P` to edit the saved settings without leaving EDM. Use `Up` and
+`Down` to select a field. Press `Enter` to edit a number, then press `Enter`
+again to accept it. `Left` and `Right` change Boolean values and the
+application log level.
+
+Press `s` to save, `d` to load the default values into the form, or `Esc` to
+close the popup without saving. When a number is being edited, the first
+`Esc` cancels that edit and returns to the form. Loading defaults does not
+change `config.json` until `s` is pressed.
+
+Saved changes take effect after EDM restarts. The Docker client, worker pool,
+cache, and terminal colors are created during startup, so EDM does not replace
+them while it is running.
+
 EDM uses `platformdirs` to place `config.json` in the correct user config
 directory for the operating system. The file is stored in an `EDM` folder.
 Typical locations are:
@@ -334,6 +349,8 @@ cleaned configuration back to the file.
 | `docker_request_timeout` | `10.0` | Docker SDK request timeout in seconds |
 | `max_background_worker_threads` | `4` | Maximum number of background worker threads |
 | `colors_enabled` | `true` | Use terminal colors; set to `false` for monochrome output |
+| `application_log_level` | `"INFO"` | Minimum level written to EDM's application log |
+| `application_log_to_stdout` | `false` | Also write EDM application messages to standard output |
 
 `edm --no-color` disables colors for one run without changing `config.json`.
 
@@ -343,7 +360,9 @@ EDM writes its own application messages to `edm.log` beside `config.json`.
 This file contains EDM errors and diagnostic messages, not container logs. It
 rotates at 5 MB and keeps three backup files.
 
-These environment variables can change the logging setup:
+The application log level and stdout output can be changed in the settings
+editor or `config.json`. These environment variables override saved values for
+one run:
 
 | Variable | Purpose |
 | --- | --- |

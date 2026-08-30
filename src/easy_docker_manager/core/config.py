@@ -6,6 +6,14 @@ from dataclasses import dataclass
 
 from easy_docker_manager.core.log_text import MIN_LOG_LINE_CHARS
 
+APPLICATION_LOG_LEVEL_NAMES = (
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL",
+)
+
 
 @dataclass(frozen=True)
 class AppConfig:
@@ -13,8 +21,8 @@ class AppConfig:
 
     The Docker client, worker pool, cache, loaders, and terminal interface all
     share this object. It cannot be changed after creation because EDM does not
-    reload settings while running. Edit config.json and restart EDM to use new
-    values.
+    reload settings while running. Settings saved from the terminal editor or
+    config.json take effect the next time EDM starts.
     """
 
     container_list_refresh_interval_seconds: float = 2.0
@@ -27,6 +35,8 @@ class AppConfig:
     docker_request_timeout: float = 10.0
     max_background_worker_threads: int = 4
     colors_enabled: bool = True
+    application_log_level: str = "INFO"
+    application_log_to_stdout: bool = False
 
     def __post_init__(self) -> None:
         """Reject invalid settings before the application starts."""
@@ -50,6 +60,11 @@ class AppConfig:
             raise ValueError("docker_request_timeout must be positive")
         if self.max_background_worker_threads <= 0:
             raise ValueError("max_background_worker_threads must be positive")
+        if self.application_log_level not in APPLICATION_LOG_LEVEL_NAMES:
+            supported_levels = ", ".join(APPLICATION_LOG_LEVEL_NAMES)
+            raise ValueError(
+                "application_log_level must be one of " f"{supported_levels}"
+            )
 
 
-__all__ = ["AppConfig"]
+__all__ = ["APPLICATION_LOG_LEVEL_NAMES", "AppConfig"]

@@ -23,6 +23,8 @@ def test_app_config_uses_expected_defaults() -> None:
     assert config.docker_request_timeout == 10.0
     assert config.max_background_worker_threads == 4
     assert config.colors_enabled is True
+    assert config.application_log_level == "INFO"
+    assert config.application_log_to_stdout is False
 
 
 @pytest.mark.parametrize(
@@ -56,6 +58,11 @@ def test_app_config_requires_a_practical_log_line_limit() -> None:
         match=f"max_log_line_chars must be at least {MIN_LOG_LINE_CHARS}",
     ):
         AppConfig(max_log_line_chars=MIN_LOG_LINE_CHARS - 1)
+
+
+def test_app_config_rejects_unknown_application_log_level() -> None:
+    with pytest.raises(ValueError, match="application_log_level must be one of"):
+        AppConfig(application_log_level="TRACE")
 
 
 def test_container_models_store_summary_and_process_data() -> None:

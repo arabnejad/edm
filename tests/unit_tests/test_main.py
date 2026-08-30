@@ -40,7 +40,10 @@ def test_main_configures_logging_loads_config_and_runs_app(monkeypatch) -> None:
     configure_logging.assert_called_once_with()
     config_store_class.assert_called_once_with()
     config_store.load_and_sync.assert_called_once_with()
-    edm_app_class.assert_called_once_with(app_config=app_config)
+    edm_app_class.assert_called_once_with(
+        app_config=app_config,
+        app_config_store=config_store,
+    )
     edm_app.run.assert_called_once_with()
 
 
@@ -86,8 +89,30 @@ def test_no_color_option_disables_colors_for_the_application_run(monkeypatch) ->
 
     assert main_module.main(["--no-color"]) == 0
 
-    edm_app_class.assert_called_once_with(app_config=AppConfig(colors_enabled=False))
+    edm_app_class.assert_called_once_with(
+        app_config=AppConfig(colors_enabled=False),
+        app_config_store=config_store,
+    )
     edm_app.run.assert_called_once_with()
+
+
+def test_saved_logging_settings_are_applied_after_config_loading(monkeypatch) -> None:
+    configure_logging = Mock()
+    config_store = Mock()
+    app_config = AppConfig(
+        application_log_level="DEBUG",
+        application_log_to_stdout=True,
+    )
+    config_store.load_and_sync.return_value = app_config
+    monkeypatch.setattr(main_module, "configure_logging", configure_logging)
+    monkeypatch.setattr(main_module, "AppConfigStore", Mock(return_value=config_store))
+    edm_app = Mock()
+    monkeypatch.setattr(main_module, "EDMApp", Mock(return_value=edm_app))
+
+    assert main_module.main([]) == 0
+
+    assert configure_logging.call_args_list[0].args == ()
+    assert configure_logging.call_args_list[1].args == (app_config,)
 
 
 def test_help_prints_usage_without_starting_the_application(

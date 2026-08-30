@@ -26,6 +26,7 @@ def test_state_defaults_describe_the_initial_screen() -> None:
     assert not state.container_sort_descending
     assert state.container_sort_menu_state is None
     assert state.tab_export_menu_state is None
+    assert state.settings_menu_state is None
 
 
 def test_selected_container_properties_require_a_valid_index(

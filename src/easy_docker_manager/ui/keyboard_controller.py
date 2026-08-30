@@ -7,6 +7,7 @@ from typing import Optional
 
 from easy_docker_manager.core.terminal_session_state import FocusArea
 from easy_docker_manager.ui.diagnostics_controller import DiagnosticsController
+from easy_docker_manager.ui.settings_controller import SettingsController
 from easy_docker_manager.ui.tab_export_controller import TabExportController
 from easy_docker_manager.ui.terminal_controller import TerminalController
 
@@ -32,11 +33,13 @@ class KeyboardController:
         terminal_controller: TerminalController,
         tab_export_controller: TabExportController,
         diagnostics_controller: DiagnosticsController,
+        settings_controller: SettingsController,
     ) -> None:
         """Keep the UI controllers and their shared session state."""
         self.terminal_controller = terminal_controller
         self.tab_export_controller = tab_export_controller
         self.diagnostics_controller = diagnostics_controller
+        self.settings_controller = settings_controller
         self.state = terminal_controller.state
 
     def handle_keypress(
@@ -47,6 +50,8 @@ class KeyboardController:
         """Handle one keypress and tell EDMApp whether to redraw or quit."""
         if self.state.diagnostics_popup_report is not None:
             return self._handle_diagnostics_popup_keypress(key)
+        if self.state.settings_menu_state is not None:
+            return self._handle_settings_menu_keypress(key)
         if self.state.tab_export_menu_state is not None:
             return self._handle_tab_export_menu_keypress(key)
         if self.state.container_sort_menu_state is not None:
@@ -64,6 +69,12 @@ class KeyboardController:
             return (
                 KeyAction.REDRAW
                 if self.diagnostics_controller.open_diagnostics_popup()
+                else KeyAction.NONE
+            )
+        if key in {"p", "P"}:
+            return (
+                KeyAction.REDRAW
+                if self.settings_controller.open_settings_menu()
                 else KeyAction.NONE
             )
         if key in {"q", "Q"}:
@@ -165,6 +176,11 @@ class KeyboardController:
             if self.diagnostics_controller.close_diagnostics_popup()
             else KeyAction.NONE
         )
+
+    def _handle_settings_menu_keypress(self, key: str) -> KeyAction:
+        """Pass one settings key to SettingsController."""
+        changed = self.settings_controller.handle_menu_keypress(key)
+        return KeyAction.REDRAW if changed else KeyAction.NONE
 
     def _handle_tab_export_menu_keypress(self, key: str) -> KeyAction:
         """Pass one export-menu key to TabExportController."""

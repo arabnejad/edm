@@ -12,9 +12,9 @@ from typing import Optional
 from platformdirs import user_config_dir
 
 from easy_docker_manager.constants import APP_NAME
+from easy_docker_manager.core.config import AppConfig
 
 LOG_FILE_NAME = "edm.log"
-DEFAULT_LOG_LEVEL = "INFO"
 LOG_FILE_MAX_BYTES = 5 * 1024 * 1024
 LOG_FILE_BACKUP_COUNT = 3
 
@@ -34,22 +34,32 @@ def get_configured_log_file_path() -> Path:
     )
 
 
-def configure_logging() -> logging.Logger:
+def configure_logging(app_config: Optional[AppConfig] = None) -> logging.Logger:
     """Configure EDM's rotating log file and optional terminal output.
 
-    main() calls this before loading config or starting the UI. Environment
-    variables can change the level, file path, and stdout output. If EDM cannot
-    create the log file, warnings go to stderr and startup continues.
+    main() calls this before loading config.json so file errors can be logged.
+    It calls it again when the saved log settings differ from the defaults.
+    Environment variables override saved values and can also change the file
+    path. If EDM cannot create the log file, warnings go to stderr and startup
+    continues.
     """
-    level_name = os.getenv("EDM_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper()
+    selected_config = app_config if app_config is not None else AppConfig()
+    level_name = os.getenv(
+        "EDM_LOG_LEVEL",
+        selected_config.application_log_level,
+    ).upper()
     level = getattr(logging, level_name, logging.INFO)
     log_file = get_configured_log_file_path()
-    stdout_enabled = os.getenv("EDM_LOG_STDOUT", "0").lower() not in {
-        "0",
-        "false",
-        "no",
-        "off",
-    }
+    configured_stdout_value = os.getenv("EDM_LOG_STDOUT")
+    if configured_stdout_value is None:
+        stdout_enabled = selected_config.application_log_to_stdout
+    else:
+        stdout_enabled = configured_stdout_value.lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
 
     logger = logging.getLogger("easy_docker_manager")
     logger.setLevel(level)

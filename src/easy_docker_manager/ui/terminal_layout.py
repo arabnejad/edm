@@ -7,6 +7,7 @@ from typing import Optional, Union
 
 import urwid
 
+from easy_docker_manager.config.settings_definitions import SettingsMenuState
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import ContainerSortMenuState
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
@@ -23,6 +24,7 @@ from easy_docker_manager.ui.formatting import MarkupSegment
 from easy_docker_manager.ui.running_container_list_panel import (
     RunningContainerListPanel,
 )
+from easy_docker_manager.ui.settings_popup import build_settings_popup_menu
 from easy_docker_manager.ui.tab_export_menu import build_tab_export_popup_menu
 
 
@@ -32,7 +34,7 @@ class TerminalLayoutView:
     TerminalController calls render() with the current session state and the
     lines to display. RunningContainerListPanel updates the left side,
     SelectedContainerDetailsPanel updates the right side, and this object
-    chooses whether a sorting, export, or diagnostics popup appears above
+    chooses whether a sorting, export, settings, or diagnostics popup appears above
     them. This class does not load Docker data, write files, or change
     navigation state.
     """
@@ -120,6 +122,10 @@ class TerminalLayoutView:
             ("export_warning", "yellow,bold", "default"),
             ("diagnostics_popup", "light gray", "default"),
             ("diagnostics_value", "yellow", "default"),
+            ("settings_menu", "light gray", "default"),
+            ("settings_menu_title", "light cyan,bold", "default"),
+            ("settings_menu_selected", "white,bold", "light cyan"),
+            ("settings_value", "yellow", "default"),
         ]
         if self.app_config.colors_enabled:
             return color_palette
@@ -134,6 +140,7 @@ class TerminalLayoutView:
             "sort_menu_selected",
             "export_menu_selected",
             "export_path_cursor",
+            "settings_menu_selected",
         }
         bold_styles = {
             "app_title",
@@ -150,6 +157,7 @@ class TerminalLayoutView:
             "sort_menu_title",
             "export_menu_title",
             "export_warning",
+            "settings_menu_title",
         }
         monochrome_palette = []
         for style_name, _foreground, _background in color_palette:
@@ -178,6 +186,11 @@ class TerminalLayoutView:
         if state.diagnostics_popup_report is not None:
             self.layout.original_widget = build_diagnostics_popup(
                 state.diagnostics_popup_report,
+                self._main_layout,
+            )
+        elif isinstance(state.settings_menu_state, SettingsMenuState):
+            self.layout.original_widget = build_settings_popup_menu(
+                state.settings_menu_state,
                 self._main_layout,
             )
         elif isinstance(state.tab_export_menu_state, TabExportMenuState):
@@ -210,9 +223,9 @@ class TerminalLayoutView:
             ("shortcut_key", " Esc "),
             ("footer", " List "),
             ("shortcut_key", " [ "),
-            ("footer", " Prev Tab "),
+            ("footer", " Prev "),
             ("shortcut_key", " ] "),
-            ("footer", " Next Tab "),
+            ("footer", " Next "),
             ("shortcut_key", " / "),
             ("footer", " Search "),
             ("shortcut_key", " f "),
@@ -222,7 +235,9 @@ class TerminalLayoutView:
             ("shortcut_key", " e "),
             ("footer", " Export "),
             ("shortcut_key", " h "),
-            ("footer", " Help"),
+            ("footer", " Help "),
+            ("shortcut_key", " p "),
+            ("footer", " Settings"),
         ]
 
 
