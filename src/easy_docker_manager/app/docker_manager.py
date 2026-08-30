@@ -10,25 +10,30 @@ from __future__ import annotations
 import time
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
+from easy_docker_manager.app.container_lifecycle_action_runner import (
+    ContainerLifecycleActionRunner,
+)
 from easy_docker_manager.app.container_log_updates import ContainerLogUpdater
 from easy_docker_manager.app.running_container_refresh import (
     RunningContainerListRefresher,
 )
 from easy_docker_manager.app.selected_tab_load import SelectedTabContentLoader
 from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.container_actions import ContainerLifecycleAction
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.tabs.tab_data_loader import ContainerTabTextLoader
 
 
 class DockerManager:
-    """Route Docker data requests to the three request handlers.
+    """Route Docker requests to the class responsible for each workflow.
 
     EDMApp asks when Docker data should be refreshed. TerminalController uses
     the same object after the user changes a container, tab, or sort order.
     RunningContainerListRefresher handles the container list,
     SelectedTabContentLoader handles full tab loads, and ContainerLogUpdater
-    handles later log polls.
+    handles later log polls, and ContainerLifecycleActionRunner handles Stop
+    and Restart.
     """
 
     MINIMUM_REQUEST_CHECK_DELAY = 0.05
@@ -68,6 +73,12 @@ class DockerManager:
             docker_container_client,
             self.prepare_selected_container_details,
             self.container_log_updater.remove_log_cursors_for_stopped_containers,
+        )
+        self.container_lifecycle_action_runner = ContainerLifecycleActionRunner(
+            state,
+            background_executor,
+            docker_container_client,
+            self.running_container_list_refresher.request_immediate_running_container_list_refresh,
         )
 
     def refresh_docker_data_if_needed(self) -> None:
@@ -135,6 +146,24 @@ class DockerManager:
     def rebuild_displayed_container_list(self) -> None:
         """Rebuild the grouped list after its sort or filter changes."""
         self.running_container_list_refresher.rebuild_displayed_container_list()
+
+    @property
+    def is_container_lifecycle_action_in_progress(self) -> bool:
+        """Return whether Stop or Restart is currently running."""
+        return self.container_lifecycle_action_runner.is_action_in_progress
+
+    def start_container_lifecycle_action(
+        self,
+        action: ContainerLifecycleAction,
+        container_id: str,
+        container_name: str,
+    ) -> bool:
+        """Ask the lifecycle runner to submit one container action."""
+        return self.container_lifecycle_action_runner.start_action(
+            action,
+            container_id,
+            container_name,
+        )
 
     def _is_initial_log_content_load_in_progress(self) -> bool:
         """Return True while the selected container's first log load is running."""

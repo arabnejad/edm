@@ -165,6 +165,12 @@ class SmokeTestDockerContainerClient(DockerContainerClient):
             process_and_thread_limit=None,
         )
 
+    def stop_container(self, container_id: str) -> None:
+        """Accept the request without changing the smoke-test container."""
+
+    def restart_container(self, container_id: str) -> None:
+        """Accept the request without changing the smoke-test container."""
+
     def get_docker_daemon_details(self) -> DockerDaemonDetails:
         return DockerDaemonDetails(
             daemon_version="28.0.0",

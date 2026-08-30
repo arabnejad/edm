@@ -26,6 +26,7 @@ from easy_docker_manager.docker.local_container_client import LocalDockerContain
 from easy_docker_manager.tab_export.writer import TabExportWriter
 from easy_docker_manager.tabs.tab_data_loader import ContainerTabTextLoader
 from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
+from easy_docker_manager.ui.container_action_controller import ContainerActionController
 from easy_docker_manager.ui.diagnostics_controller import DiagnosticsController
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.keyboard_controller import KeyboardController
@@ -131,11 +132,13 @@ class EDMRuntimeFactory:
             self.docker_container_client,
         )
         settings_controller = SettingsController(state, self.app_config_store)
+        container_action_controller = ContainerActionController(state, docker_manager)
         keyboard_controller = KeyboardController(
             terminal_controller,
             tab_export_controller,
             diagnostics_controller,
             settings_controller,
+            container_action_controller,
         )
         return EDMRuntime(
             docker_container_client=self.docker_container_client,

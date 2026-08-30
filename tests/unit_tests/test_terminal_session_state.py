@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from easy_docker_manager.core.container_actions import (
+    ContainerActionMenuState,
+    ContainerLifecycleAction,
+)
 from easy_docker_manager.core.container_sorting import ContainerSortField
 from easy_docker_manager.core.running_container_list import RunningContainerList
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
@@ -25,6 +29,7 @@ def test_state_defaults_describe_the_initial_screen() -> None:
     assert state.container_sort_field == ContainerSortField.DOCKER_ORDER
     assert not state.container_sort_descending
     assert state.container_sort_menu_state is None
+    assert state.container_action_menu_state is None
     assert state.tab_export_menu_state is None
     assert state.settings_menu_state is None
 
@@ -103,6 +108,11 @@ def test_remove_state_for_stopped_containers_removes_its_cached_data() -> None:
         "output.txt",
         len("output.txt"),
     )
+    state.container_action_menu_state = ContainerActionMenuState(
+        container_id="stopped",
+        container_name="stopped",
+        available_actions=[ContainerLifecycleAction.RESTART],
+    )
 
     state.remove_state_for_stopped_containers({"live"})
 
@@ -112,3 +122,4 @@ def test_remove_state_for_stopped_containers_removes_its_cached_data() -> None:
     assert state.unreadable_log_container_ids == {"live"}
     assert state.tab_content_error_messages == {live_container_tab_key: "live error"}
     assert state.tab_export_menu_state is None
+    assert state.container_action_menu_state is None

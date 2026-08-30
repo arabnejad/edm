@@ -4,6 +4,10 @@ import urwid
 
 from easy_docker_manager.config.settings_definitions import SettingsMenuState
 from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.container_actions import (
+    ContainerActionMenuState,
+    ContainerLifecycleAction,
+)
 from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     ContainerSortMenuState,
@@ -53,10 +57,15 @@ def test_layout_builds_all_named_palette_entries() -> None:
         "diagnostics_value",
         "settings_menu_selected",
         "settings_value",
+        "container_action_menu_selected",
     } <= palette.keys()
     assert palette["diagnostics_popup"] == ("light gray", "default")
     assert palette["diagnostics_value"] == ("yellow", "default")
     assert palette["settings_menu_selected"] == (
+        "white,bold",
+        "light cyan",
+    )
+    assert palette["container_action_menu_selected"] == (
         "white,bold",
         "light cyan",
     )
@@ -101,7 +110,41 @@ def test_shortcut_footer_fits_settings_at_minimum_terminal_width() -> None:
     view.render(state, [], lambda line: line)
 
     footer_line = view.layout.render((120, 30)).text[-1].decode()
+    assert " a  Actions" in footer_line
     assert " p  Settings" in footer_line
+
+
+def test_container_action_popup_shows_actions_and_confirmation() -> None:
+    menu_state = ContainerActionMenuState(
+        container_id="container-1",
+        container_name="web",
+        available_actions=[
+            ContainerLifecycleAction.RESTART,
+            ContainerLifecycleAction.STOP,
+        ],
+    )
+    state = TerminalSessionState(container_action_menu_state=menu_state)
+    view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
+
+    view.render(state, [], lambda line: line)
+
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert "Container Actions" in rendered_text
+    assert "> Restart container" in rendered_text
+    assert "Stop container" in rendered_text
+
+    menu_state.is_awaiting_confirmation = True
+    view.render(state, [], lambda line: line)
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert 'Restart container "web"?' in rendered_text
+    assert "Enter Confirm" in rendered_text
+
+    menu_state.selected_action_index = 1
+    view.render(state, [], lambda line: line)
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert 'Stop container "web"?' in rendered_text
+    assert "The container will stop and disappear from the" in rendered_text
+    assert "running-container list." in rendered_text
 
 
 def test_render_shows_diagnostics_above_other_popups() -> None:

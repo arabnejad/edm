@@ -101,3 +101,20 @@ def test_container_resource_statistics_are_read_from_docker(
     assert first_snapshot.current_process_and_thread_count is not None
     assert first_snapshot.current_process_and_thread_count >= 1
     assert second_snapshot.collected_at >= first_snapshot.collected_at
+
+
+def test_running_container_can_be_restarted_and_stopped(
+    docker_test_setup: DockerIntegrationTestContainer,
+    local_docker_container_client: LocalDockerContainerClient,
+) -> None:
+    container = docker_test_setup.container
+    try:
+        local_docker_container_client.restart_container(container.id)
+        container.reload()
+        assert container.status == "running"
+
+        local_docker_container_client.stop_container(container.id)
+        container.reload()
+        assert container.status == "exited"
+    finally:
+        container.start()

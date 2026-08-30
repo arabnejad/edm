@@ -13,6 +13,8 @@ The integration suite verifies that EDM can:
 - read its environment variables
 - load its container and image inspection data
 - read its running process information
+- read its resource statistics
+- restart and stop it
 
 ## How The Test Setup Works
 
@@ -25,7 +27,7 @@ The integration suite verifies that EDM can:
 6. After all tests finish, pytest removes the container and closes the Docker
    clients. Cleanup also runs when a test fails.
 
-The same container is shared by all five tests. This keeps the suite quick and
+The same container is shared by all seven tests. This keeps the suite quick and
 avoids repeatedly pulling the image or starting new containers.
 
 ## Run The Tests
