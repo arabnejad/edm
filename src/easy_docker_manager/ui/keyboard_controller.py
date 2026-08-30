@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Optional
 
 from easy_docker_manager.core.terminal_session_state import FocusArea
+from easy_docker_manager.ui.container_action_controller import ContainerActionController
 from easy_docker_manager.ui.diagnostics_controller import DiagnosticsController
 from easy_docker_manager.ui.settings_controller import SettingsController
 from easy_docker_manager.ui.tab_export_controller import TabExportController
@@ -34,12 +35,14 @@ class KeyboardController:
         tab_export_controller: TabExportController,
         diagnostics_controller: DiagnosticsController,
         settings_controller: SettingsController,
+        container_action_controller: ContainerActionController,
     ) -> None:
         """Keep the UI controllers and their shared session state."""
         self.terminal_controller = terminal_controller
         self.tab_export_controller = tab_export_controller
         self.diagnostics_controller = diagnostics_controller
         self.settings_controller = settings_controller
+        self.container_action_controller = container_action_controller
         self.state = terminal_controller.state
 
     def handle_keypress(
@@ -52,6 +55,8 @@ class KeyboardController:
             return self._handle_diagnostics_popup_keypress(key)
         if self.state.settings_menu_state is not None:
             return self._handle_settings_menu_keypress(key)
+        if self.state.container_action_menu_state is not None:
+            return self._handle_container_action_menu_keypress(key)
         if self.state.tab_export_menu_state is not None:
             return self._handle_tab_export_menu_keypress(key)
         if self.state.container_sort_menu_state is not None:
@@ -75,6 +80,12 @@ class KeyboardController:
             return (
                 KeyAction.REDRAW
                 if self.settings_controller.open_settings_menu()
+                else KeyAction.NONE
+            )
+        if key in {"a", "A"}:
+            return (
+                KeyAction.REDRAW
+                if self.container_action_controller.open_container_action_menu()
                 else KeyAction.NONE
             )
         if key in {"q", "Q"}:
@@ -180,6 +191,11 @@ class KeyboardController:
     def _handle_settings_menu_keypress(self, key: str) -> KeyAction:
         """Pass one settings key to SettingsController."""
         changed = self.settings_controller.handle_menu_keypress(key)
+        return KeyAction.REDRAW if changed else KeyAction.NONE
+
+    def _handle_container_action_menu_keypress(self, key: str) -> KeyAction:
+        """Pass one action-menu key to ContainerActionController."""
+        changed = self.container_action_controller.handle_menu_keypress(key)
         return KeyAction.REDRAW if changed else KeyAction.NONE
 
     def _handle_tab_export_menu_keypress(self, key: str) -> KeyAction:

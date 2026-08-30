@@ -7,6 +7,10 @@ import pytest
 
 from easy_docker_manager.config.settings_definitions import SettingsMenuState
 from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.container_actions import (
+    ContainerActionMenuState,
+    ContainerLifecycleAction,
+)
 from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     ContainerSortMenuState,
@@ -18,6 +22,7 @@ from easy_docker_manager.core.terminal_session_state import (
 )
 from easy_docker_manager.diagnostics import create_initial_diagnostics_report
 from easy_docker_manager.tab_export.definitions import TabExportMenuState
+from easy_docker_manager.ui.container_action_controller import ContainerActionController
 from easy_docker_manager.ui.diagnostics_controller import DiagnosticsController
 from easy_docker_manager.ui.keyboard_controller import KeyAction, KeyboardController
 from easy_docker_manager.ui.settings_controller import SettingsController
@@ -31,6 +36,7 @@ class KeyboardControllerTestSetup:
     tab_export_controller: Mock
     diagnostics_controller: Mock
     settings_controller: Mock
+    container_action_controller: Mock
 
 
 @pytest.fixture
@@ -41,11 +47,13 @@ def keyboard_controller_factory():
         tab_export_controller = Mock(spec=TabExportController)
         diagnostics_controller = Mock(spec=DiagnosticsController)
         settings_controller = Mock(spec=SettingsController)
+        container_action_controller = Mock(spec=ContainerActionController)
         keyboard_controller = KeyboardController(
             terminal_controller,
             tab_export_controller,
             diagnostics_controller,
             settings_controller,
+            container_action_controller,
         )
         return KeyboardControllerTestSetup(
             keyboard_controller=keyboard_controller,
@@ -53,6 +61,7 @@ def keyboard_controller_factory():
             tab_export_controller=tab_export_controller,
             diagnostics_controller=diagnostics_controller,
             settings_controller=settings_controller,
+            container_action_controller=container_action_controller,
         )
 
     return create_keyboard_controller
@@ -86,6 +95,41 @@ def test_p_opens_settings_menu(
         test_setup.keyboard_controller.handle_keypress(pressed_key) == KeyAction.REDRAW
     )
     test_setup.settings_controller.open_settings_menu.assert_called_once_with()
+
+
+@pytest.mark.parametrize("pressed_key", ["a", "A"])
+def test_a_opens_selected_container_actions(
+    pressed_key: str,
+    keyboard_controller_factory,
+) -> None:
+    test_setup = keyboard_controller_factory(TerminalSessionState())
+    test_setup.container_action_controller.open_container_action_menu.return_value = (
+        True
+    )
+
+    assert (
+        test_setup.keyboard_controller.handle_keypress(pressed_key) == KeyAction.REDRAW
+    )
+    test_setup.container_action_controller.open_container_action_menu.assert_called_once_with()
+
+
+def test_action_menu_delegates_keys_to_its_controller(
+    keyboard_controller_factory,
+) -> None:
+    state = TerminalSessionState(
+        container_action_menu_state=ContainerActionMenuState(
+            container_id="container-1",
+            container_name="web",
+            available_actions=[ContainerLifecycleAction.RESTART],
+        )
+    )
+    test_setup = keyboard_controller_factory(state)
+    test_setup.container_action_controller.handle_menu_keypress.return_value = True
+
+    assert test_setup.keyboard_controller.handle_keypress("enter") == KeyAction.REDRAW
+    test_setup.container_action_controller.handle_menu_keypress.assert_called_once_with(
+        "enter"
+    )
 
 
 def test_settings_menu_delegates_all_keys_to_its_controller(

@@ -29,6 +29,7 @@ With EDM, you can view:
 - a readable summary of Docker inspection data
 - current CPU, memory, network, disk, and process statistics
 - the process list returned by Docker top
+- Stop and Restart actions for running containers
 - live filtering and sorting of the running-container list
 - a separate search query for each container tab
 - export of the active tab to a local text file
@@ -145,6 +146,7 @@ python -m easy_docker_manager
 | `/` | Start editing the search for the current tab |
 | `f` | Start editing the container filter while the container panel is active |
 | `s` | Open container sorting while the container panel is active |
+| `a` or `A` | Open actions for the selected running container |
 | `e` | Export the active tab while the detail panel is active |
 | `Page Up` / `Page Down` | Move through the detail panel one page at a time |
 | `Home` / `End` | Select the first or last detail line |
@@ -172,6 +174,20 @@ also shows the config path, application log path, Docker API version, platform,
 and connection result. A failed Docker check prints its error and exits with
 status `1`; a successful check exits with status `0`. This command does not
 create or rewrite `config.json`.
+
+## Container Actions
+
+Select a running container and press `a` or `A`. Choose **Restart** or **Stop**
+with `Up` and `Down`, then press `Enter`. EDM asks for confirmation before it
+sends the request to Docker. Press `Esc` to close the popup without making a
+change.
+
+The Docker request runs in the background. After it succeeds, EDM reloads the
+running-container list. A stopped container disappears from the list because
+EDM does not show stopped containers yet.
+
+Restart uses the existing container and its current Docker configuration. It
+does not reread a Compose file or recreate a Compose service.
 
 ## Container Filtering
 

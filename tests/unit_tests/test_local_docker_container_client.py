@@ -8,6 +8,7 @@ from docker.errors import DockerException, NotFound
 
 from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.docker.container_client import (
+    ContainerLifecycleActionError,
     ContainerLogFetchError,
     ContainerLogsUnavailableError,
     ContainerNotFoundError,
@@ -61,6 +62,8 @@ def docker_container_factory():
             },
             "logs": Mock(return_value=b"hello\xff"),
             "stats": Mock(return_value={"read": "2026-01-01T14:32:18Z"}),
+            "stop": Mock(),
+            "restart": Mock(),
             "top": Mock(
                 return_value={
                     "Titles": ["PID", "CMD"],
@@ -428,6 +431,60 @@ def test_container_resource_stats_failure_is_mapped(
         match="Resource statistics load failed",
     ):
         docker_container_client.get_container_resource_stats("container-id")
+
+
+@pytest.mark.parametrize(
+    ("client_method_name", "container_method_name"),
+    [
+        ("stop_container", "stop"),
+        ("restart_container", "restart"),
+    ],
+)
+def test_container_lifecycle_action_calls_matching_docker_method(
+    client_method_name: str,
+    container_method_name: str,
+    docker_client_factory,
+    docker_container_factory,
+) -> None:
+    container = docker_container_factory()
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: docker_client_factory(container)
+    )
+
+    getattr(docker_container_client, client_method_name)("container-id")
+
+    getattr(container, container_method_name).assert_called_once_with()
+
+
+def test_container_lifecycle_action_maps_missing_container(
+    docker_client_factory,
+) -> None:
+    client = docker_client_factory()
+    client.containers.get.side_effect = NotFound("missing")
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: client
+    )
+
+    with pytest.raises(ContainerNotFoundError):
+        docker_container_client.stop_container("missing")
+
+
+def test_container_lifecycle_action_wraps_docker_failure(
+    docker_client_factory,
+    docker_container_factory,
+) -> None:
+    container = docker_container_factory()
+    container.restart.side_effect = RuntimeError("daemon timeout")
+    docker_container_client = LocalDockerContainerClient(
+        create_docker_client=lambda: docker_client_factory(container)
+    )
+
+    with pytest.raises(ContainerLifecycleActionError) as error:
+        docker_container_client.restart_container("container-id")
+
+    assert error.value.action_name == "restart"
+    assert error.value.container_id == "container-id"
+    assert error.value.reason == "daemon timeout"
 
 
 def test_close_releases_only_an_existing_client(docker_client_factory) -> None:

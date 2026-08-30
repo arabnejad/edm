@@ -18,6 +18,7 @@ from typing import Optional
 
 from easy_docker_manager.config.settings_definitions import SettingsMenuState
 from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.container_actions import ContainerActionMenuState
 from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     ContainerSortMenuState,
@@ -71,6 +72,8 @@ class TerminalSessionState:
     container_sort_descending: bool = False
     # Temporary choices in the container sort menu. None means the menu is closed.
     container_sort_menu_state: Optional[ContainerSortMenuState] = None
+    # Selected lifecycle action and target container while its menu is open.
+    container_action_menu_state: Optional[ContainerActionMenuState] = None
     # Current choices in the tab export menu. None means the menu is closed.
     tab_export_menu_state: Optional[TabExportMenuState] = None
     # Application, file, and Docker details shown while the popup is open.
@@ -188,6 +191,12 @@ class TerminalSessionState:
             not in running_container_ids
         ):
             self.tab_export_menu_state = None
+        if (
+            self.container_action_menu_state is not None
+            and self.container_action_menu_state.container_id
+            not in running_container_ids
+        ):
+            self.container_action_menu_state = None
 
 
 __all__ = [

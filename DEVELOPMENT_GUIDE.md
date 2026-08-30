@@ -22,6 +22,8 @@ src/
                                   Refreshes the list and preserves its selection
       selected_tab_load.py        Loads the selected container tab
       container_log_updates.py    Polls and merges container logs
+      container_lifecycle_action_runner.py
+                                  Runs a confirmed Stop or Restart request
 
     config/
       app_config_store.py         Loads and rewrites config.json
@@ -29,6 +31,7 @@ src/
     core/
       config.py                   AppConfig values and validation
       running_container_list.py  Keeps Docker's list and the displayed list
+      container_actions.py        Container actions and action-menu state
       container_sorting.py       Container sort fields and ordering
       containers.py               Container, process, and resource data classes
       tab_content_cache.py        Size-limited tab text cache
@@ -63,6 +66,9 @@ src/
       container_details_panel.py Builds the selected container details panel
       formatting.py               Adds terminal colors and search highlights
       keyboard_controller.py      Maps keypresses to actions
+      container_action_controller.py
+                                  Handles action selection and confirmation
+      container_action_popup.py   Builds the container action popup
       tab_export_controller.py    Handles the export workflow
       tab_export_menu.py          Builds the export popup menu
       terminal_layout.py          Combines panels, popups, and the footer
@@ -97,11 +103,13 @@ flowchart TD
     UI[TerminalController]
     ExportController[TabExportController]
     SettingsController[SettingsController]
+    ActionController[ContainerActionController]
     State[(TerminalSessionState)]
     DockerManager[DockerManager]
     ContainerRefresh[RunningContainerListRefresher]
     TabLoad[SelectedTabContentLoader]
     LogUpdates[ContainerLogUpdater]
+    Lifecycle[ContainerLifecycleActionRunner]
     Executor[BackgroundExecutor]
     Notifier[BackgroundNotifier]
     Loader[ContainerTabTextLoader]
@@ -120,6 +128,7 @@ flowchart TD
     Keyboard --> UI
     Keyboard --> ExportController
     Keyboard --> SettingsController
+    Keyboard --> ActionController
 
     UI --> Filter
     UI --> Formatter
@@ -129,6 +138,8 @@ flowchart TD
     ExportController --> State
     ExportController --> Executor
     SettingsController --> State
+    ActionController --> State
+    ActionController --> DockerManager
 
     App --> DockerManager
     UI --> DockerManager
@@ -136,12 +147,15 @@ flowchart TD
     DockerManager --> ContainerRefresh
     DockerManager --> TabLoad
     DockerManager --> LogUpdates
+    DockerManager --> Lifecycle
     ContainerRefresh --> State
     ContainerRefresh --> Executor
     TabLoad --> State
     TabLoad --> Executor
     LogUpdates --> State
     LogUpdates --> Executor
+    Lifecycle --> State
+    Lifecycle --> Executor
     Executor --> Loader --> Client
     Executor --> Client
     Executor --> Exporter --> File
@@ -153,7 +167,7 @@ flowchart TD
     classDef thirdParty fill:#fff8c5,stroke:#9a6700,color:#1f2328
     classDef external fill:#f6f8fa,stroke:#57606a,color:#1f2328
 
-    class App,Keyboard,UI,ExportController,SettingsController,State,DockerManager,ContainerRefresh,TabLoad,LogUpdates,Executor,Notifier,Loader,Client,Filter,Formatter,Exporter,View edm
+    class App,Keyboard,UI,ExportController,SettingsController,ActionController,State,DockerManager,ContainerRefresh,TabLoad,LogUpdates,Lifecycle,Executor,Notifier,Loader,Client,Filter,Formatter,Exporter,View edm
     class DockerSDK,Urwid thirdParty
     class User,Docker,Terminal,File external
 ```
@@ -169,13 +183,16 @@ The main responsibilities are:
   and handles the result of the file write.
 - `SettingsController` edits a configuration draft and saves it for the next
   EDM run.
+- `ContainerActionController` handles action selection and confirmation for
+  the selected running container.
 - `TabTextFilter` applies the same line-visibility rules to the terminal and
   Current view exports.
 - `DockerManager` gives the rest of EDM one place to request Docker data. It
-  passes container-list, tab-load, and log-poll work to the matching class.
-- `RunningContainerListRefresher`, `SelectedTabContentLoader`, and
-  `ContainerLogUpdater` each track one type of request, including its timer,
-  active `Future`, result handling, and state changes.
+  passes container-list, tab-load, log-poll, and lifecycle work to the matching
+  class.
+- `RunningContainerListRefresher`, `SelectedTabContentLoader`,
+  `ContainerLogUpdater`, and `ContainerLifecycleActionRunner` track their own
+  background work and apply its result to the session state.
 - `BackgroundExecutor` runs Docker requests and file writes outside the UI
   thread.
 - `TerminalLayoutView` combines the two panels, popups, and shortcut footer.
@@ -282,6 +299,7 @@ flowchart LR
     Export[TabExportController]
     Diagnostics[DiagnosticsController]
     Settings[SettingsController]
+    Actions[ContainerActionController]
     State[(TerminalSessionState)]
     View[TerminalLayoutView]
 
@@ -291,10 +309,12 @@ flowchart LR
     Keyboard --> Export
     Keyboard --> Diagnostics
     Keyboard --> Settings
+    Keyboard --> Actions
     UI --> State
     Export --> State
     Diagnostics --> State
     Settings --> State
+    Actions --> State
     UI --> View
 ```
 
@@ -312,6 +332,11 @@ handled.
 While the settings popup is open, `KeyboardController` passes every key to that
 controller. This prevents normal shortcuts from running while a value is being
 edited.
+
+`a` or `A` asks `ContainerActionController` to open Restart and Stop for the
+selected running container. While the popup is open, normal shortcuts are
+ignored. The first `Enter` shows the confirmation screen. The second submits
+the action. `Esc` closes the popup without changing the container.
 
 `DiagnosticsController` fills the report with application versions and file
 paths before the first redraw. It sends the Docker daemon version request to
@@ -339,6 +364,25 @@ The controller returns a `KeyAction`:
 - `NONE`: nothing visible changed.
 - `REDRAW`: draw the screen again and check whether background work should start.
 - `QUIT`: leave the terminal application.
+
+### Container Actions
+
+The keys and visible behavior are documented in
+[Container Actions](README.md#container-actions).
+
+`ContainerActionController` stores the target container and selected action in
+`TerminalSessionState.container_action_menu_state`. After confirmation, it
+passes the request to `DockerManager` and closes the popup.
+
+`ContainerLifecycleActionRunner` sends Stop or Restart to
+`BackgroundExecutor`. Only one lifecycle action can run at a time. After a
+successful request, it asks `RunningContainerListRefresher` to reload the list
+immediately. If an older list refresh is already running, that result is
+discarded and a new refresh starts after it finishes.
+
+Stopping removes the container from EDM because the application currently
+loads running containers only. Restarting uses the existing Docker container
+and does not recreate a Compose service.
 
 ### Container Filtering
 
@@ -434,9 +478,9 @@ These objects split the background work:
 
 - `DockerManager` asks the matching Docker data class to start work and
   reports how long EDM should wait before checking again.
-- `RunningContainerListRefresher`, `SelectedTabContentLoader`, and
-  `ContainerLogUpdater` each handle one kind of Docker request from start to
-  finish.
+- `RunningContainerListRefresher`, `SelectedTabContentLoader`,
+  `ContainerLogUpdater`, and `ContainerLifecycleActionRunner` handle their
+  Docker requests from start to finish.
 - `TabExportController` prepares a user-requested export and handles its result.
 - `BackgroundExecutor` runs the blocking function in a worker thread. It does
   not need to know whether the function reads Docker or writes a file.
@@ -481,13 +525,14 @@ flowchart TD
 ### Docker Data Components
 
 `EDMApp` and `TerminalController` request Docker data through `DockerManager`.
-Three smaller classes do the actual request tracking:
+Four smaller classes do the actual request tracking:
 
 | Component | What it handles |
 | --- | --- |
 | `RunningContainerListRefresher` | Container-list refreshes, selection preservation, and stopped-container cleanup |
 | `SelectedTabContentLoader` | Initial tab loads, cached-tab reuse, and periodic Env, Config, Stats, and Top refreshes |
 | `ContainerLogUpdater` | Incremental log polls, Docker since timestamps, overlap removal, and log limits |
+| `ContainerLifecycleActionRunner` | One confirmed Stop or Restart request and the list refresh that follows it |
 
 Initial logs are limited once by `ContainerTabTextLoader` while its Docker request runs
 in a worker thread. Incremental updates need two steps: each fetched batch is
@@ -601,7 +646,7 @@ or draw widgets. Later log polls do not use `ContainerTabTextLoader`;
 ## State And Cache
 
 `TerminalSessionState` holds the changing data for one run of EDM. Controllers
-and the three Docker data components update it. The terminal views only read
+and the four Docker workflow classes update it. The terminal views only read
 it.
 
 Important fields are:
@@ -615,6 +660,7 @@ Important fields are:
 | `container_sort_field` | Sort field currently applied to the container list |
 | `container_sort_descending` | Whether the active sort runs in descending order |
 | `container_sort_menu_state` | Temporary choices in the open sort menu, or `None` when it is closed |
+| `container_action_menu_state` | Target container and selected action while the action popup is open |
 | `tab_export_menu_state` | Path, scope, selection, and phase of the open export menu, or `None` when it is closed |
 | `active_detail_tab_name` | Logs, Env, Config, Stats, or Top |
 | `active_focus_area` | Panel that receives navigation keys |
@@ -678,6 +724,7 @@ environment keys, structured values, search matches, and errors.
 | `RunningContainerListRefresher` | Refreshes the running-container list, preserves selection, and removes stopped-container state |
 | `SelectedTabContentLoader` | Loads and periodically refreshes selected-tab content |
 | `ContainerLogUpdater` | Polls for new logs and updates cached log text |
+| `ContainerLifecycleActionRunner` | Runs one confirmed Stop or Restart request at a time |
 | `BackgroundExecutor` | Runs blocking functions and queues their completion callbacks |
 | `BackgroundNotifier` | Defines how finished work is reported to `EDMApp` |
 | `PipeBackgroundNotifier` | Provides immediate notification on Unix-like systems |
@@ -692,6 +739,8 @@ environment keys, structured values, search matches, and errors.
 | `SettingDefinition` | Describes one field shown in the settings popup |
 | `SettingsMenuState` | Stores the selected field and draft config while settings are open |
 | `ContainerSummary` | Stores the container and Compose fields used by the left panel |
+| `ContainerLifecycleAction` | Names the Stop and Restart operations supported by EDM |
+| `ContainerActionMenuState` | Stores the target and selected action while its popup is open |
 | `RunningContainerList` | Stores all running containers and applies grouping, sorting, and filtering |
 | `ContainerSortField` | Names the choices shown in the container sorting menu |
 | `get_container_list_in_requested_order` | Returns a sorted copy of the latest Docker container list |
@@ -733,11 +782,13 @@ environment keys, structured values, search matches, and errors.
 | `TabExportController` | Handles export choices, cached text snapshots, and file-write results |
 | `DiagnosticsController` | Opens diagnostics and applies the background Docker version result |
 | `SettingsController` | Edits and saves a validated config draft for the next EDM run |
+| `ContainerActionController` | Opens actions for the selected container and submits a confirmed choice |
 | `TerminalLayoutView` | Combines the panels, active popup, and shortcut footer |
 | `RunningContainerListPanel` | Displays the running-container list, header, footer, and border |
 | `SelectedContainerDetailsPanel` | Displays the selected container's tabs, rows, status, and border |
 | `ContainerSortMenuState` | Holds choices being edited in the sort menu |
 | `build_container_sort_popup_menu` | Builds the sort popup menu over the main layout |
+| `build_container_action_popup_menu` | Builds the container action popup over the main layout |
 | `build_tab_export_popup_menu` | Builds the export popup menu over the main layout |
 | `build_diagnostics_popup` | Builds the read-only diagnostics popup over the main layout |
 | `build_settings_popup_menu` | Builds the editable settings popup over the main layout |

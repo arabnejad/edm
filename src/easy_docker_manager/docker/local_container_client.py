@@ -23,6 +23,7 @@ from easy_docker_manager.core.containers import (
     ContainerSummary,
 )
 from easy_docker_manager.docker.container_client import (
+    ContainerLifecycleActionError,
     ContainerLogsUnavailableError,
     ContainerNotFoundError,
     DockerContainerClient,
@@ -226,6 +227,30 @@ class LocalDockerContainerClient(DockerContainerClient):
                 container_id,
                 exc,
             )
+
+    def stop_container(self, container_id: str) -> None:
+        """Stop the running container identified by container_id."""
+        try:
+            container = self._get_or_create_docker_client().containers.get(container_id)
+            container.stop()
+        except NotFound as exc:
+            raise ContainerNotFoundError(container_id) from exc
+        except Exception as exc:
+            logger.warning("Could not stop container %s: %s", container_id, exc)
+            raise ContainerLifecycleActionError("stop", container_id, str(exc)) from exc
+
+    def restart_container(self, container_id: str) -> None:
+        """Restart the container without changing its Docker configuration."""
+        try:
+            container = self._get_or_create_docker_client().containers.get(container_id)
+            container.restart()
+        except NotFound as exc:
+            raise ContainerNotFoundError(container_id) from exc
+        except Exception as exc:
+            logger.warning("Could not restart container %s: %s", container_id, exc)
+            raise ContainerLifecycleActionError(
+                "restart", container_id, str(exc)
+            ) from exc
 
     def get_docker_daemon_details(self) -> DockerDaemonDetails:
         """Ask the local daemon for the version details used by diagnostics."""

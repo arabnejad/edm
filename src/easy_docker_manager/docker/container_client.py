@@ -74,6 +74,18 @@ class DockerRequestFailedError(DockerContainerClientError):
         )
 
 
+class ContainerLifecycleActionError(DockerContainerClientError):
+    """Raised when Docker cannot stop or restart a container."""
+
+    def __init__(self, action_name: str, container_id: str, reason: str) -> None:
+        self.action_name = action_name
+        self.container_id = container_id
+        self.reason = reason
+        super().__init__(
+            f"Container {action_name} failed for {container_id[:12]}: {reason}"
+        )
+
+
 class ContainerLogsUnavailableError(DockerContainerClientError):
     """Raised when Docker cannot read logs for the configured logging driver."""
 
@@ -157,6 +169,14 @@ class DockerContainerClient(ABC):
         """Return one current resource-usage sample for a container."""
 
     @abstractmethod
+    def stop_container(self, container_id: str) -> None:
+        """Stop a running container."""
+
+    @abstractmethod
+    def restart_container(self, container_id: str) -> None:
+        """Restart a running container with its existing configuration."""
+
+    @abstractmethod
     def get_docker_daemon_details(self) -> DockerDaemonDetails:
         """Return version and platform details from the local Docker daemon."""
 
@@ -167,6 +187,7 @@ class DockerContainerClient(ABC):
 
 __all__ = [
     "DockerContainerClient",
+    "ContainerLifecycleActionError",
     "ContainerLogFetchError",
     "ContainerNotFoundError",
     "RunningContainerListRefreshError",

@@ -46,6 +46,7 @@ class RunningContainerListRefresher:
         )
 
         self._refresh_future: Optional[Future[list[ContainerSummary]]] = None
+        self._refresh_requested_after_current_request = False
         self._next_refresh_at = 0.0
 
     def refresh_if_needed(self, current_time: float) -> None:
@@ -80,6 +81,19 @@ class RunningContainerListRefresher:
             on_complete=self._apply_running_container_list_refresh_result,
         )
         return True
+
+    def request_immediate_running_container_list_refresh(self) -> None:
+        """Refresh now, or as soon as the current refresh finishes.
+
+        Stop or Restart may finish while an older container-list request is
+        still running. That older result may no longer be correct, so EDM
+        discards it and asks Docker for the list again.
+        """
+        self._next_refresh_at = 0.0
+        if self._refresh_future is not None:
+            self._refresh_requested_after_current_request = True
+            return
+        self.start_running_container_list_refresh(force=True)
 
     def rebuild_displayed_container_list(self) -> None:
         """Rebuild the displayed list after its sort or filter changes.
@@ -118,6 +132,11 @@ class RunningContainerListRefresher:
         if container_refresh_future is not self._refresh_future:
             return False
         self._refresh_future = None
+
+        if self._refresh_requested_after_current_request:
+            self._refresh_requested_after_current_request = False
+            self.start_running_container_list_refresh(force=True)
+            return True
 
         try:
             running_containers = container_refresh_future.result()

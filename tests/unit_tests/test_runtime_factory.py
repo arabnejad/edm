@@ -54,6 +54,11 @@ def test_runtime_factory_uses_supplied_config_and_data_source() -> None:
         settings_controller = runtime.keyboard_controller.settings_controller
         assert settings_controller.state is state
         assert settings_controller.app_config_store is app_config_store
+        container_action_controller = (
+            runtime.keyboard_controller.container_action_controller
+        )
+        assert container_action_controller.state is state
+        assert container_action_controller.docker_manager is docker_manager
     finally:
         runtime.background_executor.shutdown()
 
