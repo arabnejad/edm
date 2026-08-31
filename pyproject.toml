@@ -47,7 +47,7 @@ dev = [
     "build==1.4.4",
     "mypy==2.3.1",
     "pre-commit>=3.5,<5",
-    "ruff==0.16.4",
+    "ruff==0.16.5",
     "twine==7.0.0",
 ]
 security = [
