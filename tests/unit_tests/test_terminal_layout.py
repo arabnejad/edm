@@ -12,6 +12,11 @@ from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     ContainerSortMenuState,
 )
+from easy_docker_manager.core.docker_connections import (
+    DockerConnectionMenuState,
+    DockerConnectionTransport,
+    DockerContextDetails,
+)
 from easy_docker_manager.core.running_container_list import RunningContainerList
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import (
@@ -58,6 +63,7 @@ def test_layout_builds_all_named_palette_entries() -> None:
         "settings_menu_selected",
         "settings_value",
         "container_action_menu_selected",
+        "docker_connection_menu_selected",
     } <= palette.keys()
     assert palette["diagnostics_popup"] == ("light gray", "default")
     assert palette["diagnostics_value"] == ("yellow", "default")
@@ -66,6 +72,10 @@ def test_layout_builds_all_named_palette_entries() -> None:
         "light cyan",
     )
     assert palette["container_action_menu_selected"] == (
+        "white,bold",
+        "light cyan",
+    )
+    assert palette["docker_connection_menu_selected"] == (
         "white,bold",
         "light cyan",
     )
@@ -103,15 +113,16 @@ def test_title_panel_shows_github_repository_text_inside_complete_border() -> No
     assert "─" in rendered_title_lines[-1]
 
 
-def test_shortcut_footer_fits_settings_at_minimum_terminal_width() -> None:
+def test_shortcut_footer_fits_connection_and_settings_at_minimum_width() -> None:
     view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
     state = TerminalSessionState()
 
     view.render(state, [], lambda line: line)
 
     footer_line = view.layout.render((120, 30)).text[-1].decode()
-    assert " a  Actions" in footer_line
-    assert " p  Settings" in footer_line
+    assert " a Actions" in footer_line
+    assert " c Connect" in footer_line
+    assert " p Settings" in footer_line
 
 
 def test_container_action_popup_shows_actions_and_confirmation() -> None:
@@ -145,6 +156,37 @@ def test_container_action_popup_shows_actions_and_confirmation() -> None:
     assert 'Stop container "web"?' in rendered_text
     assert "The container will stop and disappear from the" in rendered_text
     assert "running-container list." in rendered_text
+
+
+def test_docker_connection_popup_shows_contexts_and_selected_endpoint() -> None:
+    local_context = DockerContextDetails(
+        "default",
+        "unix:///var/run/docker.sock",
+        DockerConnectionTransport.LOCAL,
+    )
+    remote_context = DockerContextDetails(
+        "staging",
+        "ssh://docker@staging",
+        DockerConnectionTransport.SSH,
+    )
+    state = TerminalSessionState(
+        active_docker_context=local_context,
+        docker_connection_menu_state=DockerConnectionMenuState(
+            [local_context, remote_context],
+            active_context_name="default",
+            selected_context_index=1,
+        ),
+    )
+    view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
+
+    view.render(state, [], lambda line: line)
+
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert "Docker Connections" in rendered_text
+    assert "localhost" in rendered_text
+    assert "> staging" in rendered_text
+    assert "ssh://docker@staging" in rendered_text
+    assert "Not checked" in rendered_text
 
 
 def test_render_shows_diagnostics_above_other_popups() -> None:
@@ -238,6 +280,21 @@ def test_render_shows_empty_container_state() -> None:
     assert rendered_text.index("No running containers.") < rendered_text.index(
         "Refresh 2s | Logs 100 lines"
     )
+
+
+def test_container_panel_shows_active_remote_context_name() -> None:
+    remote_context = DockerContextDetails(
+        "staging",
+        "ssh://docker@staging",
+        DockerConnectionTransport.SSH,
+    )
+    view = TerminalLayoutView(AppConfig())
+    state = TerminalSessionState(active_docker_context=remote_context)
+
+    view.render(state, [], lambda line: line)
+
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert "staging (active)" in rendered_text
 
 
 def test_render_shows_and_hides_container_sort_menu() -> None:
@@ -375,7 +432,7 @@ def test_container_panel_shows_filter_query_match_count_and_editing_state(
     assert view.running_container_list_panel.container_filter_text.get_text()[0] == (
         " f  Filter: redis (1/3) [editing]"
     )
-    assert " f  Filter" in view.shortcut_footer_text.get_text()[0]
+    assert " f Filter" in view.shortcut_footer_text.get_text()[0]
 
 
 def test_container_panel_shows_compose_sections_and_plain_container_rows(

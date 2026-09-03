@@ -12,7 +12,7 @@ KEYBOARD_HELP_DETAILS = """  Up/Down     Select a container or detail line
   /           Search the active tab
   f / s / e   Filter containers, sort containers, or export a tab
   a           Open actions for the selected container
-  p           Open settings
+  c / p       Change Docker context or open settings
   q           Quit EDM"""
 
 
@@ -56,7 +56,7 @@ def build_diagnostics_popup(
         align="center",
         width=88,
         valign="middle",
-        height=28,
+        height=29,
     )
 
 

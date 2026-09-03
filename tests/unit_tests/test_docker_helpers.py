@@ -6,6 +6,10 @@ from unittest.mock import Mock
 import pytest
 from docker.errors import DockerException, NotFound
 
+from easy_docker_manager.core.docker_connections import (
+    DockerConnectionTransport,
+    DockerContextDetails,
+)
 from easy_docker_manager.docker import client_factory
 from easy_docker_manager.docker.container_client import (
     ContainerLogFetchError,
@@ -28,54 +32,212 @@ def test_docker_container_client_is_abstract() -> None:
         DockerContainerClient()  # type: ignore[abstract]
 
 
-def test_create_docker_client_passes_the_timeout(monkeypatch) -> None:
-    monkeypatch.delenv("DOCKER_HOST", raising=False)
+def test_create_docker_client_uses_named_context_and_timeout(monkeypatch) -> None:
     docker_client = object()
-    docker_from_env = Mock(return_value=docker_client)
-    monkeypatch.setattr(client_factory.docker, "from_env", docker_from_env)
+    docker_from_context = Mock(return_value=docker_client)
+    monkeypatch.setattr(client_factory.docker, "from_context", docker_from_context)
+    docker_context = DockerContextDetails(
+        "default",
+        "unix:///var/run/docker.sock",
+        DockerConnectionTransport.LOCAL,
+    )
 
-    assert client_factory.create_docker_client(3.5) is docker_client
-    docker_from_env.assert_called_once_with(timeout=3.5)
+    assert client_factory.create_docker_client(docker_context, 3.5) is docker_client
+    docker_from_context.assert_called_once_with(
+        "default",
+        timeout=3.5,
+        use_ssh_client=False,
+    )
 
 
-@pytest.mark.parametrize(
-    "docker_host",
-    ["unix:///var/run/docker.sock", "npipe:////./pipe/docker_engine"],
-)
-def test_create_docker_client_accepts_local_endpoints(
-    monkeypatch,
-    docker_host: str,
-) -> None:
-    monkeypatch.setenv("DOCKER_HOST", docker_host)
+def test_create_docker_client_uses_environment_connection(monkeypatch) -> None:
     docker_from_env = Mock(return_value=object())
     monkeypatch.setattr(client_factory.docker, "from_env", docker_from_env)
+    docker_context = DockerContextDetails(
+        "DOCKER_HOST",
+        "unix:///tmp/docker.sock",
+        DockerConnectionTransport.LOCAL,
+        uses_docker_environment=True,
+    )
 
-    client_factory.create_docker_client(2.5)
+    client_factory.create_docker_client(docker_context, 2.5)
 
-    docker_from_env.assert_called_once_with(timeout=2.5)
+    docker_from_env.assert_called_once_with(timeout=2.5, use_ssh_client=False)
 
 
-@pytest.mark.parametrize(
-    "docker_host",
-    ["tcp://docker.example.com:2376", "ssh://docker.example.com"],
-)
-def test_create_docker_client_rejects_remote_endpoints(
-    monkeypatch,
-    docker_host: str,
-) -> None:
-    monkeypatch.setenv("DOCKER_HOST", docker_host)
-    docker_from_env = Mock()
-    monkeypatch.setattr(client_factory.docker, "from_env", docker_from_env)
+def test_create_docker_client_accepts_ssh_context(monkeypatch) -> None:
+    docker_from_context = Mock(return_value=object())
+    monkeypatch.setattr(client_factory.docker, "from_context", docker_from_context)
+    docker_context = DockerContextDetails(
+        "staging",
+        "ssh://docker@staging",
+        DockerConnectionTransport.SSH,
+    )
 
-    with pytest.raises(DockerException, match="local Docker"):
-        client_factory.create_docker_client(2.5)
+    client_factory.create_docker_client(docker_context, 2.5)
 
-    docker_from_env.assert_not_called()
+    docker_from_context.assert_called_once_with(
+        "staging",
+        timeout=2.5,
+        use_ssh_client=False,
+    )
+
+
+def test_create_docker_client_rejects_tcp_context(monkeypatch) -> None:
+    docker_from_context = Mock()
+    monkeypatch.setattr(client_factory.docker, "from_context", docker_from_context)
+    docker_context = DockerContextDetails(
+        "production",
+        "tcp://docker.example.com:2376",
+        DockerConnectionTransport.TCP,
+    )
+
+    with pytest.raises(DockerException, match="TLS support"):
+        client_factory.create_docker_client(docker_context, 2.5)
+
+    docker_from_context.assert_not_called()
+
+
+def test_create_docker_client_rejects_context_without_endpoint(monkeypatch) -> None:
+    docker_from_context = Mock()
+    monkeypatch.setattr(client_factory.docker, "from_context", docker_from_context)
+    docker_context = DockerContextDetails(
+        "missing",
+        "",
+        DockerConnectionTransport.UNKNOWN,
+    )
+
+    with pytest.raises(DockerException, match="has no endpoint"):
+        client_factory.create_docker_client(docker_context, 2.5)
+
+    docker_from_context.assert_not_called()
 
 
 def test_create_docker_client_rejects_invalid_timeout() -> None:
+    docker_context = DockerContextDetails(
+        "default",
+        "unix:///var/run/docker.sock",
+        DockerConnectionTransport.LOCAL,
+    )
     with pytest.raises(ValueError, match="request_timeout must be positive"):
-        client_factory.create_docker_client(0)
+        client_factory.create_docker_client(docker_context, 0)
+
+
+def test_validated_docker_context_client_is_pinged_and_returned(
+    monkeypatch,
+) -> None:
+    docker_context = DockerContextDetails(
+        "staging",
+        "ssh://docker@staging",
+        DockerConnectionTransport.SSH,
+    )
+    docker_client = Mock()
+    monkeypatch.setattr(
+        client_factory,
+        "create_docker_client",
+        Mock(return_value=docker_client),
+    )
+
+    validated_client = client_factory.create_validated_docker_client_for_context(
+        docker_context, 3.5
+    )
+
+    docker_client.ping.assert_called_once_with()
+    docker_client.close.assert_not_called()
+    assert validated_client is docker_client
+
+
+def test_failed_docker_context_ping_closes_the_created_client(monkeypatch) -> None:
+    docker_context = DockerContextDetails(
+        "staging",
+        "ssh://docker@staging",
+        DockerConnectionTransport.SSH,
+    )
+    docker_client = Mock()
+    docker_client.ping.side_effect = DockerException("daemon refused")
+    monkeypatch.setattr(
+        client_factory,
+        "create_docker_client",
+        Mock(return_value=docker_client),
+    )
+
+    with pytest.raises(
+        client_factory.DockerContextConnectionError,
+        match="daemon refused",
+    ):
+        client_factory.create_validated_docker_client_for_context(docker_context, 3.5)
+
+    docker_client.close.assert_called_once_with()
+
+
+def test_validated_docker_context_client_explains_ssh_authentication_failure(
+    monkeypatch,
+) -> None:
+    docker_context = DockerContextDetails(
+        "staging",
+        "ssh://docker@staging",
+        DockerConnectionTransport.SSH,
+    )
+    authentication_error_type = type("AuthenticationException", (Exception,), {})
+    monkeypatch.setattr(
+        client_factory,
+        "create_docker_client",
+        Mock(side_effect=authentication_error_type("denied")),
+    )
+
+    with pytest.raises(
+        client_factory.DockerContextConnectionError,
+        match="SSH authentication failed",
+    ):
+        client_factory.create_validated_docker_client_for_context(docker_context, 3.5)
+
+
+@pytest.mark.parametrize(
+    ("error_type_name", "error_message", "expected_message"),
+    [
+        (
+            "BadHostKeyException",
+            "host key changed",
+            "host key does not match",
+        ),
+        (
+            "SSHException",
+            "server not found in known_hosts",
+            "host key is not trusted",
+        ),
+        (
+            "NoValidConnectionsError",
+            "connection refused",
+            "SSH host could not be reached",
+        ),
+        ("TimeoutError", "timed out", "connection timed out"),
+        ("DockerException", "  daemon   refused  ", "daemon refused"),
+        ("EmptyDockerError", "", "EmptyDockerError"),
+    ],
+)
+def test_validated_docker_context_client_formats_connection_errors(
+    monkeypatch,
+    error_type_name: str,
+    error_message: str,
+    expected_message: str,
+) -> None:
+    docker_context = DockerContextDetails(
+        "staging",
+        "ssh://docker@staging",
+        DockerConnectionTransport.SSH,
+    )
+    connection_error_type = type(error_type_name, (Exception,), {})
+    monkeypatch.setattr(
+        client_factory,
+        "create_docker_client",
+        Mock(side_effect=connection_error_type(error_message)),
+    )
+
+    with pytest.raises(
+        client_factory.DockerContextConnectionError,
+        match=expected_message,
+    ):
+        client_factory.create_validated_docker_client_for_context(docker_context, 3.5)
 
 
 def test_container_mapper_prefers_sdk_attributes() -> None:

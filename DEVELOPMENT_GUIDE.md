@@ -34,6 +34,7 @@ src/
       container_actions.py        Container actions and action-menu state
       container_sorting.py       Container sort fields and ordering
       containers.py               Container, process, and resource data classes
+      docker_connections.py       Docker context and connection menu data
       tab_content_cache.py        Size-limited tab text cache
       log_text.py                 Log trimming and duplicate-line handling
       tabs.py                     Detail tab names
@@ -41,10 +42,12 @@ src/
 
     docker/
       container_client.py         DockerContainerClient interface and EDM errors
-      client_factory.py           Creates the local Docker SDK client
+      client_factory.py           Creates and validates Docker SDK clients
+      docker_contexts.py          Reads Docker contexts and endpoints
       container_mapper.py         Converts Docker objects to EDM data
       error_mapping.py            Converts Docker SDK errors to EDM errors
-      local_container_client.py   Sends requests to the local Docker daemon
+      docker_sdk_container_client.py
+                                  Sends requests through the active Docker context
       log_availability.py         Checks whether Docker can read container logs
       container_resource_stats_builder.py
                                    Converts Docker resource counters into EDM data
@@ -69,6 +72,9 @@ src/
       container_action_controller.py
                                   Handles action selection and confirmation
       container_action_popup.py   Builds the container action popup
+      docker_connection_controller.py
+                                  Checks and switches Docker contexts
+      docker_connection_popup.py Builds the Docker context popup
       tab_export_controller.py    Handles the export workflow
       tab_export_menu.py          Builds the export popup menu
       terminal_layout.py          Combines panels, popups, and the footer
@@ -104,6 +110,7 @@ flowchart TD
     ExportController[TabExportController]
     SettingsController[SettingsController]
     ActionController[ContainerActionController]
+    ConnectionController[DockerConnectionController]
     State[(TerminalSessionState)]
     DockerManager[DockerManager]
     ContainerRefresh[RunningContainerListRefresher]
@@ -113,9 +120,10 @@ flowchart TD
     Executor[BackgroundExecutor]
     Notifier[BackgroundNotifier]
     Loader[ContainerTabTextLoader]
-    Client[LocalDockerContainerClient]
+    ContextReader[DockerContextReader]
+    Client[DockerSDKContainerClient]
     DockerSDK[Docker SDK for Python]
-    Docker[(🐳 Local Docker daemon)]
+    Docker[(🐳 Selected Docker daemon)]
     Filter[TabTextFilter]
     Formatter[DetailTabTextFormatter]
     Exporter[TabExportWriter]
@@ -129,6 +137,7 @@ flowchart TD
     Keyboard --> ExportController
     Keyboard --> SettingsController
     Keyboard --> ActionController
+    Keyboard --> ConnectionController
 
     UI --> Filter
     UI --> Formatter
@@ -140,6 +149,11 @@ flowchart TD
     SettingsController --> State
     ActionController --> State
     ActionController --> DockerManager
+    ConnectionController --> State
+    ConnectionController --> Executor
+    ConnectionController --> ContextReader
+    ConnectionController --> DockerManager
+    ConnectionController --> Client
 
     App --> DockerManager
     UI --> DockerManager
@@ -159,6 +173,7 @@ flowchart TD
     Executor --> Loader --> Client
     Executor --> Client
     Executor --> Exporter --> File
+    ContextReader --> DockerSDK
     Client --> DockerSDK --> Docker
 
     Executor --> Notifier --> App
@@ -167,7 +182,7 @@ flowchart TD
     classDef thirdParty fill:#fff8c5,stroke:#9a6700,color:#1f2328
     classDef external fill:#f6f8fa,stroke:#57606a,color:#1f2328
 
-    class App,Keyboard,UI,ExportController,SettingsController,ActionController,State,DockerManager,ContainerRefresh,TabLoad,LogUpdates,Lifecycle,Executor,Notifier,Loader,Client,Filter,Formatter,Exporter,View edm
+    class App,Keyboard,UI,ExportController,SettingsController,ActionController,ConnectionController,State,DockerManager,ContainerRefresh,TabLoad,LogUpdates,Lifecycle,Executor,Notifier,Loader,ContextReader,Client,Filter,Formatter,Exporter,View edm
     class DockerSDK,Urwid thirdParty
     class User,Docker,Terminal,File external
 ```
@@ -185,6 +200,8 @@ The main responsibilities are:
   EDM run.
 - `ContainerActionController` handles action selection and confirmation for
   the selected running container.
+- `DockerConnectionController` reads saved contexts, checks the selected one
+  in a worker, and switches the connection when the check succeeds.
 - `TabTextFilter` applies the same line-visibility rules to the terminal and
   Current view exports.
 - `DockerManager` gives the rest of EDM one place to request Docker data. It
@@ -199,7 +216,10 @@ The main responsibilities are:
   Together, these visible parts are called the terminal view.
 - `RunningContainerListPanel` and `SelectedContainerDetailsPanel` update the
   Urwid widgets in their panel.
-- `LocalDockerContainerClient` is the only class that calls the Docker SDK.
+- `DockerContextReader` reads the context names and endpoints stored by
+  Docker. It does not connect to those endpoints.
+- `DockerSDKContainerClient` is the only class that sends container requests
+  through the Docker SDK.
 
 ## Startup
 
@@ -282,7 +302,9 @@ a new setting unless `AppConfigStore` contains a specific migration for it.
 
 `configure_logging()` runs before config loading so it can also report config
 errors. It writes EDM's own messages to a rotating `edm.log` file. Container
-logs are shown in the Logs tab and are not written to this file. If the saved
+logs are shown in the Logs tab and are not written to this file. Paramiko
+warnings and errors also go to `edm.log`, but not to the optional terminal
+output. This keeps SSH messages from overwriting the EDM screen. If the saved
 application log settings differ from the defaults, startup calls
 `configure_logging()` again with the loaded `AppConfig`. Logging environment
 variables take priority over the saved values.
@@ -300,6 +322,7 @@ flowchart LR
     Diagnostics[DiagnosticsController]
     Settings[SettingsController]
     Actions[ContainerActionController]
+    Connections[DockerConnectionController]
     State[(TerminalSessionState)]
     View[TerminalLayoutView]
 
@@ -310,11 +333,13 @@ flowchart LR
     Keyboard --> Diagnostics
     Keyboard --> Settings
     Keyboard --> Actions
+    Keyboard --> Connections
     UI --> State
     Export --> State
     Diagnostics --> State
     Settings --> State
     Actions --> State
+    Connections --> State
     UI --> View
 ```
 
@@ -338,10 +363,51 @@ selected running container. While the popup is open, normal shortcuts are
 ignored. The first `Enter` shows the confirmation screen. The second submits
 the action. `Esc` closes the popup without changing the container.
 
-`DiagnosticsController` fills the report with application versions and file
-paths before the first redraw. It sends the Docker daemon version request to
-`BackgroundExecutor`, then updates the open popup when the request finishes.
-This keeps the terminal responsive when Docker is slow or unavailable.
+`c` or `C` opens the connection popup. EDM reads the context list from Docker's
+local configuration but does not connect to any of them yet. `Up` and `Down`
+change the selection, and `Enter` checks the selected connection in a worker.
+Other shortcuts are ignored while the popup is open. `Esc` closes it when no
+check is running.
+
+Whenever Help opens, `DiagnosticsController` creates a new report with the
+application versions and file paths. It asks `BackgroundExecutor` to load the
+active Docker daemon's version, then updates the popup when the request
+finishes. Results from an earlier Help popup are ignored. The request runs in
+a worker so the terminal remains responsive if Docker is unavailable.
+
+### Docker Connections
+
+The user setup and menu behavior are documented in
+[Remote Docker Over SSH](README.md#remote-docker-over-ssh).
+
+`DockerContextReader` reads context names and endpoints from Docker's local
+configuration. Opening the popup does not contact the saved servers. EDM shows
+Docker's built-in `default` context as `localhost`. When `DOCKER_HOST` selects
+the active connection, the popup includes it as a separate entry.
+
+EDM can open local socket, Windows named-pipe, and SSH connections. It also
+lists TCP contexts, but marks them as unsupported. Remote TCP connections need
+the TLS support planned for issue #30.
+
+When the user presses `Enter`, `DockerConnectionController` runs
+`create_validated_docker_client_for_context()` through `BackgroundExecutor`.
+The function opens the selected context and pings its daemon. For SSH
+connections, the Docker SDK uses Paramiko with the user's SSH key or
+`ssh-agent`. EDM cannot show an SSH password prompt.
+
+If the check fails, the new client is closed and the current connection stays
+active. If it succeeds, EDM reuses the checked client instead of connecting a
+second time. Work already running for the old context is allowed to finish,
+but `DockerManager` ignores its results. The old clients are closed when EDM
+shuts down.
+
+After switching, EDM clears the old containers, tab content, searches, errors,
+statistics samples, and log positions. It then loads the running containers
+from the new daemon. The filter and sort choices remain because they are UI
+preferences, not Docker data.
+
+EDM never calls `docker context use`, so changing context inside EDM does not
+change the context used by another terminal.
 
 ### Settings Editor
 
@@ -633,7 +699,7 @@ sorts environment variables by name. Config formats Docker inspection data.
 Stats formats one current resource sample. Top turns Docker's process columns
 and rows into text.
 
-`LocalDockerContainerClient` keeps the last Stats sample for each running
+`DockerSDKContainerClient` keeps the last Stats sample for each running
 container. It uses two samples to calculate network and block I/O rates. The
 first sample has no earlier counters, so those rates are `N/A`. Samples for
 stopped containers are removed during the next successful container refresh.
@@ -725,6 +791,7 @@ environment keys, structured values, search matches, and errors.
 | `SelectedTabContentLoader` | Loads and periodically refreshes selected-tab content |
 | `ContainerLogUpdater` | Polls for new logs and updates cached log text |
 | `ContainerLifecycleActionRunner` | Runs one confirmed Stop or Restart request at a time |
+| `DockerConnectionController` | Checks a selected context and switches the active Docker connection |
 | `BackgroundExecutor` | Runs blocking functions and queues their completion callbacks |
 | `BackgroundNotifier` | Defines how finished work is reported to `EDMApp` |
 | `PipeBackgroundNotifier` | Provides immediate notification on Unix-like systems |
@@ -741,6 +808,8 @@ environment keys, structured values, search matches, and errors.
 | `ContainerSummary` | Stores the container and Compose fields used by the left panel |
 | `ContainerLifecycleAction` | Names the Stop and Restart operations supported by EDM |
 | `ContainerActionMenuState` | Stores the target and selected action while its popup is open |
+| `DockerContextDetails` | Stores one context name, endpoint, and connection transport |
+| `DockerConnectionMenuState` | Stores discovered contexts, selection, checks, and connection errors while its popup is open |
 | `RunningContainerList` | Stores all running containers and applies grouping, sorting, and filtering |
 | `ContainerSortField` | Names the choices shown in the container sorting menu |
 | `get_container_list_in_requested_order` | Returns a sorted copy of the latest Docker container list |
@@ -761,10 +830,12 @@ environment keys, structured values, search matches, and errors.
 | Class or module | What it does |
 | --- | --- |
 | `DockerContainerClient` | Defines the container data and daemon details EDM needs |
-| `LocalDockerContainerClient` | Reads that information through the local Docker SDK |
+| `DockerSDKContainerClient` | Reads that information through the active Docker SDK connection |
+| `DockerContextReader` | Reads context names and endpoints from Docker's local configuration |
 | `FailedDockerRequestType` | Identifies the Docker request that failed |
 | Docker error classes | Describe missing containers, failed refreshes, failed requests, and unreadable logs |
-| `create_docker_client` | Creates a local Docker SDK client and rejects remote `DOCKER_HOST` transports |
+| `create_docker_client` | Creates a Docker SDK client for a local or SSH context |
+| `create_validated_docker_client_for_context` | Creates and pings a client that EDM reuses after a successful context switch |
 | `to_container_summary` | Converts a Docker container object to `ContainerSummary` |
 | `ContainerTabTextLoader` | Loads and formats the full text for a requested detail tab |
 | `build_container_resource_stats_snapshot` | Converts Docker resource counters into one Stats sample |
@@ -783,12 +854,14 @@ environment keys, structured values, search matches, and errors.
 | `DiagnosticsController` | Opens diagnostics and applies the background Docker version result |
 | `SettingsController` | Edits and saves a validated config draft for the next EDM run |
 | `ContainerActionController` | Opens actions for the selected container and submits a confirmed choice |
+| `DockerConnectionController` | Opens context selection and applies a successful connection check |
 | `TerminalLayoutView` | Combines the panels, active popup, and shortcut footer |
 | `RunningContainerListPanel` | Displays the running-container list, header, footer, and border |
 | `SelectedContainerDetailsPanel` | Displays the selected container's tabs, rows, status, and border |
 | `ContainerSortMenuState` | Holds choices being edited in the sort menu |
 | `build_container_sort_popup_menu` | Builds the sort popup menu over the main layout |
 | `build_container_action_popup_menu` | Builds the container action popup over the main layout |
+| `build_docker_connection_popup_menu` | Builds the Docker context popup over the main layout |
 | `build_tab_export_popup_menu` | Builds the export popup menu over the main layout |
 | `build_diagnostics_popup` | Builds the read-only diagnostics popup over the main layout |
 | `build_settings_popup_menu` | Builds the editable settings popup over the main layout |

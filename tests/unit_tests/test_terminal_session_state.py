@@ -123,3 +123,34 @@ def test_remove_state_for_stopped_containers_removes_its_cached_data() -> None:
     assert state.tab_content_error_messages == {live_container_tab_key: "live error"}
     assert state.tab_export_menu_state is None
     assert state.container_action_menu_state is None
+
+
+def test_context_change_clears_container_data_but_keeps_display_options(
+    container_summary_factory,
+) -> None:
+    state = TerminalSessionState(
+        running_container_list=RunningContainerList([container_summary_factory()]),
+        selected_container_index=0,
+        container_filter_query="web",
+        container_sort_field=ContainerSortField.NAME,
+        container_sort_descending=True,
+        active_focus_area=FocusArea.DETAIL,
+    )
+    container_tab_key = ContainerTabKey("container-1", TabName.LOGS)
+    state.tab_content_cache[container_tab_key] = "old logs"
+    state.tab_search_queries[container_tab_key] = "error"
+    state.unreadable_log_container_ids.add("container-1")
+    state.tab_content_error_messages[container_tab_key] = "old error"
+
+    state.clear_container_data_for_docker_context_change()
+
+    assert state.running_container_list.displayed_containers == []
+    assert state.selected_container_index is None
+    assert len(state.tab_content_cache) == 0
+    assert state.tab_search_queries == {}
+    assert state.unreadable_log_container_ids == set()
+    assert state.tab_content_error_messages == {}
+    assert state.active_focus_area == FocusArea.CONTAINERS
+    assert state.container_filter_query == "web"
+    assert state.container_sort_field == ContainerSortField.NAME
+    assert state.container_sort_descending

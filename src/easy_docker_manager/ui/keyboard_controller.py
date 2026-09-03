@@ -8,6 +8,9 @@ from typing import Optional
 from easy_docker_manager.core.terminal_session_state import FocusArea
 from easy_docker_manager.ui.container_action_controller import ContainerActionController
 from easy_docker_manager.ui.diagnostics_controller import DiagnosticsController
+from easy_docker_manager.ui.docker_connection_controller import (
+    DockerConnectionController,
+)
 from easy_docker_manager.ui.settings_controller import SettingsController
 from easy_docker_manager.ui.tab_export_controller import TabExportController
 from easy_docker_manager.ui.terminal_controller import TerminalController
@@ -36,6 +39,7 @@ class KeyboardController:
         diagnostics_controller: DiagnosticsController,
         settings_controller: SettingsController,
         container_action_controller: ContainerActionController,
+        docker_connection_controller: DockerConnectionController,
     ) -> None:
         """Keep the UI controllers and their shared session state."""
         self.terminal_controller = terminal_controller
@@ -43,6 +47,7 @@ class KeyboardController:
         self.diagnostics_controller = diagnostics_controller
         self.settings_controller = settings_controller
         self.container_action_controller = container_action_controller
+        self.docker_connection_controller = docker_connection_controller
         self.state = terminal_controller.state
 
     def handle_keypress(
@@ -57,6 +62,8 @@ class KeyboardController:
             return self._handle_settings_menu_keypress(key)
         if self.state.container_action_menu_state is not None:
             return self._handle_container_action_menu_keypress(key)
+        if self.state.docker_connection_menu_state is not None:
+            return self._handle_docker_connection_menu_keypress(key)
         if self.state.tab_export_menu_state is not None:
             return self._handle_tab_export_menu_keypress(key)
         if self.state.container_sort_menu_state is not None:
@@ -86,6 +93,12 @@ class KeyboardController:
             return (
                 KeyAction.REDRAW
                 if self.container_action_controller.open_container_action_menu()
+                else KeyAction.NONE
+            )
+        if key in {"c", "C"}:
+            return (
+                KeyAction.REDRAW
+                if self.docker_connection_controller.open_docker_connection_menu()
                 else KeyAction.NONE
             )
         if key in {"q", "Q"}:
@@ -196,6 +209,11 @@ class KeyboardController:
     def _handle_container_action_menu_keypress(self, key: str) -> KeyAction:
         """Pass one action-menu key to ContainerActionController."""
         changed = self.container_action_controller.handle_menu_keypress(key)
+        return KeyAction.REDRAW if changed else KeyAction.NONE
+
+    def _handle_docker_connection_menu_keypress(self, key: str) -> KeyAction:
+        """Pass one connection-menu key to DockerConnectionController."""
+        changed = self.docker_connection_controller.handle_menu_keypress(key)
         return KeyAction.REDRAW if changed else KeyAction.NONE
 
     def _handle_tab_export_menu_keypress(self, key: str) -> KeyAction:

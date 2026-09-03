@@ -6,13 +6,17 @@ import uuid
 from collections.abc import Iterator
 from contextlib import suppress
 
-import docker
 import pytest
+from docker import DockerClient
 from docker.errors import DockerException, NotFound
 from docker.models.containers import Container
 
+from easy_docker_manager.core.docker_connections import DockerConnectionTransport
 from easy_docker_manager.docker.client_factory import create_docker_client
-from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
+from easy_docker_manager.docker.docker_contexts import DockerContextReader
+from easy_docker_manager.docker.docker_sdk_container_client import (
+    DockerSDKContainerClient,
+)
 from tests.integration_tests.docker_test_setup import DockerIntegrationTestContainer
 
 CONTAINER_IMAGE = os.getenv("EDM_INTEGRATION_TEST_IMAGE", "alpine:3.20")
@@ -30,10 +34,13 @@ CONTAINER_START_TIMEOUT_SECONDS = 20.0
 
 
 @pytest.fixture(scope="session")
-def docker_client() -> Iterator[docker.DockerClient]:
+def docker_client() -> Iterator[DockerClient]:
     """Connect to local Docker or skip the integration suite when unavailable."""
     try:
-        client = create_docker_client(request_timeout=10.0)
+        docker_context = DockerContextReader().get_startup_docker_context()
+        if docker_context.transport != DockerConnectionTransport.LOCAL:
+            pytest.skip("Integration tests require a local Docker context")
+        client = create_docker_client(docker_context, request_timeout=10.0)
         client.ping()
     except DockerException as exc:
         pytest.skip(f"Local Docker is unavailable: {exc}")
@@ -46,7 +53,7 @@ def docker_client() -> Iterator[docker.DockerClient]:
 
 @pytest.fixture(scope="session")
 def docker_test_setup(
-    docker_client: docker.DockerClient,
+    docker_client: DockerClient,
 ) -> Iterator[DockerIntegrationTestContainer]:
     """Start one container shared by the Docker integration tests, then remove it."""
     container_name = f"edm-integration-{uuid.uuid4().hex[:12]}"
@@ -78,10 +85,14 @@ def docker_test_setup(
 
 
 @pytest.fixture
-def local_docker_container_client() -> Iterator[LocalDockerContainerClient]:
+def local_docker_container_client() -> Iterator[DockerSDKContainerClient]:
     """Create the real container client with a separate Docker connection."""
-    docker_container_client = LocalDockerContainerClient(
-        create_docker_client=lambda: create_docker_client(request_timeout=10.0)
+    docker_context = DockerContextReader().get_startup_docker_context()
+    docker_container_client = DockerSDKContainerClient(
+        create_docker_client=lambda: create_docker_client(
+            docker_context,
+            request_timeout=10.0,
+        )
     )
     try:
         yield docker_container_client

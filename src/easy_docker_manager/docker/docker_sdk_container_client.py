@@ -1,11 +1,9 @@
-"""Read container data from Docker running on this computer.
+"""Read container data through the active Docker SDK connection.
 
-LocalDockerContainerClient connects to the local Docker daemon through the
-Docker Python SDK. It lists running containers and loads their logs,
-environment variables, inspection data, resource statistics, and process
-lists. It opens the connection on the first request, reuses it while EDM runs,
-and closes it during shutdown. Callers receive EDM errors instead of raw Docker
-SDK exceptions.
+This client opens the startup context when the first request arrives and
+reuses the connection. When the user changes context, it switches to the
+client that passed the connection check. It also converts Docker SDK failures
+into EDM errors for the rest of the application.
 """
 
 from __future__ import annotations
@@ -14,7 +12,7 @@ import logging
 from collections.abc import Callable
 from typing import Any, Optional, Union
 
-import docker
+from docker import DockerClient
 from docker.errors import DockerException, NotFound
 
 from easy_docker_manager.core.containers import (
@@ -44,33 +42,34 @@ from easy_docker_manager.docker.log_availability import (
 logger = logging.getLogger(__name__)
 
 
-class LocalDockerContainerClient(DockerContainerClient):
-    """Implement EDM's container requests with the local Docker daemon."""
+class DockerSDKContainerClient(DockerContainerClient):
+    """Send EDM's container requests through the Docker Python SDK."""
 
     def __init__(
         self,
-        create_docker_client: Callable[[], docker.DockerClient],
+        create_docker_client: Callable[[], DockerClient],
     ) -> None:
         """Save the client factory but do not connect until the first request."""
         self._create_docker_client = create_docker_client
-        self._docker_client: Optional[docker.DockerClient] = None
+        self._docker_client: Optional[DockerClient] = None
+        self._docker_clients_retained_until_shutdown: list[DockerClient] = []
         self._last_resource_stats_snapshot_by_container_id: dict[
             str, ContainerResourceStatsSnapshot
         ] = {}
 
-    def _get_or_create_docker_client(self) -> docker.DockerClient:
+    def _get_or_create_docker_client(self) -> DockerClient:
         """Open the Docker connection on first use and reuse it afterward."""
         if self._docker_client is None:
             try:
                 self._docker_client = self._create_docker_client()
             except DockerException:
-                logger.exception("Failed to connect to local Docker")
+                logger.exception("Failed to connect to Docker")
                 raise
 
         return self._docker_client
 
     def list_running_containers(self) -> list[ContainerSummary]:
-        """Return local running containers or raise RunningContainerListRefreshError."""
+        """Return running containers or raise RunningContainerListRefreshError."""
         try:
             docker_containers = self._get_or_create_docker_client().containers.list(
                 filters={"status": "running"}
@@ -155,10 +154,12 @@ class LocalDockerContainerClient(DockerContainerClient):
     def get_container_inspection_data(self, container_id: str) -> dict[str, Any]:
         """Return container inspection data and any available image data."""
         try:
-            container = self._get_or_create_docker_client().containers.get(container_id)
+            docker_client = self._get_or_create_docker_client()
+            container = docker_client.containers.get(container_id)
             container_attrs = container.attrs
             image_attrs = self._load_image_inspection_data_for_container(
-                container_attrs
+                docker_client,
+                container_attrs,
             )
             return {
                 "container": container_attrs,
@@ -253,7 +254,7 @@ class LocalDockerContainerClient(DockerContainerClient):
             ) from exc
 
     def get_docker_daemon_details(self) -> DockerDaemonDetails:
-        """Ask the local daemon for the version details used by diagnostics."""
+        """Ask the active daemon for the version details used by diagnostics."""
         try:
             version_response = self._get_or_create_docker_client().version()
         except Exception as exc:
@@ -269,18 +270,43 @@ class LocalDockerContainerClient(DockerContainerClient):
             architecture=_get_non_empty_text(version_response.get("Arch")),
         )
 
-    def close(self) -> None:
-        """Close the Docker SDK client if one was created.
+    def switch_docker_connection(
+        self,
+        validated_docker_client: DockerClient,
+    ) -> None:
+        """Switch to a client that has already passed the connection check.
 
-        EDMApp.run() calls this after the terminal interface stops and all
-        workers finish. If EDM made no Docker request, there is no connection
-        to close. Clearing the saved reference prevents accidental reuse of a
-        closed client.
+        A request for the previous context may still be running. Its client
+        stays open so the request can finish, but DockerManager ignores the
+        result. EDM closes the old client at shutdown after all workers finish.
         """
-        if self._docker_client:
-            self._docker_client.close()
-            self._docker_client = None
+        previous_docker_client = self._docker_client
+        self._docker_client = validated_docker_client
         self._last_resource_stats_snapshot_by_container_id.clear()
+        if (
+            previous_docker_client is not None
+            and previous_docker_client is not validated_docker_client
+        ):
+            self._docker_clients_retained_until_shutdown.append(previous_docker_client)
+
+    def close(self) -> None:
+        """Close the active client and any clients kept after context changes.
+
+        EDMApp calls this after its workers finish, so none of these clients
+        are still handling a Docker request.
+        """
+        docker_clients = [*self._docker_clients_retained_until_shutdown]
+        if self._docker_client is not None:
+            docker_clients.append(self._docker_client)
+        self._docker_clients_retained_until_shutdown.clear()
+        self._docker_client = None
+        self._last_resource_stats_snapshot_by_container_id.clear()
+
+        for docker_client in docker_clients:
+            try:
+                docker_client.close()
+            except Exception as exc:
+                logger.debug("Could not close Docker connection: %s", exc)
 
     @staticmethod
     def _decode_container_log_response(
@@ -298,6 +324,7 @@ class LocalDockerContainerClient(DockerContainerClient):
 
     def _load_image_inspection_data_for_container(
         self,
+        docker_client: DockerClient,
         container_attrs: dict[str, Any],
     ) -> dict[str, Any]:
         """Load inspection data for the container's image when available."""
@@ -307,9 +334,7 @@ class LocalDockerContainerClient(DockerContainerClient):
         if not image_reference:
             return {}
         try:
-            image_attrs = (
-                self._get_or_create_docker_client().images.get(image_reference).attrs
-            )
+            image_attrs = docker_client.images.get(image_reference).attrs
             return image_attrs if isinstance(image_attrs, dict) else {}
         except Exception as exc:
             logger.debug(
@@ -337,4 +362,4 @@ def _get_non_empty_text(value: Any) -> Optional[str]:
     return value if isinstance(value, str) and value else None
 
 
-__all__ = ["LocalDockerContainerClient"]
+__all__ = ["DockerSDKContainerClient"]

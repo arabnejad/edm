@@ -35,16 +35,22 @@ class DiagnosticsController:
         self._docker_daemon_details_future: Optional[Future[DockerDaemonDetails]] = None
 
     def open_diagnostics_popup(self) -> bool:
-        """Open the popup and start a Docker version request when needed."""
+        """Open the popup and start a fresh Docker version request."""
         if self.state.diagnostics_popup_report is not None:
             return False
 
-        self.state.diagnostics_popup_report = create_initial_diagnostics_report()
-        if self._docker_daemon_details_future is None:
-            self._docker_daemon_details_future = self.background_executor.submit(
-                self.docker_container_client.get_docker_daemon_details,
-                on_complete=self._apply_docker_daemon_details_result,
-            )
+        previous_docker_daemon_details_future = self._docker_daemon_details_future
+        self._docker_daemon_details_future = None
+        if previous_docker_daemon_details_future is not None:
+            previous_docker_daemon_details_future.cancel()
+
+        self.state.diagnostics_popup_report = create_initial_diagnostics_report(
+            self.state.active_docker_context
+        )
+        self._docker_daemon_details_future = self.background_executor.submit(
+            self.docker_container_client.get_docker_daemon_details,
+            on_complete=self._apply_docker_daemon_details_result,
+        )
         return True
 
     def close_diagnostics_popup(self) -> bool:

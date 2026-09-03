@@ -24,6 +24,11 @@ from easy_docker_manager.core.container_sorting import (
     ContainerSortMenuState,
 )
 from easy_docker_manager.core.containers import ContainerSummary
+from easy_docker_manager.core.docker_connections import (
+    DockerConnectionMenuState,
+    DockerConnectionTransport,
+    DockerContextDetails,
+)
 from easy_docker_manager.core.running_container_list import RunningContainerList
 from easy_docker_manager.core.tab_content_cache import TabContentCache
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
@@ -47,6 +52,15 @@ def _create_default_tab_content_cache() -> TabContentCache:
     )
 
 
+def _create_default_docker_context_details() -> DockerContextDetails:
+    """Provide localhost defaults when session state is created on its own."""
+    return DockerContextDetails(
+        context_name="default",
+        docker_host="unix:///var/run/docker.sock",
+        transport=DockerConnectionTransport.LOCAL,
+    )
+
+
 @dataclass
 class TerminalSessionState:
     """Keep all changing data used to draw and control the terminal screen.
@@ -61,6 +75,12 @@ class TerminalSessionState:
     running_container_list: RunningContainerList = field(
         default_factory=RunningContainerList
     )
+    # Docker context used for container requests.
+    active_docker_context: DockerContextDetails = field(
+        default_factory=_create_default_docker_context_details
+    )
+    # Contexts and current selection shown in the connection popup.
+    docker_connection_menu_state: Optional[DockerConnectionMenuState] = None
     # Index of the selected item in the displayed container list, or None when empty.
     selected_container_index: Optional[int] = None
     # Text matched against each container's name, image, and status.
@@ -197,6 +217,26 @@ class TerminalSessionState:
             not in running_container_ids
         ):
             self.container_action_menu_state = None
+
+    def clear_container_data_for_docker_context_change(self) -> None:
+        """Clear containers and tab data loaded from the previous Docker daemon."""
+        self.running_container_list.replace_all_running_containers([])
+        self.running_container_list.rebuild_displayed_containers(
+            self.container_sort_field,
+            self.container_sort_descending,
+            self.container_filter_query,
+        )
+        self.selected_container_index = None
+        self.container_action_menu_state = None
+        self.tab_export_menu_state = None
+        self.active_focus_area = FocusArea.CONTAINERS
+        self.detail_selected_line_index = 0
+        self.follow_log_tail = True
+        self.container_list_refresh_error_message = None
+        self.tab_content_cache.clear()
+        self.tab_search_queries.clear()
+        self.unreadable_log_container_ids.clear()
+        self.tab_content_error_messages.clear()
 
 
 __all__ = [

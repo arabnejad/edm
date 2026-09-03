@@ -34,7 +34,7 @@ class ContainerNotFoundError(DockerContainerClientError):
 class FailedDockerRequestType(str, Enum):
     """Identify the data EDM was trying to read when Docker failed.
 
-    LocalDockerContainerClient passes one of these values to
+    DockerSDKContainerClient passes one of these values to
     raise_container_request_error() from an except block. The error mapper uses
     it to choose a specific EDM exception and build a useful message.
 
@@ -121,7 +121,7 @@ class DockerContainerClient(ABC):
     """List the Docker container operations that EDM can request.
 
     DockerManager and ContainerTabTextLoader use this interface instead of
-    importing Docker SDK objects. LocalDockerContainerClient connects to Docker
+    importing Docker SDK objects. DockerSDKContainerClient connects to Docker
     when EDM runs. Tests can provide a fake client without a Docker daemon.
     """
 
@@ -178,7 +178,7 @@ class DockerContainerClient(ABC):
 
     @abstractmethod
     def get_docker_daemon_details(self) -> DockerDaemonDetails:
-        """Return version and platform details from the local Docker daemon."""
+        """Return version and platform details from the active Docker daemon."""
 
     @abstractmethod
     def close(self) -> None:

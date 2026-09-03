@@ -191,11 +191,11 @@ def test_print_diagnostics_closes_client_and_returns_success(
     monkeypatch.setattr(
         main_module,
         "create_initial_diagnostics_report",
-        lambda: report,
+        lambda _docker_context=None: report,
     )
     monkeypatch.setattr(
         main_module,
-        "LocalDockerContainerClient",
+        "DockerSDKContainerClient",
         Mock(return_value=docker_container_client),
     )
 
@@ -223,11 +223,11 @@ def test_print_diagnostics_returns_failure_when_docker_is_unavailable(
     monkeypatch.setattr(
         main_module,
         "create_initial_diagnostics_report",
-        lambda: report,
+        lambda _docker_context=None: report,
     )
     monkeypatch.setattr(
         main_module,
-        "LocalDockerContainerClient",
+        "DockerSDKContainerClient",
         Mock(return_value=docker_container_client),
     )
 

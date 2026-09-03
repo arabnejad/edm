@@ -23,7 +23,7 @@ The integration suite verifies that EDM can:
 3. It starts one container with a unique name.
 4. The container writes a known log message and then remains running.
 5. Each test reads part of the container through
-   `LocalDockerContainerClient`, the same class used by EDM.
+   `DockerSDKContainerClient`, the same class used by EDM.
 6. After all tests finish, pytest removes the container and closes the Docker
    clients. Cleanup also runs when a test fails.
 

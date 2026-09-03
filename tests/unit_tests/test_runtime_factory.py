@@ -8,7 +8,9 @@ from easy_docker_manager.config.app_config_store import AppConfigStore
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.docker.client_factory import create_docker_client
 from easy_docker_manager.docker.container_client import DockerContainerClient
-from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
+from easy_docker_manager.docker.docker_sdk_container_client import (
+    DockerSDKContainerClient,
+)
 
 
 def test_runtime_factory_uses_supplied_config_and_data_source() -> None:
@@ -63,19 +65,22 @@ def test_runtime_factory_uses_supplied_config_and_data_source() -> None:
         runtime.background_executor.shutdown()
 
 
-def test_runtime_factory_builds_local_data_source_with_configured_timeout() -> None:
+def test_runtime_factory_builds_sdk_client_for_startup_context_and_timeout() -> None:
     runtime_factory = EDMRuntimeFactory(AppConfig(docker_request_timeout=3.5))
 
     assert isinstance(
         runtime_factory.docker_container_client,
-        LocalDockerContainerClient,
+        DockerSDKContainerClient,
     )
     create_docker_client_callback = (
         runtime_factory.docker_container_client._create_docker_client
     )
     assert isinstance(create_docker_client_callback, partial)
     assert create_docker_client_callback.func is create_docker_client
-    assert create_docker_client_callback.args == (3.5,)
+    assert create_docker_client_callback.args == (
+        runtime_factory.startup_docker_context,
+        3.5,
+    )
 
 
 def test_runtime_factory_uses_default_config_when_none_is_given() -> None:

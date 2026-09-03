@@ -15,6 +15,7 @@ from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     ContainerSortMenuState,
 )
+from easy_docker_manager.core.docker_connections import DockerConnectionMenuState
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
@@ -24,6 +25,9 @@ from easy_docker_manager.diagnostics import create_initial_diagnostics_report
 from easy_docker_manager.tab_export.definitions import TabExportMenuState
 from easy_docker_manager.ui.container_action_controller import ContainerActionController
 from easy_docker_manager.ui.diagnostics_controller import DiagnosticsController
+from easy_docker_manager.ui.docker_connection_controller import (
+    DockerConnectionController,
+)
 from easy_docker_manager.ui.keyboard_controller import KeyAction, KeyboardController
 from easy_docker_manager.ui.settings_controller import SettingsController
 from easy_docker_manager.ui.tab_export_controller import TabExportController
@@ -37,6 +41,7 @@ class KeyboardControllerTestSetup:
     diagnostics_controller: Mock
     settings_controller: Mock
     container_action_controller: Mock
+    docker_connection_controller: Mock
 
 
 @pytest.fixture
@@ -48,12 +53,14 @@ def keyboard_controller_factory():
         diagnostics_controller = Mock(spec=DiagnosticsController)
         settings_controller = Mock(spec=SettingsController)
         container_action_controller = Mock(spec=ContainerActionController)
+        docker_connection_controller = Mock(spec=DockerConnectionController)
         keyboard_controller = KeyboardController(
             terminal_controller,
             tab_export_controller,
             diagnostics_controller,
             settings_controller,
             container_action_controller,
+            docker_connection_controller,
         )
         return KeyboardControllerTestSetup(
             keyboard_controller=keyboard_controller,
@@ -62,6 +69,7 @@ def keyboard_controller_factory():
             diagnostics_controller=diagnostics_controller,
             settings_controller=settings_controller,
             container_action_controller=container_action_controller,
+            docker_connection_controller=docker_connection_controller,
         )
 
     return create_keyboard_controller
@@ -81,6 +89,37 @@ def test_uppercase_h_opens_diagnostics_popup(keyboard_controller_factory) -> Non
 
     assert test_setup.keyboard_controller.handle_keypress("H") == KeyAction.REDRAW
     test_setup.diagnostics_controller.open_diagnostics_popup.assert_called_once_with()
+
+
+@pytest.mark.parametrize("pressed_key", ["c", "C"])
+def test_c_opens_docker_connection_menu(
+    pressed_key: str,
+    keyboard_controller_factory,
+) -> None:
+    test_setup = keyboard_controller_factory(TerminalSessionState())
+    test_setup.docker_connection_controller.open_docker_connection_menu.return_value = (
+        True
+    )
+
+    assert (
+        test_setup.keyboard_controller.handle_keypress(pressed_key) == KeyAction.REDRAW
+    )
+    test_setup.docker_connection_controller.open_docker_connection_menu.assert_called_once_with()
+
+
+def test_docker_connection_menu_delegates_all_keys_to_its_controller(
+    keyboard_controller_factory,
+) -> None:
+    state = TerminalSessionState(
+        docker_connection_menu_state=DockerConnectionMenuState([], "default")
+    )
+    test_setup = keyboard_controller_factory(state)
+    test_setup.docker_connection_controller.handle_menu_keypress.return_value = True
+
+    assert test_setup.keyboard_controller.handle_keypress("enter") == KeyAction.REDRAW
+    test_setup.docker_connection_controller.handle_menu_keypress.assert_called_once_with(
+        "enter"
+    )
 
 
 @pytest.mark.parametrize("pressed_key", ["p", "P"])

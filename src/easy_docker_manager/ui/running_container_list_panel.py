@@ -36,6 +36,7 @@ class RunningContainerListPanel:
         self.container_list_view = urwid.ListBox(self.container_rows)
         self.container_filter_text = urwid.Text("", wrap="clip")
         self.container_sort_text = urwid.Text("", wrap="clip")
+        self.active_docker_context_text = urwid.Text("", wrap="clip")
         self.panel = urwid.AttrMap(
             urwid.LineBox(self._build_container_frame()),
             "border_inactive",
@@ -50,6 +51,7 @@ class RunningContainerListPanel:
     def render(self, state: TerminalSessionState) -> None:
         """Redraw the container rows, controls, focus, and border."""
         self._rebuild_container_list_and_focus_on_selected_container(state)
+        self._update_active_docker_context_display_text(state)
         self._update_container_filter_display_text(state)
         self._update_selected_sort_display_text(state)
         border_style = (
@@ -96,14 +98,7 @@ class RunningContainerListPanel:
             [
                 (
                     "pack",
-                    urwid.Text(
-                        [
-                            ("accent", "* "),
-                            ("host", "localhost"),
-                            ("status_ok", " (active)"),
-                        ],
-                        wrap="clip",
-                    ),
+                    self.active_docker_context_text,
                 ),
                 ("pack", urwid.AttrMap(urwid.Divider("─"), "muted")),
                 ("pack", self.container_filter_text),
@@ -128,6 +123,19 @@ class RunningContainerListPanel:
             self.container_list_view,
             header=header,
             footer=urwid.AttrMap(footer, "status"),
+        )
+
+    def _update_active_docker_context_display_text(
+        self,
+        state: TerminalSessionState,
+    ) -> None:
+        """Show the Docker context used by the current container list."""
+        self.active_docker_context_text.set_text(
+            [
+                ("accent", "* "),
+                ("host", state.active_docker_context.display_name),
+                ("status_ok", " (active)"),
+            ]
         )
 
     def _rebuild_container_list_and_focus_on_selected_container(
