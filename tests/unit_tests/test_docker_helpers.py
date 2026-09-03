@@ -83,7 +83,29 @@ def test_create_docker_client_accepts_ssh_context(monkeypatch) -> None:
     )
 
 
-def test_create_docker_client_rejects_tcp_context(monkeypatch) -> None:
+def test_create_docker_client_accepts_tcp_context_with_verified_tls(
+    monkeypatch,
+) -> None:
+    docker_client = object()
+    docker_from_context = Mock(return_value=docker_client)
+    monkeypatch.setattr(client_factory.docker, "from_context", docker_from_context)
+    docker_context = DockerContextDetails(
+        "production",
+        "tcp://docker.example.com:2376",
+        DockerConnectionTransport.TCP,
+        has_required_tls_certificate_files=True,
+        verifies_tls_server_certificate=True,
+    )
+
+    assert client_factory.create_docker_client(docker_context, 2.5) is docker_client
+    docker_from_context.assert_called_once_with(
+        "production",
+        timeout=2.5,
+        use_ssh_client=False,
+    )
+
+
+def test_create_docker_client_rejects_tcp_context_without_tls(monkeypatch) -> None:
     docker_from_context = Mock()
     monkeypatch.setattr(client_factory.docker, "from_context", docker_from_context)
     docker_context = DockerContextDetails(
@@ -92,7 +114,7 @@ def test_create_docker_client_rejects_tcp_context(monkeypatch) -> None:
         DockerConnectionTransport.TCP,
     )
 
-    with pytest.raises(DockerException, match="TLS support"):
+    with pytest.raises(DockerException, match="CA certificate"):
         client_factory.create_docker_client(docker_context, 2.5)
 
     docker_from_context.assert_not_called()

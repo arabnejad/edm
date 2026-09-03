@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from docker import TLSConfig
 from docker.errors import DockerException
 
 from easy_docker_manager.core.docker_connections import (
@@ -13,6 +15,27 @@ from easy_docker_manager.core.docker_connections import (
 )
 from easy_docker_manager.docker import docker_contexts
 from easy_docker_manager.docker.docker_contexts import DockerContextReader
+
+
+def _create_tls_config(
+    certificate_directory: Path,
+    *,
+    verify_server_certificate: bool,
+) -> TLSConfig:
+    ca_certificate = certificate_directory / "ca.pem"
+    client_certificate = certificate_directory / "cert.pem"
+    client_private_key = certificate_directory / "key.pem"
+    for certificate_file in (
+        ca_certificate,
+        client_certificate,
+        client_private_key,
+    ):
+        certificate_file.write_text("test certificate", encoding="utf-8")
+    return TLSConfig(
+        client_cert=(str(client_certificate), str(client_private_key)),
+        ca_cert=str(ca_certificate),
+        verify=verify_server_certificate,
+    )
 
 
 def test_startup_context_uses_docker_context_environment_first(monkeypatch) -> None:
@@ -78,6 +101,125 @@ def test_context_list_includes_environment_and_sorts_default_first(monkeypatch) 
     assert contexts[0].display_name == "localhost"
     assert contexts[2].transport == DockerConnectionTransport.TCP
     assert not contexts[2].is_supported
+    assert "CA certificate" in contexts[2].unsupported_reason
+
+
+def test_context_list_supports_tcp_context_with_verified_tls(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    tls_config = _create_tls_config(
+        tmp_path,
+        verify_server_certificate=True,
+    )
+    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.setattr(
+        docker_contexts.docker.ContextAPI,
+        "contexts",
+        Mock(
+            return_value=[
+                SimpleNamespace(
+                    name="production",
+                    Host="tcp://production.example.com:2376",
+                    TLSConfig=tls_config,
+                )
+            ]
+        ),
+    )
+
+    context = DockerContextReader().list_configured_docker_contexts()[0]
+
+    assert context.transport == DockerConnectionTransport.TCP
+    assert context.has_required_tls_certificate_files
+    assert context.verifies_tls_server_certificate
+    assert context.uses_verified_tls
+    assert context.is_supported
+    assert context.transport_label == "TCP + TLS"
+
+
+def test_context_list_rejects_tcp_context_that_skips_server_verification(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    tls_config = _create_tls_config(
+        tmp_path,
+        verify_server_certificate=False,
+    )
+    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.setattr(
+        docker_contexts.docker.ContextAPI,
+        "contexts",
+        Mock(
+            return_value=[
+                SimpleNamespace(
+                    name="insecure-production",
+                    Host="tcp://production.example.com:2376",
+                    TLSConfig=tls_config,
+                )
+            ]
+        ),
+    )
+
+    context = DockerContextReader().list_configured_docker_contexts()[0]
+
+    assert context.has_required_tls_certificate_files
+    assert not context.verifies_tls_server_certificate
+    assert not context.uses_verified_tls
+    assert not context.is_supported
+    assert "verify the Docker server certificate" in context.unsupported_reason
+
+
+def test_docker_host_environment_supports_verified_tls(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _create_tls_config(tmp_path, verify_server_certificate=True)
+    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
+    monkeypatch.setenv("DOCKER_HOST", "tcp://production.example.com:2376")
+    monkeypatch.setenv("DOCKER_CERT_PATH", str(tmp_path))
+    monkeypatch.setenv("DOCKER_TLS_VERIFY", "1")
+
+    context = DockerContextReader().get_startup_docker_context()
+
+    assert context.uses_docker_environment
+    assert context.uses_verified_tls
+    assert context.is_supported
+
+
+def test_docker_host_environment_rejects_disabled_server_verification(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _create_tls_config(tmp_path, verify_server_certificate=False)
+    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
+    monkeypatch.setenv("DOCKER_HOST", "tcp://production.example.com:2376")
+    monkeypatch.setenv("DOCKER_CERT_PATH", str(tmp_path))
+    monkeypatch.delenv("DOCKER_TLS_VERIFY", raising=False)
+
+    context = DockerContextReader().get_startup_docker_context()
+
+    assert context.has_required_tls_certificate_files
+    assert not context.verifies_tls_server_certificate
+    assert not context.is_supported
+
+
+def test_docker_host_environment_rejects_missing_certificate_files(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
+    monkeypatch.setenv("DOCKER_HOST", "tcp://production.example.com:2376")
+    monkeypatch.setenv("DOCKER_CERT_PATH", str(tmp_path))
+    monkeypatch.setenv("DOCKER_TLS_VERIFY", "1")
+
+    context = DockerContextReader().get_startup_docker_context()
+
+    assert not context.has_required_tls_certificate_files
+    assert not context.uses_verified_tls
+    assert not context.is_supported
+    assert "CA certificate" in context.unsupported_reason
 
 
 def test_unknown_context_is_returned_as_unsupported(monkeypatch) -> None:
@@ -137,6 +279,7 @@ def test_startup_context_fails_when_docker_has_no_current_context(monkeypatch) -
     [
         ("ssh://docker@server", DockerConnectionTransport.SSH, "SSH"),
         ("https://server:2376", DockerConnectionTransport.TCP, "TCP"),
+        ("http://server:2375", DockerConnectionTransport.UNKNOWN, "Unsupported"),
         ("invalid-endpoint", DockerConnectionTransport.UNKNOWN, "Unsupported"),
     ],
 )

@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import Future
 from unittest.mock import Mock
 
+import pytest
 from docker import DockerClient
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
@@ -35,6 +36,16 @@ def _remote_context() -> DockerContextDetails:
         "staging",
         "ssh://docker@staging",
         DockerConnectionTransport.SSH,
+    )
+
+
+def _remote_tls_context() -> DockerContextDetails:
+    return DockerContextDetails(
+        "production",
+        "tcp://production.example.com:2376",
+        DockerConnectionTransport.TCP,
+        has_required_tls_certificate_files=True,
+        verifies_tls_server_certificate=True,
     )
 
 
@@ -92,9 +103,11 @@ def test_open_menu_selects_the_active_context() -> None:
     assert menu_state.active_context_name == "staging"
 
 
-def test_enter_creates_and_validates_selected_context_client_in_background() -> None:
+@pytest.mark.parametrize("remote_context", [_remote_context(), _remote_tls_context()])
+def test_enter_creates_and_validates_selected_context_client_in_background(
+    remote_context: DockerContextDetails,
+) -> None:
     local_context = _local_context()
-    remote_context = _remote_context()
     state = TerminalSessionState(active_docker_context=local_context)
     controller, background_executor, _, _, create_validated_client = _create_controller(
         state,
@@ -113,7 +126,10 @@ def test_enter_creates_and_validates_selected_context_client_in_background() -> 
         3.5,
     )
     assert state.docker_connection_menu_state is not None
-    assert state.docker_connection_menu_state.context_name_being_validated == "staging"
+    assert (
+        state.docker_connection_menu_state.context_name_being_validated
+        == remote_context.context_name
+    )
 
 
 def test_successful_validation_reuses_client_and_refreshes_containers() -> None:
@@ -173,7 +189,7 @@ def test_failed_validation_keeps_the_current_context() -> None:
     sdk_client.switch_docker_connection.assert_not_called()
 
 
-def test_tcp_context_explains_that_tls_support_is_required() -> None:
+def test_tcp_context_without_certificates_explains_what_is_missing() -> None:
     local_context = _local_context()
     tcp_context = DockerContextDetails(
         "production",
@@ -192,7 +208,7 @@ def test_tcp_context_explains_that_tls_support_is_required() -> None:
 
     assert state.docker_connection_menu_state is not None
     assert (
-        "TLS support"
+        "CA certificate"
         in state.docker_connection_menu_state.connection_error_messages["production"]
     )
     background_executor.submit.assert_not_called()
