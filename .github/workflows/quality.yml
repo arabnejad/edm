@@ -126,7 +126,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --no-deps -e .
           python -m pip install \
-            "docker==7.0.0" \
+            "docker[ssh]==7.2.0" \
             "platformdirs==4.0.0" \
             "pytest==8.4.2" \
             "pytest-cov==7.0.0" \
