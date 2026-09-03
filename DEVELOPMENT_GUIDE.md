@@ -378,22 +378,31 @@ a worker so the terminal remains responsive if Docker is unavailable.
 ### Docker Connections
 
 The user setup and menu behavior are documented in
-[Remote Docker Over SSH](README.md#remote-docker-over-ssh).
+[Remote Docker Over SSH](README.md#remote-docker-over-ssh) and
+[Connect EDM to Remote Docker with TLS](docs/remote-docker-tls.md).
 
 `DockerContextReader` reads context names and endpoints from Docker's local
 configuration. Opening the popup does not contact the saved servers. EDM shows
 Docker's built-in `default` context as `localhost`. When `DOCKER_HOST` selects
 the active connection, the popup includes it as a separate entry.
 
-EDM can open local socket, Windows named-pipe, and SSH connections. It also
-lists TCP contexts, but marks them as unsupported. Remote TCP connections need
-the TLS support planned for issue #30.
+EDM can open local sockets, Windows named pipes, SSH connections, and verified
+TLS connections over TCP. For TCP contexts, `DockerContextReader` checks the
+TLS settings loaded by the Docker SDK. The context must have a CA certificate,
+client certificate, private key, and server verification enabled. Plain TCP
+and `skip-tls-verify` contexts remain visible but cannot be selected.
+
+Named contexts keep their certificate settings in Docker's context storage.
+When `DOCKER_HOST` is active, `DockerContextReader` reads `DOCKER_TLS_VERIFY`
+and `DOCKER_CERT_PATH` through the Docker SDK. EDM does not keep separate
+certificate paths in `AppConfig`.
 
 When the user presses `Enter`, `DockerConnectionController` runs
 `create_validated_docker_client_for_context()` through `BackgroundExecutor`.
 The function opens the selected context and pings its daemon. For SSH
 connections, the Docker SDK uses Paramiko with the user's SSH key or
-`ssh-agent`. EDM cannot show an SSH password prompt.
+`ssh-agent`. For TCP connections, the SDK loads the context's TLS
+certificates. EDM cannot show an SSH password prompt.
 
 If the check fails, the new client is closed and the current connection stays
 active. If it succeeds, EDM reuses the checked client instead of connecting a
@@ -808,7 +817,7 @@ environment keys, structured values, search matches, and errors.
 | `ContainerSummary` | Stores the container and Compose fields used by the left panel |
 | `ContainerLifecycleAction` | Names the Stop and Restart operations supported by EDM |
 | `ContainerActionMenuState` | Stores the target and selected action while its popup is open |
-| `DockerContextDetails` | Stores one context name, endpoint, and connection transport |
+| `DockerContextDetails` | Stores one context name, endpoint, transport, and TLS checks |
 | `DockerConnectionMenuState` | Stores discovered contexts, selection, checks, and connection errors while its popup is open |
 | `RunningContainerList` | Stores all running containers and applies grouping, sorting, and filtering |
 | `ContainerSortField` | Names the choices shown in the container sorting menu |
@@ -834,7 +843,7 @@ environment keys, structured values, search matches, and errors.
 | `DockerContextReader` | Reads context names and endpoints from Docker's local configuration |
 | `FailedDockerRequestType` | Identifies the Docker request that failed |
 | Docker error classes | Describe missing containers, failed refreshes, failed requests, and unreadable logs |
-| `create_docker_client` | Creates a Docker SDK client for a local or SSH context |
+| `create_docker_client` | Creates a Docker SDK client for a local, SSH, or verified TLS context |
 | `create_validated_docker_client_for_context` | Creates and pings a client that EDM reuses after a successful context switch |
 | `to_container_summary` | Converts a Docker container object to `ContainerSummary` |
 | `ContainerTabTextLoader` | Loads and formats the full text for a requested detail tab |

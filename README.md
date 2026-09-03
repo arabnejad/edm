@@ -46,9 +46,9 @@ With EDM, you can view:
 - permission to access the Docker daemon you want to use
 - a terminal window of at least 120 columns by 30 rows
 
-EDM supports local Docker sockets, Windows named pipes, and remote Docker
-contexts that use SSH. EDM lists remote TCP contexts but cannot connect to
-them yet because TLS support is not implemented.
+EDM supports local Docker sockets, Windows named pipes, SSH contexts, and TCP
+contexts secured with verified TLS. Plain TCP connections and contexts that
+skip server verification are listed but cannot be selected.
 
 > [!WARNING]
 > EDM needs access to the selected Docker daemon. This is highly privileged
@@ -181,6 +181,58 @@ the reason.
 Opening the popup does not connect to every saved server. EDM checks a remote
 connection only after you select it and press `Enter`. EDM cannot ask for or
 store an SSH password, so the connection must use a working key or `ssh-agent`.
+
+## Remote Docker Over TLS
+
+SSH and TLS are two separate ways to connect EDM to a remote Docker daemon:
+
+| SSH connection | TLS connection |
+| --- | --- |
+| Sends Docker requests through an SSH connection | Sends Docker requests directly to the daemon over an encrypted TCP connection |
+| Requires a remote SSH user and a working SSH key or `ssh-agent` | Requires a CA certificate, client certificate, and private key |
+| Uses the server entry in `~/.ssh/known_hosts` to check the server's identity | Uses the CA certificate to check the Docker server's identity |
+| Does not require the Docker daemon to listen on a TCP port | Requires the Docker daemon to accept TLS connections, usually on port `2376` |
+
+TLS does not use SSH, so it does not require passwordless SSH or an SSH account
+on the remote server. The TLS certificates provide three protections:
+
+- traffic between EDM and Docker is encrypted;
+- the CA certificate confirms that EDM reached the expected Docker server;
+- the client certificate and private key prove that EDM is allowed to connect.
+
+This is often called mutual TLS because both sides prove their identity. Treat
+the client certificate and private key as sensitive files: anyone who can use
+them may have full control of the remote Docker daemon.
+
+Creating a Docker context does not configure the remote server. It does not
+contact the server, ask for a password, or copy certificate files to it. The
+remote Docker daemon must already be listening for verified TLS connections.
+
+See [Connect EDM to Remote Docker with TLS](docs/remote-docker-tls.md) for the
+complete server and client setup.
+
+After the server is ready, create the context on the computer where EDM runs:
+
+```bash
+docker context create remote-tls-context \
+  --description "Remote Docker server over TLS" \
+  --docker "host=tcp://remote-server-address:2376,ca=/path/to/ca.pem,cert=/path/to/cert.pem,key=/path/to/key.pem"
+```
+
+Replace the context name, server address, and certificate paths with your own
+values. Test the context before opening EDM:
+
+```bash
+docker --context remote-tls-context version
+```
+
+Inside EDM, press `c` or `C`, select `remote-tls-context`, and press `Enter`.
+Docker's context configuration supplies the certificates; EDM does not add
+certificate paths to `config.json`.
+
+EDM accepts the TCP context only when all three certificate files are present
+and the server certificate is verified. A context created with
+`skip-tls-verify` remains unavailable.
 
 ## Keyboard Controls
 

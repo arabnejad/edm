@@ -18,12 +18,18 @@ class DockerConnectionTransport(str, Enum):
 
 @dataclass(frozen=True)
 class DockerContextDetails:
-    """Describe one Docker context without opening its connection."""
+    """Describe one Docker context without opening its connection.
+
+    For TCP contexts, the TLS fields record whether Docker loaded the three
+    certificate files and whether it will verify the remote server.
+    """
 
     context_name: str
     docker_host: str
     transport: DockerConnectionTransport
     uses_docker_environment: bool = False
+    has_required_tls_certificate_files: bool = False
+    verifies_tls_server_certificate: bool = False
 
     @property
     def display_name(self) -> str:
@@ -45,8 +51,16 @@ class DockerContextDetails:
         if self.transport == DockerConnectionTransport.SSH:
             return "SSH"
         if self.transport == DockerConnectionTransport.TCP:
-            return "TCP"
+            return "TCP + TLS" if self.has_required_tls_certificate_files else "TCP"
         return "Unsupported"
+
+    @property
+    def uses_verified_tls(self) -> bool:
+        """Return whether certificates exist and server verification is enabled."""
+        return (
+            self.has_required_tls_certificate_files
+            and self.verifies_tls_server_certificate
+        )
 
     @property
     def is_supported(self) -> bool:
@@ -54,13 +68,21 @@ class DockerContextDetails:
         return self.transport in {
             DockerConnectionTransport.LOCAL,
             DockerConnectionTransport.SSH,
-        }
+        } or (
+            self.transport == DockerConnectionTransport.TCP and self.uses_verified_tls
+        )
 
     @property
     def unsupported_reason(self) -> str:
         """Explain why EDM cannot open this context yet."""
         if self.transport == DockerConnectionTransport.TCP:
-            return "Remote TCP contexts require TLS support from issue #30."
+            if not self.has_required_tls_certificate_files:
+                return (
+                    "TCP contexts need a CA certificate, client certificate, "
+                    "and private key."
+                )
+            if not self.verifies_tls_server_certificate:
+                return "TCP contexts must verify the Docker server certificate."
         return "EDM does not support this Docker endpoint type."
 
 
