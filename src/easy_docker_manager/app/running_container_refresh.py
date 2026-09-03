@@ -95,6 +95,15 @@ class RunningContainerListRefresher:
             return
         self.start_running_container_list_refresh(force=True)
 
+    def reset_after_docker_context_change(self) -> None:
+        """Ignore an unfinished refresh and allow the new context to refresh now."""
+        previous_refresh_future = self._refresh_future
+        self._refresh_future = None
+        self._refresh_requested_after_current_request = False
+        self._next_refresh_at = 0.0
+        if previous_refresh_future is not None:
+            previous_refresh_future.cancel()
+
     def rebuild_displayed_container_list(self) -> None:
         """Rebuild the displayed list after its sort or filter changes.
 

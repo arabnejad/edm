@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "easy-docker-manager"
 dynamic = ["version"]
-description = "Keyboard-driven terminal interface for inspecting local Docker containers"
+description = "Keyboard-driven terminal interface for inspecting Docker containers"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -30,7 +30,7 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
-    "docker>=7.0.0",
+    "docker[ssh]>=7.2.0",
     "platformdirs>=4.0.0",
     "urwid>=2.6.0",
 ]

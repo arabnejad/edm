@@ -25,7 +25,10 @@ from easy_docker_manager.diagnostics import (
     get_installed_edm_version,
 )
 from easy_docker_manager.docker.client_factory import create_docker_client
-from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
+from easy_docker_manager.docker.docker_contexts import DockerContextReader
+from easy_docker_manager.docker.docker_sdk_container_client import (
+    DockerSDKContainerClient,
+)
 from easy_docker_manager.logging.app_logging import configure_logging
 
 
@@ -44,7 +47,7 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="edm",
         description=(
-            "Inspect local Docker containers in a keyboard-driven terminal "
+            "Inspect Docker containers in a keyboard-driven terminal "
             "interface. Run without options to start EDM."
         ),
     )
@@ -94,10 +97,19 @@ def _check_minimum_terminal_size() -> bool:
 
 def _print_diagnostics() -> int:
     """Print a diagnostics report and return whether Docker was reachable."""
-    report = create_initial_diagnostics_report()
-    docker_container_client = LocalDockerContainerClient(
+    try:
+        startup_docker_context = DockerContextReader().get_startup_docker_context()
+    except Exception as exc:
+        report = create_initial_diagnostics_report()
+        report.record_failed_docker_connection(exc)
+        print(format_diagnostics_report(report))
+        return 1
+
+    report = create_initial_diagnostics_report(startup_docker_context)
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=partial(
             create_docker_client,
+            startup_docker_context,
             AppConfig().docker_request_timeout,
         )
     )

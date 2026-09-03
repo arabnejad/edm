@@ -147,6 +147,12 @@ class DockerManager:
         """Rebuild the grouped list after its sort or filter changes."""
         self.running_container_list_refresher.rebuild_displayed_container_list()
 
+    def reset_after_docker_context_change(self) -> None:
+        """Reset Docker work that belongs to the previous context."""
+        self.running_container_list_refresher.reset_after_docker_context_change()
+        self.selected_tab_content_loader.reset_after_docker_context_change()
+        self.container_log_updater.reset_after_docker_context_change()
+
     @property
     def is_container_lifecycle_action_in_progress(self) -> bool:
         """Return whether Stop or Restart is currently running."""

@@ -95,3 +95,41 @@ def test_result_is_discarded_after_diagnostics_popup_closes() -> None:
 
     assert completion_callback(completed_future) is False
     assert state.diagnostics_popup_report is None
+
+
+def test_reopening_diagnostics_ignores_the_previous_docker_result() -> None:
+    state = TerminalSessionState()
+    background_executor = Mock(spec=BackgroundExecutor)
+    docker_container_client = Mock(spec=DockerContainerClient)
+    previous_future: Future[DockerDaemonDetails] = Future()
+    previous_future.set_running_or_notify_cancel()
+    current_future: Future[DockerDaemonDetails] = Future()
+    background_executor.submit.side_effect = [previous_future, current_future]
+    controller = DiagnosticsController(
+        state,
+        background_executor,
+        docker_container_client,
+    )
+
+    controller.open_diagnostics_popup()
+    previous_completion_callback = background_executor.submit.call_args.kwargs[
+        "on_complete"
+    ]
+    controller.close_diagnostics_popup()
+    controller.open_diagnostics_popup()
+    current_completion_callback = background_executor.submit.call_args.kwargs[
+        "on_complete"
+    ]
+
+    previous_future.set_result(DockerDaemonDetails("old", "old", "old", "old"))
+    assert previous_completion_callback(previous_future) is False
+    assert state.diagnostics_popup_report is not None
+    assert (
+        state.diagnostics_popup_report.docker_connection_status
+        == DockerConnectionStatus.CHECKING
+    )
+
+    current_details = DockerDaemonDetails("29.0", "1.52", "linux", "amd64")
+    current_future.set_result(current_details)
+    assert current_completion_callback(current_future) is True
+    assert state.diagnostics_popup_report.docker_daemon_details == current_details

@@ -102,6 +102,15 @@ class ContainerLogUpdater:
                 self._log_poll_future = None
         self._next_log_poll_at = 0.0
 
+    def reset_after_docker_context_change(self) -> None:
+        """Ignore an unfinished poll and clear log positions from the old context."""
+        previous_log_poll_future = self._log_poll_future
+        self._log_poll_future = None
+        self._next_log_poll_at = 0.0
+        self._log_cursor_by_container_id.clear()
+        if previous_log_poll_future is not None:
+            previous_log_poll_future.cancel()
+
     def record_initial_log_load_success(
         self,
         container_id: str,

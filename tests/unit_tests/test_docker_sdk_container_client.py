@@ -16,7 +16,9 @@ from easy_docker_manager.docker.container_client import (
     DockerRequestFailedError,
     RunningContainerListRefreshError,
 )
-from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
+from easy_docker_manager.docker.docker_sdk_container_client import (
+    DockerSDKContainerClient,
+)
 
 
 @pytest.fixture
@@ -80,7 +82,7 @@ def docker_container_factory():
 def test_client_is_created_lazily_and_reused(docker_client_factory) -> None:
     client = docker_client_factory()
     create_docker_client = Mock(return_value=client)
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=create_docker_client
     )
 
@@ -90,8 +92,29 @@ def test_client_is_created_lazily_and_reused(docker_client_factory) -> None:
     create_docker_client.assert_called_once_with()
 
 
+def test_switch_docker_connection_keeps_old_client_until_shutdown(
+    docker_client_factory,
+) -> None:
+    first_client = docker_client_factory()
+    second_client = docker_client_factory()
+    docker_container_client = DockerSDKContainerClient(
+        create_docker_client=Mock(return_value=first_client)
+    )
+    docker_container_client._get_or_create_docker_client()
+
+    docker_container_client.switch_docker_connection(second_client)
+
+    first_client.close.assert_not_called()
+    assert docker_container_client._get_or_create_docker_client() is second_client
+
+    docker_container_client.close()
+
+    first_client.close.assert_called_once_with()
+    second_client.close.assert_called_once_with()
+
+
 def test_docker_connection_error_becomes_refresh_error() -> None:
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=Mock(side_effect=DockerException("offline"))
     )
 
@@ -107,7 +130,7 @@ def test_list_running_containers_filters_and_maps_containers(
     second_container = docker_container_factory(id="two", name="two")
     client = docker_client_factory()
     client.containers.list.return_value = [first_container, second_container]
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
 
@@ -141,7 +164,7 @@ def test_list_running_containers_skips_a_container_that_cannot_be_mapped(
     second_container = docker_container_factory(id="two")
     client = docker_client_factory()
     client.containers.list.return_value = [first_container, second_container]
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
     expected_container = ContainerSummary(
@@ -160,7 +183,7 @@ def test_list_running_containers_skips_a_container_that_cannot_be_mapped(
         return value
 
     monkeypatch.setattr(
-        "easy_docker_manager.docker.local_container_client.to_container_summary",
+        "easy_docker_manager.docker.docker_sdk_container_client.to_container_summary",
         map_container,
     )
 
@@ -170,7 +193,7 @@ def test_list_running_containers_skips_a_container_that_cannot_be_mapped(
 def test_list_running_containers_wraps_docker_failure(docker_client_factory) -> None:
     client = docker_client_factory()
     client.containers.list.side_effect = RuntimeError("offline")
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
 
@@ -184,7 +207,7 @@ def test_get_container_logs_decodes_bad_bytes_and_passes_options(
 ) -> None:
     container = docker_container_factory()
     client = docker_client_factory(container)
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
 
@@ -203,7 +226,7 @@ def test_get_container_logs_does_not_pass_since_when_it_is_missing(
     docker_container_factory,
 ) -> None:
     container = docker_container_factory(logs=Mock(return_value="text"))
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: docker_client_factory(container)
     )
 
@@ -221,7 +244,7 @@ def test_get_container_logs_rejects_none_logging_driver(
     container = docker_container_factory(
         attrs={"HostConfig": {"LogConfig": {"Type": "none"}}}
     )
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: docker_client_factory(container)
     )
 
@@ -233,7 +256,7 @@ def test_get_container_logs_rejects_none_logging_driver(
 def test_get_container_logs_maps_missing_container(docker_client_factory) -> None:
     client = docker_client_factory()
     client.containers.get.side_effect = NotFound("missing")
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
 
@@ -249,7 +272,7 @@ def test_get_container_logs_maps_unreadable_driver_response_to_logs_unavailable(
     container.logs.side_effect = RuntimeError(
         "configured logging driver does not support reading"
     )
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: docker_client_factory(container)
     )
 
@@ -264,7 +287,7 @@ def test_get_container_logs_maps_transient_failure(
 ) -> None:
     container = docker_container_factory()
     container.logs.side_effect = RuntimeError("timeout")
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: docker_client_factory(container)
     )
 
@@ -277,7 +300,7 @@ def test_get_container_environment_variables_returns_valid_name_value_pairs(
     docker_container_factory,
 ) -> None:
     container = docker_container_factory()
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: docker_client_factory(container)
     )
 
@@ -291,7 +314,7 @@ def test_get_container_environment_variables_maps_docker_failure(
 ) -> None:
     client = docker_client_factory()
     client.containers.get.side_effect = RuntimeError("denied")
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
 
@@ -306,7 +329,7 @@ def test_inspection_data_includes_container_and_image(
     container = docker_container_factory()
     client = docker_client_factory(container)
     client.images.get.return_value = SimpleNamespace(attrs={"RepoTags": ["web:1"]})
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
 
@@ -326,7 +349,7 @@ def test_missing_image_data_does_not_fail_container_inspection(
     container = docker_container_factory()
     client = docker_client_factory(container)
     client.images.get.side_effect = RuntimeError("image removed")
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
 
@@ -341,7 +364,7 @@ def test_container_top_process_table_is_converted_to_strings(
     docker_container_factory,
 ) -> None:
     container = docker_container_factory()
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: docker_client_factory(container)
     )
 
@@ -358,7 +381,7 @@ def test_container_top_process_table_failure_is_mapped(
     docker_container_factory,
 ) -> None:
     container = docker_container_factory(top=Mock(side_effect=RuntimeError("stopped")))
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: docker_client_factory(container)
     )
 
@@ -395,7 +418,7 @@ def test_container_resource_stats_use_the_last_sample_for_transfer_rates(
             },
         },
     ]
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: docker_client_factory(container)
     )
 
@@ -422,7 +445,7 @@ def test_container_resource_stats_failure_is_mapped(
     container = docker_container_factory(
         stats=Mock(side_effect=RuntimeError("stats unavailable"))
     )
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: docker_client_factory(container)
     )
 
@@ -447,7 +470,7 @@ def test_container_lifecycle_action_calls_matching_docker_method(
     docker_container_factory,
 ) -> None:
     container = docker_container_factory()
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: docker_client_factory(container)
     )
 
@@ -461,7 +484,7 @@ def test_container_lifecycle_action_maps_missing_container(
 ) -> None:
     client = docker_client_factory()
     client.containers.get.side_effect = NotFound("missing")
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
 
@@ -475,7 +498,7 @@ def test_container_lifecycle_action_wraps_docker_failure(
 ) -> None:
     container = docker_container_factory()
     container.restart.side_effect = RuntimeError("daemon timeout")
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: docker_client_factory(container)
     )
 
@@ -489,7 +512,7 @@ def test_container_lifecycle_action_wraps_docker_failure(
 
 def test_close_releases_only_an_existing_client(docker_client_factory) -> None:
     client = docker_client_factory()
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
 
@@ -510,7 +533,7 @@ def test_docker_daemon_details_are_read_from_the_version_response(
     docker_client_factory,
 ) -> None:
     client = docker_client_factory()
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
 
@@ -528,7 +551,7 @@ def test_docker_daemon_details_reject_an_unknown_response_format(
 ) -> None:
     client = docker_client_factory()
     client.version.return_value = "unexpected"
-    docker_container_client = LocalDockerContainerClient(
+    docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
 

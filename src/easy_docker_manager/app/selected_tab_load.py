@@ -154,6 +154,14 @@ class SelectedTabContentLoader:
             )
         self.load_selected_tab_content_if_needed(force=False)
 
+    def reset_after_docker_context_change(self) -> None:
+        """Ignore an unfinished tab load and reset the tab refresh time."""
+        previous_tab_load_future = self._tab_load_future
+        self._tab_load_future = None
+        self._next_tab_refresh_at = 0.0
+        if previous_tab_load_future is not None:
+            previous_tab_load_future.cancel()
+
     def is_initial_log_content_load_in_progress(self, container_id: str) -> bool:
         """Return whether the first Logs request for this container is active."""
         logs_cache_key = ContainerTabKey(container_id, TabName.LOGS)

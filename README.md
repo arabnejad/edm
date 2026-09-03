@@ -17,7 +17,7 @@
 [![mypy](https://img.shields.io/badge/type%20checked-mypy-2A6DB2?logo=python&logoColor=white)](https://mypy-lang.org/)
 [![CodeQL](https://github.com/arabnejad/edm/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/arabnejad/edm/actions/workflows/github-code-scanning/codeql)
 
-Easy Docker Manager (EDM) lets you inspect local Docker containers from a
+Easy Docker Manager (EDM) lets you inspect Docker containers from a
 keyboard-driven terminal interface. It uses Urwid for the screen and the
 Docker Python SDK to read container data.
 
@@ -43,18 +43,18 @@ With EDM, you can view:
 
 - Python 3.9 or newer
 - Docker installed and running
-- permission to access the local Docker daemon
+- permission to access the Docker daemon you want to use
 - a terminal window of at least 120 columns by 30 rows
 
-EDM currently supports local Docker only. It accepts the platform's default
-local connection, Unix sockets, and Windows named pipes. A `DOCKER_HOST` value
-using a remote transport such as TCP or SSH is rejected.
+EDM supports local Docker sockets, Windows named pipes, and remote Docker
+contexts that use SSH. EDM lists remote TCP contexts but cannot connect to
+them yet because TLS support is not implemented.
 
 > [!WARNING]
-> EDM needs access to the local Docker daemon. This is highly privileged access.
-> On Linux, membership in the `docker` group grants root-level privileges. Give
-> Docker access only to trusted users, and never make the Docker socket
-> world-writable. See Docker's
+> EDM needs access to the selected Docker daemon. This is highly privileged
+> access, whether the daemon is local or remote. On Linux, membership in the
+> `docker` group grants root-level privileges. Give Docker access only to
+> trusted users, and never make the Docker socket world-writable. See Docker's
 > [Linux post-installation guidance](https://docs.docker.com/engine/install/linux-postinstall/)
 > for supported access options.
 
@@ -131,6 +131,57 @@ You can also run the Python module directly:
 python -m easy_docker_manager
 ```
 
+## Remote Docker Over SSH
+
+EDM uses the contexts already configured for the Docker command line. It does
+not keep its own server list or change the context used by other terminals.
+
+Before creating a context, check that SSH works without asking for a password
+and that the remote user can reach Docker without `sudo`:
+
+```bash
+ssh docker-user@remote-server-address
+ssh docker-user@remote-server-address docker ps
+```
+
+Use an SSH key or `ssh-agent` for authentication. Connect with `ssh` once before
+opening EDM so the server's host key is present in `~/.ssh/known_hosts`.
+
+Create a Docker context on the computer where EDM runs:
+
+```bash
+docker context create remote-server-context \
+  --description "Remote Docker server" \
+  --docker "host=ssh://docker-user@remote-server-address"
+```
+
+In this example, `remote-server-context` is the context name shown in Docker
+and EDM. Replace `docker-user` with the SSH username and
+`remote-server-address` with the remote server's hostname or IP address.
+
+Include the port in the SSH address when the server does not use port 22:
+
+```bash
+docker context create remote-server-context \
+  --docker "host=ssh://docker-user@remote-server-address:2222"
+```
+
+Test the context before opening EDM:
+
+```bash
+docker --context remote-server-context ps
+```
+
+Inside EDM, press `c` or `C`, select `remote-server-context`, and press
+`Enter`. EDM checks the connection in the background. If it succeeds, EDM
+clears the old container data and loads running containers from the selected
+context. If it fails, the current connection stays active and the popup shows
+the reason.
+
+Opening the popup does not connect to every saved server. EDM checks a remote
+connection only after you select it and press `Enter`. EDM cannot ask for or
+store an SSH password, so the connection must use a working key or `ssh-agent`.
+
 ## Keyboard Controls
 
 | Key | Action |
@@ -138,6 +189,7 @@ python -m easy_docker_manager
 | `q` | Quit EDM from the normal screen |
 | `h` or `H` | Open application help and Docker diagnostics |
 | `p` or `P` | Open the settings editor |
+| `c` or `C` | Open Docker context selection |
 | `Up` / `Down` | Move through containers or detail lines |
 | `Enter` | Move keyboard focus to the detail panel |
 | `Esc` | Return keyboard focus to the container list |
@@ -170,10 +222,10 @@ edm --diagnostics
 ```
 
 The report includes the EDM, Python, Docker SDK, and Docker daemon versions. It
-also shows the config path, application log path, Docker API version, platform,
-and connection result. A failed Docker check prints its error and exits with
-status `1`; a successful check exits with status `0`. This command does not
-create or rewrite `config.json`.
+also shows the active Docker context, config path, application log path, Docker
+API version, platform, and connection result. A failed Docker check prints its
+error and exits with status `1`; a successful check exits with status `0`.
+This command does not create or rewrite `config.json`.
 
 ## Container Actions
 
@@ -375,6 +427,9 @@ cleaned configuration back to the file.
 EDM writes its own application messages to `edm.log` beside `config.json`.
 This file contains EDM errors and diagnostic messages, not container logs. It
 rotates at 5 MB and keeps three backup files.
+
+Paramiko errors from remote SSH connections are written to the same file.
+They are kept out of the terminal so they do not overwrite the EDM screen.
 
 The application log level and stdout output can be changed in the settings
 editor or `config.json`. These environment variables override saved values for

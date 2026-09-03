@@ -157,6 +157,25 @@ def test_scheduled_container_refresh_is_submitted_once(
     assert test_setup.running_container_list_refresher._next_refresh_at == 12.0
 
 
+def test_context_change_discards_all_active_docker_work(
+    docker_manager_factory,
+) -> None:
+    test_setup = docker_manager_factory()
+    active_futures = [Future(), Future(), Future()]
+    test_setup.running_container_list_refresher._refresh_future = active_futures[0]
+    test_setup.selected_tab_content_loader._tab_load_future = active_futures[1]
+    test_setup.container_log_updater._log_poll_future = active_futures[2]
+    test_setup.container_log_updater._log_cursor_by_container_id["old"] = 100
+
+    test_setup.docker_manager.reset_after_docker_context_change()
+
+    assert all(future.cancelled() for future in active_futures)
+    assert test_setup.running_container_list_refresher._refresh_future is None
+    assert test_setup.selected_tab_content_loader._tab_load_future is None
+    assert test_setup.container_log_updater._log_poll_future is None
+    assert test_setup.container_log_updater._log_cursor_by_container_id == {}
+
+
 @pytest.mark.parametrize(
     "tab_name",
     [TabName.ENV, TabName.CONFIG, TabName.STATS, TabName.TOP],

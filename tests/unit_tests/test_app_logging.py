@@ -14,14 +14,13 @@ from easy_docker_manager.logging import app_logging
 def reset_edm_logger_handlers():
     """Close handlers before and after each logging test."""
 
-    logger = logging.getLogger("easy_docker_manager")
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-        handler.close()
+    edm_logger = logging.getLogger("easy_docker_manager")
+    paramiko_logger = logging.getLogger(app_logging.PARAMIKO_LOGGER_NAME)
+    app_logging._remove_and_close_handlers(edm_logger, paramiko_logger)
     yield
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-        handler.close()
+    app_logging._remove_and_close_handlers(edm_logger, paramiko_logger)
+    paramiko_logger.setLevel(logging.NOTSET)
+    paramiko_logger.propagate = True
 
 
 def test_default_log_path_uses_the_edm_platform_directory(monkeypatch) -> None:
@@ -123,6 +122,33 @@ def test_invalid_log_level_falls_back_to_info(tmp_path: Path, monkeypatch) -> No
     assert logger.level == logging.INFO
 
 
+def test_paramiko_errors_are_not_written_over_the_terminal(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    log_path = tmp_path / "edm.log"
+    monkeypatch.setenv("EDM_LOG_FILE", str(log_path))
+    app_logging.configure_logging()
+    app_logging.configure_logging()
+
+    logging.getLogger("paramiko.transport").error(
+        "Secsh channel 94 open FAILED: open failed: Connect failed"
+    )
+
+    captured_output = capsys.readouterr()
+    assert captured_output.out == ""
+    assert captured_output.err == ""
+    paramiko_logger = logging.getLogger(app_logging.PARAMIKO_LOGGER_NAME)
+    for handler in paramiko_logger.handlers:
+        handler.flush()
+    assert "Secsh channel 94 open FAILED" in log_path.read_text(encoding="utf-8")
+    assert len(paramiko_logger.handlers) == 1
+    assert (
+        paramiko_logger.handlers[0] in logging.getLogger("easy_docker_manager").handlers
+    )
+
+
 def test_unwritable_log_file_uses_stderr_fallback(monkeypatch) -> None:
     monkeypatch.delenv("EDM_LOG_STDOUT", raising=False)
     monkeypatch.setattr(
@@ -135,3 +161,6 @@ def test_unwritable_log_file_uses_stderr_fallback(monkeypatch) -> None:
     assert len(logger.handlers) == 1
     assert isinstance(logger.handlers[0], logging.StreamHandler)
     assert logger.handlers[0].level == logging.WARNING
+    paramiko_logger = logging.getLogger(app_logging.PARAMIKO_LOGGER_NAME)
+    assert len(paramiko_logger.handlers) == 1
+    assert isinstance(paramiko_logger.handlers[0], logging.NullHandler)

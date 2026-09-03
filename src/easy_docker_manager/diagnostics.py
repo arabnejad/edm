@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from easy_docker_manager.config.app_config_store import default_config_path
+from easy_docker_manager.core.docker_connections import DockerContextDetails
 from easy_docker_manager.docker.container_client import DockerDaemonDetails
 from easy_docker_manager.logging.app_logging import get_configured_log_file_path
 
@@ -41,6 +42,7 @@ class DiagnosticsReport:
     docker_sdk_version: str
     config_file_path: Path
     application_log_file_path: Path
+    docker_context_name: str = "localhost"
     docker_connection_status: DockerConnectionStatus = DockerConnectionStatus.CHECKING
     docker_daemon_details: Optional[DockerDaemonDetails] = None
     docker_connection_error_message: Optional[str] = None
@@ -79,13 +81,18 @@ def build_edm_title(edm_version: str) -> str:
     return f"Easy Docker Manager (v{short_version})"
 
 
-def create_initial_diagnostics_report() -> DiagnosticsReport:
+def create_initial_diagnostics_report(
+    docker_context: Optional[DockerContextDetails] = None,
+) -> DiagnosticsReport:
     """Collect details that do not require a Docker request."""
     return DiagnosticsReport(
         edm_version=get_installed_edm_version(),
         python_version=platform.python_version(),
         docker_sdk_version=_get_installed_distribution_version(
             DOCKER_SDK_DISTRIBUTION_NAME
+        ),
+        docker_context_name=(
+            docker_context.display_name if docker_context is not None else "localhost"
         ),
         config_file_path=default_config_path(),
         application_log_file_path=get_configured_log_file_path(),
@@ -131,6 +138,7 @@ def format_diagnostics_report(
             ),
             "",
             "Docker",
+            _format_report_value("Context:", report.docker_context_name),
             _format_report_value("Connection:", report.docker_connection_status.value),
             _format_report_value("Daemon version:", daemon_version),
             _format_report_value("API version:", api_version),

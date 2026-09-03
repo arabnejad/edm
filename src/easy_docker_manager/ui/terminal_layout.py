@@ -11,6 +11,7 @@ from easy_docker_manager.config.settings_definitions import SettingsMenuState
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_actions import ContainerActionMenuState
 from easy_docker_manager.core.container_sorting import ContainerSortMenuState
+from easy_docker_manager.core.docker_connections import DockerConnectionMenuState
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.diagnostics import get_installed_edm_version
 from easy_docker_manager.tab_export.definitions import TabExportMenuState
@@ -24,6 +25,9 @@ from easy_docker_manager.ui.container_sort_menu import (
     build_container_sort_popup_menu,
 )
 from easy_docker_manager.ui.diagnostics_popup import build_diagnostics_popup
+from easy_docker_manager.ui.docker_connection_popup import (
+    build_docker_connection_popup_menu,
+)
 from easy_docker_manager.ui.formatting import MarkupSegment
 from easy_docker_manager.ui.running_container_list_panel import (
     RunningContainerListPanel,
@@ -132,6 +136,9 @@ class TerminalLayoutView:
             ("container_action_menu", "light gray", "default"),
             ("container_action_menu_title", "light cyan,bold", "default"),
             ("container_action_menu_selected", "white,bold", "light cyan"),
+            ("docker_connection_menu", "light gray", "default"),
+            ("docker_connection_menu_title", "light cyan,bold", "default"),
+            ("docker_connection_menu_selected", "white,bold", "light cyan"),
         ]
         if self.app_config.colors_enabled:
             return color_palette
@@ -148,6 +155,7 @@ class TerminalLayoutView:
             "export_path_cursor",
             "settings_menu_selected",
             "container_action_menu_selected",
+            "docker_connection_menu_selected",
         }
         bold_styles = {
             "app_title",
@@ -166,6 +174,7 @@ class TerminalLayoutView:
             "export_warning",
             "settings_menu_title",
             "container_action_menu_title",
+            "docker_connection_menu_title",
         }
         monochrome_palette = []
         for style_name, _foreground, _background in color_palette:
@@ -206,6 +215,14 @@ class TerminalLayoutView:
                 state.container_action_menu_state,
                 self._main_layout,
             )
+        elif isinstance(
+            state.docker_connection_menu_state,
+            DockerConnectionMenuState,
+        ):
+            self.layout.original_widget = build_docker_connection_popup_menu(
+                state.docker_connection_menu_state,
+                self._main_layout,
+            )
         elif isinstance(state.tab_export_menu_state, TabExportMenuState):
             self.layout.original_widget = build_tab_export_popup_menu(
                 state.tab_export_menu_state,
@@ -230,27 +247,29 @@ class TerminalLayoutView:
         """Return the key labels shown across the bottom of the screen."""
         return [
             ("shortcut_key", " q "),
-            ("footer", " Quit "),
+            ("footer", "Quit "),
             ("shortcut_key", " Enter "),
-            ("footer", " Open "),
+            ("footer", "Open "),
             ("shortcut_key", " Esc "),
-            ("footer", " List "),
+            ("footer", "List "),
             ("shortcut_key", " [/] "),
-            ("footer", " Tabs "),
+            ("footer", "Tabs "),
             ("shortcut_key", " / "),
-            ("footer", " Search "),
+            ("footer", "Search "),
             ("shortcut_key", " f "),
-            ("footer", " Filter "),
+            ("footer", "Filter "),
             ("shortcut_key", " s "),
-            ("footer", " Sort "),
+            ("footer", "Sort "),
             ("shortcut_key", " a "),
-            ("footer", " Actions "),
+            ("footer", "Actions "),
             ("shortcut_key", " e "),
-            ("footer", " Export "),
+            ("footer", "Export "),
+            ("shortcut_key", " c "),
+            ("footer", "Connect "),
             ("shortcut_key", " h "),
-            ("footer", " Help "),
+            ("footer", "Help "),
             ("shortcut_key", " p "),
-            ("footer", " Settings"),
+            ("footer", "Settings"),
         ]
 
 

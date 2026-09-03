@@ -17,6 +17,7 @@ from easy_docker_manager.core.config import AppConfig
 LOG_FILE_NAME = "edm.log"
 LOG_FILE_MAX_BYTES = 5 * 1024 * 1024
 LOG_FILE_BACKUP_COUNT = 3
+PARAMIKO_LOGGER_NAME = "paramiko"
 
 
 def default_log_file_path() -> Path:
@@ -62,11 +63,12 @@ def configure_logging(app_config: Optional[AppConfig] = None) -> logging.Logger:
         }
 
     logger = logging.getLogger("easy_docker_manager")
+    paramiko_logger = logging.getLogger(PARAMIKO_LOGGER_NAME)
     logger.setLevel(level)
+    paramiko_logger.setLevel(max(level, logging.WARNING))
     logger.propagate = False
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-        handler.close()
+    paramiko_logger.propagate = False
+    _remove_and_close_handlers(logger, paramiko_logger)
 
     formatter = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
 
@@ -85,6 +87,7 @@ def configure_logging(app_config: Optional[AppConfig] = None) -> logging.Logger:
         file_handler.setLevel(level)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
+        paramiko_logger.addHandler(file_handler)
 
     if stdout_enabled:
         stream_handler = logging.StreamHandler(sys.stdout)
@@ -93,6 +96,10 @@ def configure_logging(app_config: Optional[AppConfig] = None) -> logging.Logger:
         logger.addHandler(stream_handler)
 
     if file_logging_error is not None:
+        # Without a handler, Python may print Paramiko errors over the EDM
+        # screen. NullHandler keeps them out of the terminal when edm.log is
+        # unavailable.
+        paramiko_logger.addHandler(logging.NullHandler())
         if not logger.handlers:
             fallback_handler = logging.StreamHandler(sys.stderr)
             fallback_handler.setLevel(logging.WARNING)
@@ -104,6 +111,21 @@ def configure_logging(app_config: Optional[AppConfig] = None) -> logging.Logger:
             "EDM logging initialized: file=%s stdout=%s", log_file, stdout_enabled
         )
     return logger
+
+
+def _remove_and_close_handlers(*loggers: logging.Logger) -> None:
+    """Remove old handlers before EDM applies a new logging configuration.
+
+    The EDM and Paramiko loggers share the same file handler. Track handlers by
+    id so the shared handler is closed only once.
+    """
+    removed_handlers: dict[int, logging.Handler] = {}
+    for logger in loggers:
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+            removed_handlers[id(handler)] = handler
+    for handler in removed_handlers.values():
+        handler.close()
 
 
 __all__ = [

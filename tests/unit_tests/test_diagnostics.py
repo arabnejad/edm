@@ -3,6 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from easy_docker_manager import diagnostics
+from easy_docker_manager.core.docker_connections import (
+    DockerConnectionTransport,
+    DockerContextDetails,
+)
 from easy_docker_manager.diagnostics import (
     DiagnosticsReport,
     DockerConnectionStatus,
@@ -42,6 +46,7 @@ def test_initial_report_collects_installed_versions_and_file_paths(
     assert report.edm_version == "1.2.0"
     assert report.python_version == "3.12.3"
     assert report.docker_sdk_version == "7.1.0"
+    assert report.docker_context_name == "localhost"
     assert report.config_file_path == Path("/tmp/EDM/config.json")
     assert report.application_log_file_path == Path("/tmp/EDM/edm.log")
     assert report.docker_connection_status == DockerConnectionStatus.CHECKING
@@ -82,6 +87,7 @@ def test_report_formats_connected_docker_details_and_shortens_home_paths() -> No
     assert "EDM version:          1.2.0" in formatted_report
     assert "Config file:          ~/.config/EDM/config.json" in formatted_report
     assert "Connection:           Connected" in formatted_report
+    assert "Context:              localhost" in formatted_report
     assert "Daemon version:       28.3.3" in formatted_report
     assert "Platform:             Linux amd64" in formatted_report
 
@@ -101,6 +107,18 @@ def test_report_formats_docker_failure_on_one_line() -> None:
     assert "Connection:           Failed" in formatted_report
     assert "Daemon version:       N/A" in formatted_report
     assert "Error:                daemon not available" in formatted_report
+
+
+def test_initial_report_uses_selected_docker_context_name() -> None:
+    report = create_initial_diagnostics_report(
+        DockerContextDetails(
+            "staging",
+            "ssh://docker@staging",
+            DockerConnectionTransport.SSH,
+        )
+    )
+
+    assert report.docker_context_name == "staging"
 
 
 def test_application_title_hides_local_build_suffix() -> None:

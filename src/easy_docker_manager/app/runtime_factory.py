@@ -22,12 +22,18 @@ from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.diagnostics import get_installed_edm_version
 from easy_docker_manager.docker.client_factory import create_docker_client
 from easy_docker_manager.docker.container_client import DockerContainerClient
-from easy_docker_manager.docker.local_container_client import LocalDockerContainerClient
+from easy_docker_manager.docker.docker_contexts import DockerContextReader
+from easy_docker_manager.docker.docker_sdk_container_client import (
+    DockerSDKContainerClient,
+)
 from easy_docker_manager.tab_export.writer import TabExportWriter
 from easy_docker_manager.tabs.tab_data_loader import ContainerTabTextLoader
 from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
 from easy_docker_manager.ui.container_action_controller import ContainerActionController
 from easy_docker_manager.ui.diagnostics_controller import DiagnosticsController
+from easy_docker_manager.ui.docker_connection_controller import (
+    DockerConnectionController,
+)
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.keyboard_controller import KeyboardController
 from easy_docker_manager.ui.settings_controller import SettingsController
@@ -61,16 +67,24 @@ class EDMRuntimeFactory:
         app_config: Optional[AppConfig] = None,
         docker_container_client: Optional[DockerContainerClient] = None,
         app_config_store: Optional[AppConfigStore] = None,
+        docker_context_reader: Optional[DockerContextReader] = None,
     ) -> None:
         self.app_config = app_config if app_config is not None else AppConfig()
+        self.docker_context_reader = (
+            docker_context_reader
+            if docker_context_reader is not None
+            else DockerContextReader()
+        )
+        self.startup_docker_context = (
+            self.docker_context_reader.get_startup_docker_context()
+        )
         if docker_container_client is not None:
             self.docker_container_client = docker_container_client
         else:
-            self.docker_container_client = LocalDockerContainerClient(
-                # This partial is equivalent to the lambda below:
-                # lambda: create_docker_client(self.app_config.docker_request_timeout)
+            self.docker_container_client = DockerSDKContainerClient(
                 create_docker_client=partial(
                     create_docker_client,
+                    self.startup_docker_context,
                     self.app_config.docker_request_timeout,
                 ),
             )
@@ -85,6 +99,7 @@ class EDMRuntimeFactory:
     ) -> EDMRuntime:
         """Create and connect all objects used by one EDMApp instance."""
         state = TerminalSessionState(
+            active_docker_context=self.startup_docker_context,
             tab_content_cache=TabContentCache(
                 self.app_config.tab_content_cache_max_entries,
                 self.app_config.tab_content_cache_max_bytes,
@@ -133,12 +148,25 @@ class EDMRuntimeFactory:
         )
         settings_controller = SettingsController(state, self.app_config_store)
         container_action_controller = ContainerActionController(state, docker_manager)
+        docker_connection_controller = DockerConnectionController(
+            state,
+            self.app_config,
+            background_executor,
+            docker_manager,
+            self.docker_context_reader,
+            (
+                self.docker_container_client
+                if isinstance(self.docker_container_client, DockerSDKContainerClient)
+                else None
+            ),
+        )
         keyboard_controller = KeyboardController(
             terminal_controller,
             tab_export_controller,
             diagnostics_controller,
             settings_controller,
             container_action_controller,
+            docker_connection_controller,
         )
         return EDMRuntime(
             docker_container_client=self.docker_container_client,
