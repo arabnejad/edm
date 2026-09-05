@@ -75,10 +75,18 @@ def build_edm_title(edm_version: str) -> str:
     value remains in diagnostics, while the title leaves that suffix out so it
     stays readable.
     """
-    if edm_version == UNKNOWN_VERSION:
+    version_label = build_edm_version_label(edm_version)
+    if not version_label:
         return "Easy Docker Manager"
+    return f"Easy Docker Manager ({version_label})"
+
+
+def build_edm_version_label(edm_version: str) -> str:
+    """Return the short version shown with the application logo."""
+    if edm_version == UNKNOWN_VERSION:
+        return ""
     short_version = edm_version.split("+", 1)[0]
-    return f"Easy Docker Manager (v{short_version})"
+    return f"v{short_version}"
 
 
 def create_initial_diagnostics_report(
@@ -209,6 +217,7 @@ __all__ = [
     "DiagnosticsReport",
     "DockerConnectionStatus",
     "build_edm_title",
+    "build_edm_version_label",
     "create_initial_diagnostics_report",
     "format_diagnostics_report",
     "get_installed_edm_version",

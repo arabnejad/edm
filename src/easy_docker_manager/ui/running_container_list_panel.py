@@ -13,9 +13,20 @@ from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
     TerminalSessionState,
 )
-from easy_docker_manager.diagnostics import build_edm_title
+from easy_docker_manager.diagnostics import build_edm_version_label
 from easy_docker_manager.ui.formatting import MarkupSegment
 
+EDM_TERMINAL_LOGO = "\n".join(
+    (
+        "███████╗  ██████╗   ███╗   ███╗",
+        "██╔════╝  ██╔══██╗  ████╗ ████║",
+        "█████╗    ██║  ██║  ██╔████╔██║",
+        "██╔══╝    ██║  ██║  ██║╚██╔╝██║",
+        "███████╗  ██████╔╝  ██║ ╚═╝ ██║",
+        "╚══════╝  ╚═════╝   ╚═╝     ╚═╝",
+    )
+)
+APPLICATION_NAME = "Easy Docker Manager"
 GITHUB_REPOSITORY_TEXT = "github.com/arabnejad/edm"
 
 
@@ -29,7 +40,7 @@ class RunningContainerListPanel:
 
     def __init__(self, app_config: AppConfig, installed_edm_version: str) -> None:
         self.app_config = app_config
-        self.application_title = build_edm_title(installed_edm_version)
+        self.application_version_label = build_edm_version_label(installed_edm_version)
         self.container_rows: urwid.SimpleFocusListWalker = urwid.SimpleFocusListWalker(
             []
         )
@@ -62,20 +73,39 @@ class RunningContainerListPanel:
         self.panel.set_attr_map({None: border_style})
 
     def _build_title_panel(self) -> urwid.Widget:
-        """Build the application title and repository link."""
-        title_content = urwid.Pile(
-            [
+        """Build the application logo, name, version, and repository address."""
+        title_rows: list[tuple[str, urwid.Widget]] = [
+            (
+                "pack",
+                urwid.AttrMap(
+                    urwid.Text(EDM_TERMINAL_LOGO, align="center", wrap="clip"),
+                    "app_title",
+                ),
+            ),
+            (
+                "pack",
+                urwid.AttrMap(
+                    urwid.Text(APPLICATION_NAME, align="center", wrap="clip"),
+                    "app_title",
+                ),
+            ),
+        ]
+        if self.application_version_label:
+            title_rows.append(
                 (
                     "pack",
                     urwid.AttrMap(
                         urwid.Text(
-                            self.application_title,
+                            f"({self.application_version_label})",
                             align="center",
                             wrap="clip",
                         ),
                         "app_title",
                     ),
-                ),
+                )
+            )
+        title_rows.extend(
+            [
                 ("pack", urwid.Text("")),
                 (
                     "pack",
@@ -90,6 +120,7 @@ class RunningContainerListPanel:
                 ),
             ]
         )
+        title_content = urwid.Pile(title_rows)
         return urwid.AttrMap(urwid.LineBox(title_content), "title_border")
 
     def _build_container_frame(self) -> urwid.Widget:
