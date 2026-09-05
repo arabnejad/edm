@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "private-key"
+
+[[rules.allowlists]]
+description = "Public private keys used only by the remote integration tests"
+paths = [
+    '''tests/integration_tests/remote/fixtures/tls/(server-key|client-key)\.pem''',
+    '''tests/integration_tests/remote/fixtures/ssh/(client-key|host-key)$''',
+]

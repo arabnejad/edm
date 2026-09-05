@@ -1,0 +1,73 @@
+services:
+  # This daemon accepts client-certificate connections on a random localhost port.
+  tls-docker-daemon:
+    build:
+      context: .
+      dockerfile: tls_server/Dockerfile
+    privileged: true
+    ports:
+      # Published port 0 lets parallel runs choose different localhost ports.
+      - target: 2376
+        published: "0"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    volumes:
+      - tls-docker-data:/var/lib/docker
+    healthcheck:
+      # The local socket confirms dockerd is ready without going through TLS.
+      test:
+        - CMD-SHELL
+        - docker --host unix:///var/run/docker.sock info >/dev/null 2>&1
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  # The SSH endpoint forwards Docker requests to this separate daemon.
+  ssh-docker-daemon:
+    image: docker:29.1.3-dind
+    privileged: true
+    # This makes the internal plain-TCP choice explicit and avoids a startup delay.
+    command:
+      - --tls=false
+    environment:
+      # Port 2375 is available only inside this Compose network.
+      DOCKER_TLS_CERTDIR: ""
+    expose:
+      - "2375"
+    volumes:
+      - ssh-docker-data:/var/lib/docker
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - docker --host unix:///var/run/docker.sock info >/dev/null 2>&1
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  # This is a real SSH hop, but its test key can only open a Docker connection.
+  ssh-docker-proxy:
+    build:
+      context: .
+      dockerfile: ssh_server/Dockerfile
+    depends_on:
+      ssh-docker-daemon:
+        condition: service_healthy
+    ports:
+      - target: 22
+        published: "0"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - nc -z 127.0.0.1 22
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  # Named volumes keep each daemon's image store private and are removed afterward.
+  tls-docker-data:
+  ssh-docker-data:

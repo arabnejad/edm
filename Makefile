@@ -3,6 +3,7 @@ SRC ?= src/easy_docker_manager
 TESTS ?= tests
 UNIT_TESTS ?= tests/unit_tests
 INTEGRATION_TESTS ?= tests/integration_tests
+REMOTE_INTEGRATION_TEST_SCRIPT ?= tests/integration_tests/remote/run_remote_integration_tests.sh
 SMOKE_TESTS ?= tests/smoke_tests
 
 RUFF ?= ruff
@@ -15,8 +16,9 @@ PIP_AUDIT ?= $(PYTHON) -m pip_audit
 BUILD ?= $(PYTHON) -m build
 TWINE ?= $(PYTHON) -m twine
 
-.PHONY: audit bandit black black-check check format integration-test lint mypy \
-	package-build package-check pre-commit ruff ruff-fix security smoke-test test
+.PHONY: all-integration-tests audit bandit black black-check check format \
+	integration-test lint mypy package-build package-check pre-commit \
+	remote-integration-test ruff ruff-fix security smoke-test test
 
 ruff:
 	$(RUFF) check $(SRC) $(TESTS)
@@ -46,6 +48,11 @@ test:
 
 integration-test:
 	$(PYTEST) --no-cov -m integration $(INTEGRATION_TESTS)
+
+remote-integration-test:
+	PYTHON="$(PYTHON)" $(REMOTE_INTEGRATION_TEST_SCRIPT)
+
+all-integration-tests: integration-test remote-integration-test
 
 smoke-test:
 	$(PYTEST) --no-cov -m smoke $(SMOKE_TESTS)

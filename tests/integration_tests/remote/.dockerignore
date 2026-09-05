@@ -1,0 +1,16 @@
+# Only files copied by the two test images need to enter the build context.
+*
+!tls_server/
+!tls_server/Dockerfile
+!ssh_server/
+!ssh_server/Dockerfile
+!ssh_server/sshd_config
+!fixtures/
+!fixtures/tls/
+!fixtures/tls/ca.pem
+!fixtures/tls/server-cert.pem
+!fixtures/tls/server-key.pem
+!fixtures/ssh/
+!fixtures/ssh/client-key.pub
+!fixtures/ssh/host-key
+!fixtures/ssh/host-key.pub

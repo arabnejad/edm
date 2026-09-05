@@ -116,6 +116,7 @@ skips = ["B101"]
 testpaths = ["tests/unit_tests"]
 markers = [
     "integration: requires a running local Docker daemon",
+    "remote_integration: starts temporary SSH and TLS Docker services",
     "smoke: checks package installation and basic startup",
 ]
 addopts = [
