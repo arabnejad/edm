@@ -2,7 +2,7 @@
 
 <img src="docs/assets/logo.png" alt="Easy Docker Manager logo" width="200">
 
-[![PyPI](https://img.shields.io/pypi/v/easy-docker-manager?logo=pypi&logoColor=white)](https://pypi.org/project/easy-docker-manager/)
+[![PyPI](https://img.shields.io/pypi/v/easy-docker-manager?logo=pypi&logoColor=white&cacheSeconds=300)](https://pypi.org/project/easy-docker-manager/)
 [![Python](https://img.shields.io/pypi/pyversions/easy-docker-manager?logo=python&logoColor=white)](https://pypi.org/project/easy-docker-manager/)
 [![Quality](https://github.com/arabnejad/edm/actions/workflows/quality.yml/badge.svg?branch=main)](https://github.com/arabnejad/edm/actions/workflows/quality.yml)
 [![Package](https://github.com/arabnejad/edm/actions/workflows/package.yml/badge.svg?branch=main)](https://github.com/arabnejad/edm/actions/workflows/package.yml)
