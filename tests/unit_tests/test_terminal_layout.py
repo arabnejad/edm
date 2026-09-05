@@ -97,19 +97,23 @@ def test_no_color_palette_uses_terminal_defaults_and_keeps_selection_visible() -
     assert palette["border_active"] == ("default,bold", "default")
 
 
-def test_title_panel_shows_github_repository_text_inside_complete_border() -> None:
+def test_title_panel_shows_terminal_logo_version_and_repository_inside_border() -> None:
     view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
     title_panel = view.running_container_list_panel.widget.contents[0][0]
 
-    rendered_title_lines = [line.decode() for line in title_panel.render((80,)).text]
+    rendered_title_canvas = title_panel.render((80,))
+    rendered_title_lines = [line.decode() for line in rendered_title_canvas.text]
     rendered_title = "\n".join(rendered_title_lines)
 
     assert "github.com/arabnejad/edm" in rendered_title
-    assert "Easy Docker Manager (v1.2.0)" in rendered_title
+    assert "███████╗  ██████╗   ███╗   ███╗" in rendered_title
+    assert "╚══════╝  ╚═════╝   ╚═╝     ╚═╝" in rendered_title
+    assert "Easy Docker Manager" in rendered_title
+    assert "(v1.2.0)" in rendered_title
     assert "https://" not in rendered_title
     assert "\x1b" not in rendered_title
-    assert len(rendered_title_lines) == 5
-    assert rendered_title_lines[2].strip("│ ") == ""
+    assert len(rendered_title_lines) == 12
+    assert rendered_title_lines[9].strip("│ ") == ""
     assert "─" in rendered_title_lines[-1]
 
 
