@@ -516,6 +516,8 @@ make mypy
 make bandit
 make test
 make integration-test
+make remote-integration-test
+make all-integration-tests
 make smoke-test
 make pre-commit
 make audit
@@ -530,16 +532,20 @@ Python 3.10 or newer and network access, so it is not part of `make check`.
 `make integration-test` starts a temporary Alpine container and checks container
 listing, logs, environment variables, inspection data, and process information.
 It requires access to a running local Docker daemon.
+`make remote-integration-test` starts isolated Docker-in-Docker services and
+checks Docker contexts over SSH and verified TLS. It uses temporary Docker and
+SSH configuration, then removes the services and configuration when it exits.
+`make all-integration-tests` runs both Docker suites.
 `make smoke-test` checks package imports, platform paths, notifier selection,
 and basic startup on the current operating system.
 
 GitHub Actions runs Black, Ruff, mypy, and Bandit once on Python 3.12. It runs
-the unit tests on Python 3.9 through 3.14, runs the Docker integration tests on
-Python 3.12, runs wheel smoke tests on Windows and macOS, and verifies the
-minimum supported runtime dependency versions on Python 3.9. It also checks
-dependencies and committed secrets, builds the source distribution and wheel,
-and installs the wheel on every supported Python version. Dependabot checks
-Python packages and GitHub Actions each week.
+the unit tests on Python 3.9 through 3.14 and runs the local and remote Docker
+integration suites on Python 3.12. It also runs wheel smoke tests on Windows
+and macOS, verifies the minimum supported runtime dependency versions on Python
+3.9, checks dependencies and committed secrets, builds the source distribution
+and wheel, and installs the wheel on every supported Python version. Dependabot
+checks Python packages and GitHub Actions each week.
 
 Workflow actions are pinned to full commit SHAs so CI always runs the exact
 reviewed action code instead of a movable version tag. The comment beside each

@@ -64,6 +64,7 @@ site/
 !/.github/pull_request_template.md
 !/docs/remote-docker-tls.md
 !/tests/integration_tests/README.md
+!/tests/integration_tests/remote/fixtures/README.md
 !/tests/smoke_tests/README.md
 *.diff
 *-recording.tape

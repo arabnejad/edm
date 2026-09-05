@@ -1,0 +1,21 @@
+Port 22
+ListenAddress 0.0.0.0
+
+# Use only the committed test host key so the client can verify this server.
+HostKey /etc/ssh/ssh_host_ed25519_key
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+PermitRootLogin no
+AllowUsers docker-user
+AuthorizedKeysFile .ssh/authorized_keys
+StrictModes yes
+
+# This server exists only to carry Docker's SSH protocol in the test network.
+AllowTcpForwarding no
+X11Forwarding no
+PermitTunnel no
+UseDNS no
+PidFile /run/sshd.pid
+LogLevel VERBOSE
