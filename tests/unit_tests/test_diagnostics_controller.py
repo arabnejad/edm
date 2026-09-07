@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
-from easy_docker_manager.diagnostics import DockerConnectionStatus
+from easy_docker_manager.diagnostics import DiagnosticsReport, DockerConnectionStatus
 from easy_docker_manager.docker.container_client import (
     DockerContainerClient,
     DockerDaemonDetails,
@@ -26,10 +26,10 @@ def test_opening_diagnostics_starts_docker_request_and_applies_its_result() -> N
     )
 
     assert controller.open_diagnostics_popup() is True
-    assert state.diagnostics_popup_report is not None
+    diagnostics_report = state.active_popup
+    assert isinstance(diagnostics_report, DiagnosticsReport)
     assert (
-        state.diagnostics_popup_report.docker_connection_status
-        == DockerConnectionStatus.CHECKING
+        diagnostics_report.docker_connection_status == DockerConnectionStatus.CHECKING
     )
     assert background_executor.submit.call_args.args == (
         docker_container_client.get_docker_daemon_details,
@@ -45,10 +45,9 @@ def test_opening_diagnostics_starts_docker_request_and_applies_its_result() -> N
     completed_future.set_result(docker_daemon_details)
     assert completion_callback(completed_future) is True
     assert (
-        state.diagnostics_popup_report.docker_connection_status
-        == DockerConnectionStatus.CONNECTED
+        diagnostics_report.docker_connection_status == DockerConnectionStatus.CONNECTED
     )
-    assert state.diagnostics_popup_report.docker_daemon_details == docker_daemon_details
+    assert diagnostics_report.docker_daemon_details == docker_daemon_details
 
 
 def test_docker_error_is_shown_only_when_diagnostics_is_still_open() -> None:
@@ -67,8 +66,8 @@ def test_docker_error_is_shown_only_when_diagnostics_is_still_open() -> None:
     completion_callback = background_executor.submit.call_args.kwargs["on_complete"]
     completed_future.set_exception(RuntimeError("Docker is unavailable"))
     assert completion_callback(completed_future) is True
-    assert state.diagnostics_popup_report is not None
-    report = state.diagnostics_popup_report
+    report = state.active_popup
+    assert isinstance(report, DiagnosticsReport)
     assert report.docker_connection_status == DockerConnectionStatus.FAILED
     assert report.docker_connection_error_message == "Docker is unavailable"
 
@@ -94,7 +93,7 @@ def test_result_is_discarded_after_diagnostics_popup_closes() -> None:
     completed_future.set_result(DockerDaemonDetails("28.3.3", "1.51", "linux", "amd64"))
 
     assert completion_callback(completed_future) is False
-    assert state.diagnostics_popup_report is None
+    assert state.active_popup is None
 
 
 def test_reopening_diagnostics_ignores_the_previous_docker_result() -> None:
@@ -123,13 +122,13 @@ def test_reopening_diagnostics_ignores_the_previous_docker_result() -> None:
 
     previous_future.set_result(DockerDaemonDetails("old", "old", "old", "old"))
     assert previous_completion_callback(previous_future) is False
-    assert state.diagnostics_popup_report is not None
+    diagnostics_report = state.active_popup
+    assert isinstance(diagnostics_report, DiagnosticsReport)
     assert (
-        state.diagnostics_popup_report.docker_connection_status
-        == DockerConnectionStatus.CHECKING
+        diagnostics_report.docker_connection_status == DockerConnectionStatus.CHECKING
     )
 
     current_details = DockerDaemonDetails("29.0", "1.52", "linux", "amd64")
     current_future.set_result(current_details)
     assert current_completion_callback(current_future) is True
-    assert state.diagnostics_popup_report.docker_daemon_details == current_details
+    assert diagnostics_report.docker_daemon_details == current_details

@@ -34,23 +34,23 @@ class SettingsController:
 
     def open_settings_menu(self) -> bool:
         """Open settings with the values currently saved in config.json."""
-        if self.state.settings_menu_state is not None:
+        if self.state.active_popup is not None:
             return False
-        self.state.settings_menu_state = SettingsMenuState(
+        self.state.active_popup = SettingsMenuState(
             draft_config=self.app_config_store.load_and_sync()
         )
         return True
 
     def handle_menu_keypress(self, key: str) -> bool:
         """Apply one keypress to the open settings menu."""
-        menu_state = self.state.settings_menu_state
-        if menu_state is None:
+        menu_state = self.state.active_popup
+        if not isinstance(menu_state, SettingsMenuState):
             return False
         if menu_state.editing_value_text is not None:
             return self._handle_value_editing_keypress(key)
 
         if key == "esc":
-            self.state.settings_menu_state = None
+            self.state.active_popup = None
             return True
         if key == "up":
             return self._move_selected_setting(-1)
@@ -218,8 +218,8 @@ class SettingsController:
 
     def _open_menu_state(self) -> SettingsMenuState:
         """Return the open menu state used by private input handlers."""
-        menu_state = self.state.settings_menu_state
-        if menu_state is None:
+        menu_state = self.state.active_popup
+        if not isinstance(menu_state, SettingsMenuState):
             raise RuntimeError("Settings menu is not open")
         return menu_state
 

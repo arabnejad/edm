@@ -249,9 +249,9 @@ class TerminalController:
 
     def open_container_list_menu(self) -> bool:
         """Open the list menu with the active choices selected."""
-        if self.state.container_list_menu_state is not None:
+        if self.state.active_popup is not None:
             return False
-        self.state.container_list_menu_state = ContainerListMenuState(
+        self.state.active_popup = ContainerListMenuState(
             selected_field=ContainerListMenuField.VIEW_MODE,
             view_mode=self.state.container_list_view_mode,
             sort_field=self.state.container_sort_field,
@@ -261,15 +261,15 @@ class TerminalController:
 
     def close_container_list_menu(self) -> bool:
         """Close the list menu without applying its choices."""
-        if self.state.container_list_menu_state is None:
+        if not isinstance(self.state.active_popup, ContainerListMenuState):
             return False
-        self.state.container_list_menu_state = None
+        self.state.active_popup = None
         return True
 
     def move_container_list_menu_selection(self, selection_offset: int) -> bool:
         """Move between the fields in the container list menu."""
-        menu_state = self.state.container_list_menu_state
-        if menu_state is None:
+        menu_state = self.state.active_popup
+        if not isinstance(menu_state, ContainerListMenuState):
             return False
         previous_field = menu_state.selected_field
         previous_index = self.CONTAINER_LIST_MENU_FIELD_ORDER.index(previous_field)
@@ -285,8 +285,8 @@ class TerminalController:
 
     def change_selected_container_list_menu_value(self, value_offset: int) -> bool:
         """Change the value of the selected list-menu field."""
-        menu_state = self.state.container_list_menu_state
-        if menu_state is None or value_offset == 0:
+        menu_state = self.state.active_popup
+        if not isinstance(menu_state, ContainerListMenuState) or value_offset == 0:
             return False
 
         if menu_state.selected_field == ContainerListMenuField.VIEW_MODE:
@@ -313,8 +313,8 @@ class TerminalController:
 
     def apply_container_list_menu(self) -> bool:
         """Apply the list choices while keeping the same container selected."""
-        menu_state = self.state.container_list_menu_state
-        if menu_state is None:
+        menu_state = self.state.active_popup
+        if not isinstance(menu_state, ContainerListMenuState):
             return False
 
         self.state.container_list_view_mode = menu_state.view_mode
@@ -324,7 +324,7 @@ class TerminalController:
             if self.state.container_sort_field != ContainerSortField.DOCKER_ORDER
             else False
         )
-        self.state.container_list_menu_state = None
+        self.state.active_popup = None
         self.docker_manager.rebuild_displayed_container_list()
         return True
 

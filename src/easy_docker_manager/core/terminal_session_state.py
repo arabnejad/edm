@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
 
 from easy_docker_manager.config.settings_definitions import SettingsMenuState
 from easy_docker_manager.core.config import AppConfig
@@ -41,6 +41,16 @@ class FocusArea(str, Enum):
 
     CONTAINERS = "containers"
     DETAIL = "detail"
+
+
+ActivePopupState = Union[
+    ContainerActionMenuState,
+    ContainerListMenuState,
+    DiagnosticsReport,
+    DockerConnectionMenuState,
+    SettingsMenuState,
+    TabExportMenuState,
+]
 
 
 def _create_default_tab_content_cache() -> TabContentCache:
@@ -77,8 +87,8 @@ class TerminalSessionState:
     active_docker_context: DockerContextDetails = field(
         default_factory=_create_default_docker_context_details
     )
-    # Contexts and current selection shown in the connection popup.
-    docker_connection_menu_state: Optional[DockerConnectionMenuState] = None
+    # State for the popup currently shown above the main screen.
+    active_popup: Optional[ActivePopupState] = None
     # Index of the selected item in the displayed container list, or None when empty.
     selected_container_index: Optional[int] = None
     # Text matched against each container's name, image, and status.
@@ -90,16 +100,6 @@ class TerminalSessionState:
     container_sort_descending: bool = False
     # Which containers are currently included in the displayed list.
     container_list_view_mode: ContainerListViewMode = ContainerListViewMode.RUNNING_ONLY
-    # Temporary choices in the list menu. None means the menu is closed.
-    container_list_menu_state: Optional[ContainerListMenuState] = None
-    # Selected lifecycle action and target container while its menu is open.
-    container_action_menu_state: Optional[ContainerActionMenuState] = None
-    # Current choices in the tab export menu. None means the menu is closed.
-    tab_export_menu_state: Optional[TabExportMenuState] = None
-    # Application, file, and Docker details shown while the popup is open.
-    diagnostics_popup_report: Optional[DiagnosticsReport] = None
-    # Values being changed in the settings popup. None means the popup is closed.
-    settings_menu_state: Optional[SettingsMenuState] = None
     # Detail tab currently displayed in the right panel.
     active_detail_tab_name: TabName = TabName.LOGS
     # Which panel receives keyboard input.
@@ -203,18 +203,17 @@ class TerminalSessionState:
             for key, message in self.tab_content_error_messages.items()
             if key.container_id in existing_container_ids
         }
-        if (
-            self.tab_export_menu_state is not None
-            and self.tab_export_menu_state.container_tab_key.container_id
+        active_popup = self.active_popup
+        popup_targets_missing_container = (
+            isinstance(active_popup, TabExportMenuState)
+            and active_popup.container_tab_key.container_id
             not in existing_container_ids
-        ):
-            self.tab_export_menu_state = None
-        if (
-            self.container_action_menu_state is not None
-            and self.container_action_menu_state.container_id
-            not in existing_container_ids
-        ):
-            self.container_action_menu_state = None
+        ) or (
+            isinstance(active_popup, ContainerActionMenuState)
+            and active_popup.container_id not in existing_container_ids
+        )
+        if popup_targets_missing_container:
+            self.active_popup = None
 
     def clear_loaded_details_for_containers(self, container_ids: set[str]) -> None:
         """Clear loaded tab results after the listed containers change status."""
@@ -235,8 +234,11 @@ class TerminalSessionState:
             self.container_filter_query,
         )
         self.selected_container_index = None
-        self.container_action_menu_state = None
-        self.tab_export_menu_state = None
+        if isinstance(
+            self.active_popup,
+            (ContainerActionMenuState, TabExportMenuState),
+        ):
+            self.active_popup = None
         self.active_focus_area = FocusArea.CONTAINERS
         self.detail_selected_line_index = 0
         self.follow_log_tail = True
@@ -248,6 +250,7 @@ class TerminalSessionState:
 
 
 __all__ = [
+    "ActivePopupState",
     "FocusArea",
     "TerminalSessionState",
 ]

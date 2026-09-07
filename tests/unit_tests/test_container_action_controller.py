@@ -6,6 +6,7 @@ import pytest
 
 from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.core.container_actions import (
+    ContainerActionMenuState,
     ContainerLifecycleAction,
     get_available_actions_for_container_status,
 )
@@ -48,8 +49,8 @@ def test_open_menu_uses_selected_running_container(
 
     assert controller.open_container_action_menu()
 
-    menu_state = state.container_action_menu_state
-    assert menu_state is not None
+    menu_state = state.active_popup
+    assert isinstance(menu_state, ContainerActionMenuState)
     assert menu_state.container_id == "container-1"
     assert menu_state.container_name == "web"
     assert menu_state.available_actions == [
@@ -69,7 +70,7 @@ def test_unsupported_container_status_shows_why_menu_did_not_open(
 
     assert controller.open_container_action_menu()
 
-    assert state.container_action_menu_state is None
+    assert state.active_popup is None
     assert state.status_message == (
         'No actions are available for container "web" while its status is paused.'
     )
@@ -85,11 +86,12 @@ def test_enter_confirms_then_submits_selected_action(session_state_factory) -> N
 
     assert controller.handle_menu_keypress("down")
     assert controller.handle_menu_keypress("enter")
-    assert state.container_action_menu_state is not None
-    assert state.container_action_menu_state.is_awaiting_confirmation
+    menu_state = state.active_popup
+    assert isinstance(menu_state, ContainerActionMenuState)
+    assert menu_state.is_awaiting_confirmation
     assert controller.handle_menu_keypress("enter")
 
-    assert state.container_action_menu_state is None
+    assert state.active_popup is None
     docker_manager.start_container_lifecycle_action.assert_called_once_with(
         ContainerLifecycleAction.STOP,
         "container-1",
@@ -106,7 +108,7 @@ def test_escape_closes_confirmation_without_submitting(session_state_factory) ->
     controller.handle_menu_keypress("enter")
 
     assert controller.handle_menu_keypress("esc")
-    assert state.container_action_menu_state is None
+    assert state.active_popup is None
     docker_manager.start_container_lifecycle_action.assert_not_called()
 
 
@@ -119,7 +121,7 @@ def test_action_menu_does_not_open_while_another_action_runs(
     controller = ContainerActionController(state, docker_manager)
 
     assert controller.open_container_action_menu()
-    assert state.container_action_menu_state is None
+    assert state.active_popup is None
     assert state.status_message == "A container action is already running."
 
 
@@ -130,7 +132,7 @@ def test_action_menu_requires_a_selected_container() -> None:
     controller = ContainerActionController(state, docker_manager)
 
     assert controller.open_container_action_menu()
-    assert state.container_action_menu_state is None
+    assert state.active_popup is None
     assert state.status_message == "Select a container first."
 
 
@@ -160,7 +162,7 @@ def test_failed_submission_closes_menu_and_reports_active_action(
     controller.handle_menu_keypress("enter")
 
     assert controller.handle_menu_keypress("enter")
-    assert state.container_action_menu_state is None
+    assert state.active_popup is None
     assert state.status_message == "A container action is already running."
 
 
@@ -177,7 +179,7 @@ def test_confirmation_rejects_an_action_after_container_status_changes(
 
     assert controller.handle_menu_keypress("enter")
 
-    assert state.container_action_menu_state is None
+    assert state.active_popup is None
     assert state.status_message == (
         "The container status changed. Open Actions to see its current options."
     )

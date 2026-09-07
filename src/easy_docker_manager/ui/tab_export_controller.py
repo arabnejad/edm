@@ -68,7 +68,7 @@ class TabExportController:
         panel. The menu opens only after the active tab has loaded. Its default
         path starts in the directory where EDM was launched.
         """
-        if self.state.tab_export_menu_state is not None:
+        if self.state.active_popup is not None:
             return False
 
         container_tab_key = self.state.selected_container_tab_key
@@ -88,8 +88,7 @@ class TabExportController:
             container_tab_key.tab_name,
         )
         file_path = self._format_export_path_for_menu(self.launch_directory / file_name)
-        self.state.container_list_menu_state = None
-        self.state.tab_export_menu_state = TabExportMenuState(
+        self.state.active_popup = TabExportMenuState(
             container_tab_key=container_tab_key,
             container_name=selected_container.name,
             file_path=file_path,
@@ -105,8 +104,11 @@ class TabExportController:
         overwrite question, or is ignored while the file is being written.
         It returns True when the visible menu changed and needs to be redrawn.
         """
-        menu_state = self.state.tab_export_menu_state
-        if menu_state is None or menu_state.phase == TabExportPhase.WRITING:
+        menu_state = self.state.active_popup
+        if (
+            not isinstance(menu_state, TabExportMenuState)
+            or menu_state.phase == TabExportPhase.WRITING
+        ):
             return False
 
         if menu_state.phase == TabExportPhase.CONFIRMING_OVERWRITE:
@@ -132,17 +134,20 @@ class TabExportController:
 
     def _close_tab_export_menu(self) -> bool:
         """Close the export menu without writing a file."""
-        menu_state = self.state.tab_export_menu_state
-        if menu_state is None or menu_state.phase == TabExportPhase.WRITING:
+        menu_state = self.state.active_popup
+        if (
+            not isinstance(menu_state, TabExportMenuState)
+            or menu_state.phase == TabExportPhase.WRITING
+        ):
             return False
-        self.state.tab_export_menu_state = None
+        self.state.active_popup = None
         return True
 
     def _cancel_export_file_overwrite_confirmation(self) -> bool:
         """Return from the overwrite question to the editable export menu."""
-        menu_state = self.state.tab_export_menu_state
+        menu_state = self.state.active_popup
         if (
-            menu_state is None
+            not isinstance(menu_state, TabExportMenuState)
             or menu_state.phase != TabExportPhase.CONFIRMING_OVERWRITE
         ):
             return False
@@ -155,8 +160,10 @@ class TabExportController:
         handle_menu_keypress() passes -1 for Up and 1 for Down or Tab.
         Selection stops at the first and last fields instead of wrapping.
         """
-        menu_state = self.state.tab_export_menu_state
-        if menu_state is None or not self._menu_fields_can_be_edited(menu_state):
+        menu_state = self.state.active_popup
+        if not isinstance(
+            menu_state, TabExportMenuState
+        ) or not self._menu_fields_can_be_edited(menu_state):
             return False
 
         previous_field = menu_state.selected_field
@@ -175,9 +182,9 @@ class TabExportController:
         and Top only highlight text, so those tabs keep all loaded lines in
         either scope.
         """
-        menu_state = self.state.tab_export_menu_state
+        menu_state = self.state.active_popup
         if (
-            menu_state is None
+            not isinstance(menu_state, TabExportMenuState)
             or menu_state.selected_field != TabExportMenuField.SCOPE
             or not self._menu_fields_can_be_edited(menu_state)
         ):
@@ -195,9 +202,9 @@ class TabExportController:
         Printable keys include q and Q while the File field is selected. They
         edit the path instead of activating normal EDM shortcuts.
         """
-        menu_state = self.state.tab_export_menu_state
+        menu_state = self.state.active_popup
         if (
-            menu_state is None
+            not isinstance(menu_state, TabExportMenuState)
             or menu_state.selected_field != TabExportMenuField.FILE_PATH
             or not self._menu_fields_can_be_edited(menu_state)
         ):
@@ -256,8 +263,11 @@ class TabExportController:
         confirms replacement. The exported text is copied from the cache before
         the worker starts, so later tab updates cannot change the file.
         """
-        menu_state = self.state.tab_export_menu_state
-        if menu_state is None or menu_state.phase == TabExportPhase.WRITING:
+        menu_state = self.state.active_popup
+        if (
+            not isinstance(menu_state, TabExportMenuState)
+            or menu_state.phase == TabExportPhase.WRITING
+        ):
             return False
 
         raw_file_path = menu_state.file_path.strip()
@@ -383,7 +393,10 @@ class TabExportController:
             return False
         self._active_export_future = None
 
-        menu_state = self.state.tab_export_menu_state
+        active_popup = self.state.active_popup
+        menu_state = (
+            active_popup if isinstance(active_popup, TabExportMenuState) else None
+        )
         is_matching_menu = (
             menu_state is not None
             and menu_state.container_tab_key == container_tab_key
@@ -414,7 +427,7 @@ class TabExportController:
             return True
 
         if is_matching_menu:
-            self.state.tab_export_menu_state = None
+            self.state.active_popup = None
         self.state.status_message = f"Exported to {saved_path}"
         return True
 

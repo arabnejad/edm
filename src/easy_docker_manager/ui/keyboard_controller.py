@@ -5,7 +5,13 @@ from __future__ import annotations
 from enum import Enum
 from typing import Optional
 
+from easy_docker_manager.config.settings_definitions import SettingsMenuState
+from easy_docker_manager.core.container_actions import ContainerActionMenuState
+from easy_docker_manager.core.container_sorting import ContainerListMenuState
+from easy_docker_manager.core.docker_connections import DockerConnectionMenuState
 from easy_docker_manager.core.terminal_session_state import FocusArea
+from easy_docker_manager.diagnostics import DiagnosticsReport
+from easy_docker_manager.tab_export.definitions import TabExportMenuState
 from easy_docker_manager.ui.container_action_controller import ContainerActionController
 from easy_docker_manager.ui.diagnostics_controller import DiagnosticsController
 from easy_docker_manager.ui.docker_connection_controller import (
@@ -56,17 +62,18 @@ class KeyboardController:
         terminal_size: Optional[tuple[int, ...]] = None,
     ) -> KeyAction:
         """Handle one keypress and tell EDMApp whether to redraw or quit."""
-        if self.state.diagnostics_popup_report is not None:
+        active_popup = self.state.active_popup
+        if isinstance(active_popup, DiagnosticsReport):
             return self._handle_diagnostics_popup_keypress(key)
-        if self.state.settings_menu_state is not None:
+        if isinstance(active_popup, SettingsMenuState):
             return self._handle_settings_menu_keypress(key)
-        if self.state.container_action_menu_state is not None:
+        if isinstance(active_popup, ContainerActionMenuState):
             return self._handle_container_action_menu_keypress(key)
-        if self.state.docker_connection_menu_state is not None:
+        if isinstance(active_popup, DockerConnectionMenuState):
             return self._handle_docker_connection_menu_keypress(key)
-        if self.state.tab_export_menu_state is not None:
+        if isinstance(active_popup, TabExportMenuState):
             return self._handle_tab_export_menu_keypress(key)
-        if self.state.container_list_menu_state is not None:
+        if isinstance(active_popup, ContainerListMenuState):
             return self._handle_container_list_menu_keypress(key)
         if self.state.is_editing_container_filter:
             return self._handle_container_filter_keypress(key)

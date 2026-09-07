@@ -12,6 +12,7 @@ from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.tab_export.definitions import (
     TabExportMenuField,
+    TabExportMenuState,
     TabExportPhase,
     TabExportScope,
 )
@@ -64,6 +65,12 @@ def _cache_active_tab_content(
     state.tab_content_cache[container_tab_key] = content
 
 
+def _get_open_tab_export_menu(state: TerminalSessionState) -> TabExportMenuState:
+    active_popup = state.active_popup
+    assert isinstance(active_popup, TabExportMenuState)
+    return active_popup
+
+
 def test_export_menu_uses_launch_directory_and_tab_extension(
     tab_export_controller_factory,
     session_state_factory,
@@ -75,8 +82,7 @@ def test_export_menu_uses_launch_directory_and_tab_extension(
 
     assert controller.open_tab_export_menu()
 
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
     export_path = Path(menu_state.file_path).expanduser()
     assert export_path.parent == tmp_path
     assert export_path.name.startswith("web-logs-")
@@ -94,8 +100,7 @@ def test_export_menu_replaces_home_directory_with_tilde(
 
     assert controller.open_tab_export_menu()
 
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
     assert Path(menu_state.file_path).parent == Path("~") / "edm-exports"
     assert Path(menu_state.file_path).expanduser().parent == controller.launch_directory
 
@@ -112,7 +117,7 @@ def test_export_menu_reports_missing_selection_and_unloaded_content(
     state = session_state_factory(tab=TabName.CONFIG)
     controller = tab_export_controller_factory(state).tab_export_controller
     assert controller.open_tab_export_menu()
-    assert state.tab_export_menu_state is None
+    assert state.active_popup is None
     assert state.status_message == (
         "Wait for Config to finish loading before exporting."
     )
@@ -130,8 +135,7 @@ def test_current_view_export_uses_filtered_log_lines(
     state.tab_search_queries[container_tab_key] = "ERROR"
     test_setup = tab_export_controller_factory(state)
     test_setup.tab_export_controller.open_tab_export_menu()
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
     menu_state.file_path = "visible.log"
 
     assert test_setup.tab_export_controller.handle_menu_keypress("enter")
@@ -154,8 +158,7 @@ def test_submit_export_expands_tilde_to_the_home_directory(
     _cache_active_tab_content(state)
     test_setup = tab_export_controller_factory(state)
     test_setup.tab_export_controller.open_tab_export_menu()
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
     menu_state.file_path = "~/edm-export.log"
 
     assert test_setup.tab_export_controller.handle_menu_keypress("enter")
@@ -170,7 +173,7 @@ def test_submit_export_expands_tilde_to_the_home_directory(
         "on_complete"
     ]
     assert completion_callback(test_setup.export_future)
-    assert state.tab_export_menu_state is None
+    assert state.active_popup is None
 
 
 def test_full_tab_export_keeps_all_cached_text(
@@ -184,8 +187,7 @@ def test_full_tab_export_keeps_all_cached_text(
     state.tab_search_queries[container_tab_key] = "ERROR"
     test_setup = tab_export_controller_factory(state)
     test_setup.tab_export_controller.open_tab_export_menu()
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
     menu_state.scope = TabExportScope.FULL_TAB
     menu_state.phase = TabExportPhase.CONFIRMING_OVERWRITE
 
@@ -204,8 +206,7 @@ def test_export_menu_edits_path_field_and_scope(
     _cache_active_tab_content(state, "A=1")
     controller = tab_export_controller_factory(state).tab_export_controller
     controller.open_tab_export_menu()
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
     menu_state.file_path = "out.txt"
     menu_state.file_path_cursor_index = 3
 
@@ -225,8 +226,7 @@ def test_export_path_editor_handles_navigation_deletion_and_insertion(
     _cache_active_tab_content(state)
     controller = tab_export_controller_factory(state).tab_export_controller
     controller.open_tab_export_menu()
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
     menu_state.file_path = "abc"
     menu_state.file_path_cursor_index = 1
 
@@ -255,8 +255,7 @@ def test_export_menu_rejects_unavailable_field_changes(
 
     _cache_active_tab_content(state)
     controller.open_tab_export_menu()
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
     assert not controller.open_tab_export_menu()
     assert not controller.handle_menu_keypress("up")
     assert controller.handle_menu_keypress("down")
@@ -279,8 +278,7 @@ def test_export_path_editor_enforces_its_length_limit(
     _cache_active_tab_content(state)
     controller = tab_export_controller_factory(state).tab_export_controller
     controller.open_tab_export_menu()
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
     menu_state.file_path = "x" * controller.MAX_EXPORT_PATH_CHARACTERS
     menu_state.file_path_cursor_index = len(menu_state.file_path)
 
@@ -300,8 +298,7 @@ def test_submit_export_validates_path_cache_and_active_export(
 
     _cache_active_tab_content(state)
     controller.open_tab_export_menu()
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
     menu_state.file_path = " "
     assert controller.handle_menu_keypress("enter")
     assert menu_state.error_message == "Enter a file path before exporting."
@@ -321,8 +318,7 @@ def test_submit_export_reports_removed_cache_and_active_file_write(
     test_setup = tab_export_controller_factory(state)
     controller = test_setup.tab_export_controller
     controller.open_tab_export_menu()
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
 
     state.tab_content_cache.clear()
     assert controller.handle_menu_keypress("enter")
@@ -343,8 +339,7 @@ def test_successful_export_closes_the_matching_menu(
     _cache_active_tab_content(state)
     test_setup = tab_export_controller_factory(state)
     test_setup.tab_export_controller.open_tab_export_menu()
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
     menu_state.file_path = "saved.log"
     test_setup.tab_export_controller.handle_menu_keypress("enter")
     target_path = tmp_path / "saved.log"
@@ -354,7 +349,7 @@ def test_successful_export_closes_the_matching_menu(
     ]
 
     assert completion_callback(test_setup.export_future)
-    assert state.tab_export_menu_state is None
+    assert state.active_popup is None
     assert state.status_message == f"Exported to {target_path}"
 
 
@@ -367,8 +362,7 @@ def test_existing_export_file_opens_overwrite_confirmation(
     _cache_active_tab_content(state)
     test_setup = tab_export_controller_factory(state)
     test_setup.tab_export_controller.open_tab_export_menu()
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
     menu_state.file_path = "existing.log"
     test_setup.tab_export_controller.handle_menu_keypress("enter")
     target_path = tmp_path / "existing.log"
@@ -399,8 +393,7 @@ def test_export_failure_keeps_the_menu_open_with_an_error(
     _cache_active_tab_content(state)
     test_setup = tab_export_controller_factory(state)
     test_setup.tab_export_controller.open_tab_export_menu()
-    menu_state = state.tab_export_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_tab_export_menu(state)
     test_setup.tab_export_controller.handle_menu_keypress("enter")
     test_setup.export_future.set_exception(export_error)
     completion_callback = test_setup.background_executor.submit.call_args.kwargs[
@@ -408,7 +401,7 @@ def test_export_failure_keeps_the_menu_open_with_an_error(
     ]
 
     assert completion_callback(test_setup.export_future)
-    assert state.tab_export_menu_state is menu_state
+    assert state.active_popup is menu_state
     assert menu_state.phase == TabExportPhase.EDITING
     assert str(export_error) in menu_state.error_message
 

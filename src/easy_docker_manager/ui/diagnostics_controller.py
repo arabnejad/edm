@@ -7,7 +7,10 @@ from typing import Optional
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
-from easy_docker_manager.diagnostics import create_initial_diagnostics_report
+from easy_docker_manager.diagnostics import (
+    DiagnosticsReport,
+    create_initial_diagnostics_report,
+)
 from easy_docker_manager.docker.container_client import (
     DockerContainerClient,
     DockerDaemonDetails,
@@ -36,7 +39,7 @@ class DiagnosticsController:
 
     def open_diagnostics_popup(self) -> bool:
         """Open the popup and start a fresh Docker version request."""
-        if self.state.diagnostics_popup_report is not None:
+        if self.state.active_popup is not None:
             return False
 
         previous_docker_daemon_details_future = self._docker_daemon_details_future
@@ -44,7 +47,7 @@ class DiagnosticsController:
         if previous_docker_daemon_details_future is not None:
             previous_docker_daemon_details_future.cancel()
 
-        self.state.diagnostics_popup_report = create_initial_diagnostics_report(
+        self.state.active_popup = create_initial_diagnostics_report(
             self.state.active_docker_context
         )
         self._docker_daemon_details_future = self.background_executor.submit(
@@ -55,9 +58,9 @@ class DiagnosticsController:
 
     def close_diagnostics_popup(self) -> bool:
         """Close the popup while allowing an active Docker request to finish."""
-        if self.state.diagnostics_popup_report is None:
+        if not isinstance(self.state.active_popup, DiagnosticsReport):
             return False
-        self.state.diagnostics_popup_report = None
+        self.state.active_popup = None
         return True
 
     def _apply_docker_daemon_details_result(
@@ -73,8 +76,8 @@ class DiagnosticsController:
             return False
         self._docker_daemon_details_future = None
 
-        diagnostics_report = self.state.diagnostics_popup_report
-        if diagnostics_report is None:
+        diagnostics_report = self.state.active_popup
+        if not isinstance(diagnostics_report, DiagnosticsReport):
             return False
         try:
             docker_daemon_details = completed_future.result()

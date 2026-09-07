@@ -10,6 +10,7 @@ from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.docker_connections import (
+    DockerConnectionMenuState,
     DockerConnectionTransport,
     DockerContextDetails,
 )
@@ -47,6 +48,14 @@ def _remote_tls_context() -> DockerContextDetails:
         has_required_tls_certificate_files=True,
         verifies_tls_server_certificate=True,
     )
+
+
+def _get_open_docker_connection_menu(
+    state: TerminalSessionState,
+) -> DockerConnectionMenuState:
+    active_popup = state.active_popup
+    assert isinstance(active_popup, DockerConnectionMenuState)
+    return active_popup
 
 
 def _create_controller(
@@ -97,8 +106,7 @@ def test_open_menu_selects_the_active_context() -> None:
 
     assert controller.open_docker_connection_menu()
 
-    menu_state = state.docker_connection_menu_state
-    assert menu_state is not None
+    menu_state = _get_open_docker_connection_menu(state)
     assert menu_state.selected_context_index == 1
     assert menu_state.active_context_name == "staging"
 
@@ -125,11 +133,8 @@ def test_enter_creates_and_validates_selected_context_client_in_background(
         remote_context,
         3.5,
     )
-    assert state.docker_connection_menu_state is not None
-    assert (
-        state.docker_connection_menu_state.context_name_being_validated
-        == remote_context.context_name
-    )
+    menu_state = _get_open_docker_connection_menu(state)
+    assert menu_state.context_name_being_validated == remote_context.context_name
 
 
 def test_successful_validation_reuses_client_and_refreshes_containers() -> None:
@@ -156,7 +161,7 @@ def test_successful_validation_reuses_client_and_refreshes_containers() -> None:
     sdk_client.switch_docker_connection.assert_called_once_with(validated_docker_client)
     docker_manager.start_container_list_refresh.assert_called_once_with(force=True)
     assert state.active_docker_context == remote_context
-    assert state.docker_connection_menu_state is None
+    assert state.active_popup is None
     assert state.status_message == 'Connecting to Docker context "staging"...'
 
 
@@ -179,8 +184,8 @@ def test_failed_validation_keeps_the_current_context() -> None:
     assert completion_callback(validation_future)
 
     assert state.active_docker_context == local_context
-    assert state.docker_connection_menu_state is not None
-    assert state.docker_connection_menu_state.connection_error_messages == {
+    menu_state = _get_open_docker_connection_menu(state)
+    assert menu_state.connection_error_messages == {
         "staging": "SSH authentication failed"
     }
     docker_manager.reset_after_docker_context_change.assert_not_called()
@@ -204,11 +209,8 @@ def test_tcp_context_without_certificates_explains_what_is_missing() -> None:
 
     assert controller.handle_menu_keypress("enter")
 
-    assert state.docker_connection_menu_state is not None
-    assert (
-        "CA certificate"
-        in state.docker_connection_menu_state.connection_error_messages["production"]
-    )
+    menu_state = _get_open_docker_connection_menu(state)
+    assert "CA certificate" in menu_state.connection_error_messages["production"]
     background_executor.submit.assert_not_called()
 
 
@@ -226,11 +228,8 @@ def test_context_change_waits_for_running_container_action() -> None:
 
     assert controller.handle_menu_keypress("enter")
 
-    assert state.docker_connection_menu_state is not None
-    assert (
-        "Wait for"
-        in state.docker_connection_menu_state.connection_error_messages["staging"]
-    )
+    menu_state = _get_open_docker_connection_menu(state)
+    assert "Wait for" in menu_state.connection_error_messages["staging"]
     background_executor.submit.assert_not_called()
 
 
@@ -245,12 +244,9 @@ def test_open_menu_reports_context_discovery_failure() -> None:
     assert controller.open_docker_connection_menu()
     assert not controller.open_docker_connection_menu()
 
-    assert state.docker_connection_menu_state is not None
-    assert state.docker_connection_menu_state.docker_contexts == []
-    assert (
-        "invalid Docker config"
-        in state.docker_connection_menu_state.context_discovery_error_message
-    )
+    menu_state = _get_open_docker_connection_menu(state)
+    assert menu_state.docker_contexts == []
+    assert "invalid Docker config" in menu_state.context_discovery_error_message
 
 
 def test_menu_closes_with_escape_and_ignores_keys_after_closing() -> None:
@@ -276,7 +272,7 @@ def test_enter_closes_menu_when_selected_context_is_already_active() -> None:
 
     assert controller.handle_menu_keypress("enter")
 
-    assert state.docker_connection_menu_state is None
+    assert state.active_popup is None
     background_executor.submit.assert_not_called()
 
 
@@ -303,11 +299,8 @@ def test_context_switch_is_unavailable_for_custom_docker_client() -> None:
 
     assert controller.handle_menu_keypress("enter")
 
-    assert state.docker_connection_menu_state is not None
-    assert (
-        "unavailable"
-        in state.docker_connection_menu_state.connection_error_messages["staging"]
-    )
+    menu_state = _get_open_docker_connection_menu(state)
+    assert "unavailable" in menu_state.connection_error_messages["staging"]
     background_executor.submit.assert_not_called()
 
 
@@ -325,7 +318,7 @@ def test_menu_ignores_keys_while_context_validation_is_running() -> None:
     controller.handle_menu_keypress("enter")
 
     assert not controller.handle_menu_keypress("esc")
-    assert state.docker_connection_menu_state is not None
+    _get_open_docker_connection_menu(state)
 
 
 def test_old_context_validation_completion_is_ignored() -> None:

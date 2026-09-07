@@ -455,8 +455,8 @@ The keys and visible behavior are documented in
 [Container Actions](README.md#container-actions).
 
 `ContainerActionController` stores the target container and selected action in
-`TerminalSessionState.container_action_menu_state`. After confirmation, it
-passes the request to `DockerManager` and closes the popup.
+`TerminalSessionState.active_popup`. After confirmation, it passes the request
+to `DockerManager` and closes the popup.
 
 `ContainerLifecycleActionRunner` sends Stop or Restart to
 `BackgroundExecutor`. Only one lifecycle action can run at a time. After a
@@ -512,9 +512,9 @@ The menu and its keyboard controls are documented in
 small Urwid popup rather than opening another terminal window.
 
 While the list menu is open, `KeyboardController` handles its keys before the
-normal shortcuts. `TerminalSessionState.container_list_menu_state` stores the
-choices shown in the menu. The active visibility and sort change only when the
-user presses `Enter`, so `Esc` can close the menu without changing the list.
+normal shortcuts. `TerminalSessionState.active_popup` holds the choices shown
+in the menu. The active visibility and sort change only when the user presses
+`Enter`, so `Esc` can close the menu without changing the list.
 
 When `Enter` applies the choices, `DockerManager` rebuilds the latest list from
 Docker with the active filter. It also finds the selected container's new
@@ -536,8 +536,8 @@ to. An export follows these steps:
 2. `KeyboardController` asks `TabExportController` to open the popup.
 3. While the popup is open, `KeyboardController` passes each key to
    `TabExportController.handle_menu_keypress()`.
-4. `TerminalSessionState.tab_export_menu_state` stores the path, scope, selected
-   field, and current menu phase.
+4. `TerminalSessionState.active_popup` stores the path, scope, selected field,
+   and current menu phase.
 5. When the user presses `Enter`, the controller reads the tab text already in
    `TabContentCache`. It does not make another Docker request.
 6. Current view applies the active Logs filter. Full loaded tab keeps all
@@ -754,6 +754,11 @@ or draw widgets. Later log polls do not use `ContainerTabTextLoader`;
 and the four Docker workflow classes update it. The terminal views only read
 it.
 
+Only one popup can be open. `active_popup` holds that popup's existing state
+object, such as `SettingsMenuState` or `TabExportMenuState`, and is `None` when
+the main screen is shown. The keyboard controller and terminal layout use the
+object's type to send input and draw the right popup.
+
 Important fields are:
 
 | Field | Meaning |
@@ -765,9 +770,7 @@ Important fields are:
 | `container_sort_field` | Sort field currently applied to the container list |
 | `container_sort_descending` | Whether the active sort runs in descending order |
 | `container_list_view_mode` | Whether the displayed list includes only running containers or all containers |
-| `container_list_menu_state` | Temporary choices in the open list menu, or `None` when it is closed |
-| `container_action_menu_state` | Target container and selected action while the action popup is open |
-| `tab_export_menu_state` | Path, scope, selection, and phase of the open export menu, or `None` when it is closed |
+| `active_popup` | State for the open popup, or `None` when no popup is open |
 | `active_detail_tab_name` | Logs, Env, Config, Stats, or Top |
 | `active_focus_area` | Panel that receives navigation keys |
 | `detail_selected_line_index` | Selected line in the detail panel |

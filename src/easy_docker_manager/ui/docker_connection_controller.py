@@ -62,7 +62,7 @@ class DockerConnectionController:
 
     def open_docker_connection_menu(self) -> bool:
         """Read configured contexts and open the connection popup."""
-        if self.state.docker_connection_menu_state is not None:
+        if self.state.active_popup is not None:
             return False
 
         try:
@@ -81,7 +81,7 @@ class DockerConnectionController:
                 selected_context_index = index
                 break
 
-        self.state.docker_connection_menu_state = DockerConnectionMenuState(
+        self.state.active_popup = DockerConnectionMenuState(
             docker_contexts=docker_contexts,
             active_context_name=active_context_name,
             selected_context_index=selected_context_index,
@@ -91,8 +91,8 @@ class DockerConnectionController:
 
     def handle_menu_keypress(self, key: str) -> bool:
         """Move, connect, or close the Docker connection menu."""
-        menu_state = self.state.docker_connection_menu_state
-        if menu_state is None:
+        menu_state = self.state.active_popup
+        if not isinstance(menu_state, DockerConnectionMenuState):
             return False
         if menu_state.context_name_being_validated is not None:
             return False
@@ -103,14 +103,17 @@ class DockerConnectionController:
         if key == "enter":
             return self._connect_to_selected_context()
         if key == "esc":
-            self.state.docker_connection_menu_state = None
+            self.state.active_popup = None
             return True
         return False
 
     def _move_selected_context(self, offset: int) -> bool:
         """Move the context selection without wrapping around the list."""
-        menu_state = self.state.docker_connection_menu_state
-        if menu_state is None or not menu_state.docker_contexts:
+        menu_state = self.state.active_popup
+        if (
+            not isinstance(menu_state, DockerConnectionMenuState)
+            or not menu_state.docker_contexts
+        ):
             return False
         next_index = max(
             0,
@@ -127,14 +130,14 @@ class DockerConnectionController:
 
     def _connect_to_selected_context(self) -> bool:
         """Start checking the selected context, or close when it is already active."""
-        menu_state = self.state.docker_connection_menu_state
-        if menu_state is None:
+        menu_state = self.state.active_popup
+        if not isinstance(menu_state, DockerConnectionMenuState):
             return False
         selected_context = menu_state.selected_docker_context
         if selected_context is None:
             return False
         if selected_context.context_name == menu_state.active_context_name:
-            self.state.docker_connection_menu_state = None
+            self.state.active_popup = None
             return True
         if not selected_context.is_supported:
             menu_state.connection_error_messages[selected_context.context_name] = (
@@ -179,8 +182,8 @@ class DockerConnectionController:
             return False
         self._docker_context_validation_future = None
 
-        menu_state = self.state.docker_connection_menu_state
-        if menu_state is None:
+        menu_state = self.state.active_popup
+        if not isinstance(menu_state, DockerConnectionMenuState):
             return False
         menu_state.context_name_being_validated = None
 
@@ -199,7 +202,7 @@ class DockerConnectionController:
         )
         self.state.clear_container_data_for_docker_context_change()
         self.state.active_docker_context = selected_context
-        self.state.docker_connection_menu_state = None
+        self.state.active_popup = None
         self.state.status_message = (
             f'Connecting to Docker context "{selected_context.display_name}"...'
         )

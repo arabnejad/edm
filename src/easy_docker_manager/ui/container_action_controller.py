@@ -23,7 +23,7 @@ class ContainerActionController:
 
     def open_container_action_menu(self) -> bool:
         """Open the actions supported by the selected container's status."""
-        if self.state.container_action_menu_state is not None:
+        if self.state.active_popup is not None:
             return False
         if self.docker_manager.is_container_lifecycle_action_in_progress:
             self.state.status_message = "A container action is already running."
@@ -44,7 +44,7 @@ class ContainerActionController:
             )
             return True
 
-        self.state.container_action_menu_state = ContainerActionMenuState(
+        self.state.active_popup = ContainerActionMenuState(
             container_id=selected_container.container_id,
             container_name=selected_container.name,
             available_actions=available_actions,
@@ -53,11 +53,11 @@ class ContainerActionController:
 
     def handle_menu_keypress(self, key: str) -> bool:
         """Handle navigation, confirmation, or cancellation inside the menu."""
-        menu_state = self.state.container_action_menu_state
-        if menu_state is None:
+        menu_state = self.state.active_popup
+        if not isinstance(menu_state, ContainerActionMenuState):
             return False
         if key == "esc":
-            self.state.container_action_menu_state = None
+            self.state.active_popup = None
             return True
         if menu_state.is_awaiting_confirmation:
             return self._handle_confirmation_keypress(key, menu_state)
@@ -72,8 +72,8 @@ class ContainerActionController:
 
     def _move_selected_action(self, selection_offset: int) -> bool:
         """Move the highlight without passing the first or last action."""
-        menu_state = self.state.container_action_menu_state
-        if menu_state is None:
+        menu_state = self.state.active_popup
+        if not isinstance(menu_state, ContainerActionMenuState):
             return False
         previous_index = menu_state.selected_action_index
         menu_state.selected_action_index = max(
@@ -98,7 +98,7 @@ class ContainerActionController:
         if not self._selected_action_is_still_available_for_target_container(
             menu_state
         ):
-            self.state.container_action_menu_state = None
+            self.state.active_popup = None
             self.state.status_message = (
                 "The container status changed. Open Actions to see its current options."
             )
@@ -106,7 +106,7 @@ class ContainerActionController:
 
         container_id = menu_state.container_id
         container_name = menu_state.container_name
-        self.state.container_action_menu_state = None
+        self.state.active_popup = None
         if self.docker_manager.start_container_lifecycle_action(
             selected_action,
             container_id,

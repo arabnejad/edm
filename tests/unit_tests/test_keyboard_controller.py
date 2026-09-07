@@ -112,9 +112,7 @@ def test_c_opens_docker_connection_menu(
 def test_docker_connection_menu_delegates_all_keys_to_its_controller(
     keyboard_controller_factory,
 ) -> None:
-    state = TerminalSessionState(
-        docker_connection_menu_state=DockerConnectionMenuState([], "default")
-    )
+    state = TerminalSessionState(active_popup=DockerConnectionMenuState([], "default"))
     test_setup = keyboard_controller_factory(state)
     test_setup.docker_connection_controller.handle_menu_keypress.return_value = True
 
@@ -158,7 +156,7 @@ def test_action_menu_delegates_keys_to_its_controller(
     keyboard_controller_factory,
 ) -> None:
     state = TerminalSessionState(
-        container_action_menu_state=ContainerActionMenuState(
+        active_popup=ContainerActionMenuState(
             container_id="container-1",
             container_name="web",
             available_actions=[ContainerLifecycleAction.RESTART],
@@ -176,7 +174,7 @@ def test_action_menu_delegates_keys_to_its_controller(
 def test_settings_menu_delegates_all_keys_to_its_controller(
     keyboard_controller_factory,
 ) -> None:
-    state = TerminalSessionState(settings_menu_state=SettingsMenuState(AppConfig()))
+    state = TerminalSessionState(active_popup=SettingsMenuState(AppConfig()))
     test_setup = keyboard_controller_factory(state)
     test_setup.settings_controller.handle_menu_keypress.return_value = True
 
@@ -185,9 +183,7 @@ def test_settings_menu_delegates_all_keys_to_its_controller(
 
 
 def test_diagnostics_popup_accepts_only_escape(keyboard_controller_factory) -> None:
-    state = TerminalSessionState(
-        diagnostics_popup_report=create_initial_diagnostics_report()
-    )
+    state = TerminalSessionState(active_popup=create_initial_diagnostics_report())
     test_setup = keyboard_controller_factory(state)
     test_setup.diagnostics_controller.close_diagnostics_popup.return_value = True
 
@@ -307,7 +303,7 @@ def test_export_menu_delegates_every_key_to_its_controller(
     pressed_key: str,
 ) -> None:
     state = TerminalSessionState(
-        tab_export_menu_state=TabExportMenuState(
+        active_popup=TabExportMenuState(
             ContainerTabKey("container-1", TabName.LOGS),
             "web",
             "logs.log",
@@ -329,7 +325,7 @@ def test_export_menu_does_not_redraw_when_its_controller_reports_no_change(
     keyboard_controller_factory,
 ) -> None:
     state = TerminalSessionState(
-        tab_export_menu_state=TabExportMenuState(
+        active_popup=TabExportMenuState(
             ContainerTabKey("container-1", TabName.LOGS),
             "web",
             "logs.log",
@@ -361,7 +357,7 @@ def test_container_list_menu_routes_its_keyboard_controls(
     expected_arguments: tuple[object, ...],
 ) -> None:
     state = TerminalSessionState(
-        container_list_menu_state=ContainerListMenuState(
+        active_popup=ContainerListMenuState(
             selected_field=ContainerListMenuField.VIEW_MODE,
             view_mode=ContainerListViewMode.RUNNING_ONLY,
             sort_field=ContainerSortField.DOCKER_ORDER,
@@ -383,7 +379,7 @@ def test_container_list_menu_ignores_unrelated_keys(
     keyboard_controller_factory,
 ) -> None:
     state = TerminalSessionState(
-        container_list_menu_state=ContainerListMenuState(
+        active_popup=ContainerListMenuState(
             selected_field=ContainerListMenuField.VIEW_MODE,
             view_mode=ContainerListViewMode.RUNNING_ONLY,
             sort_field=ContainerSortField.DOCKER_ORDER,

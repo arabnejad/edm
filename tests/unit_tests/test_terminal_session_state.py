@@ -30,10 +30,7 @@ def test_state_defaults_describe_the_initial_screen() -> None:
     assert state.container_sort_field == ContainerSortField.DOCKER_ORDER
     assert not state.container_sort_descending
     assert state.container_list_view_mode == ContainerListViewMode.RUNNING_ONLY
-    assert state.container_list_menu_state is None
-    assert state.container_action_menu_state is None
-    assert state.tab_export_menu_state is None
-    assert state.settings_menu_state is None
+    assert state.active_popup is None
 
 
 def test_selected_container_properties_require_a_valid_index(
@@ -104,18 +101,12 @@ def test_remove_state_for_missing_containers_removes_its_cached_data() -> None:
         live_container_tab_key: "live error",
         stopped_container_tab_key: "old error",
     }
-    state.tab_export_menu_state = TabExportMenuState(
+    state.active_popup = TabExportMenuState(
         stopped_container_tab_key,
         "stopped",
         "output.txt",
         len("output.txt"),
     )
-    state.container_action_menu_state = ContainerActionMenuState(
-        container_id="stopped",
-        container_name="stopped",
-        available_actions=[ContainerLifecycleAction.RESTART],
-    )
-
     state.remove_state_for_missing_containers({"live"})
 
     assert live_container_tab_key in state.tab_content_cache
@@ -123,8 +114,21 @@ def test_remove_state_for_missing_containers_removes_its_cached_data() -> None:
     assert state.tab_search_queries == {live_container_tab_key: "ok"}
     assert state.unreadable_log_container_ids == {"live"}
     assert state.tab_content_error_messages == {live_container_tab_key: "live error"}
-    assert state.tab_export_menu_state is None
-    assert state.container_action_menu_state is None
+    assert state.active_popup is None
+
+
+def test_missing_container_closes_its_action_menu() -> None:
+    state = TerminalSessionState(
+        active_popup=ContainerActionMenuState(
+            container_id="stopped",
+            container_name="stopped",
+            available_actions=[ContainerLifecycleAction.RESTART],
+        )
+    )
+
+    state.remove_state_for_missing_containers({"live"})
+
+    assert state.active_popup is None
 
 
 def test_stopped_container_data_is_kept_while_the_container_still_exists() -> None:

@@ -140,7 +140,7 @@ def test_container_action_popup_shows_actions_and_confirmation() -> None:
             ContainerLifecycleAction.STOP,
         ],
     )
-    state = TerminalSessionState(container_action_menu_state=menu_state)
+    state = TerminalSessionState(active_popup=menu_state)
     view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
 
     view.render(state, [], lambda line: line)
@@ -176,7 +176,7 @@ def test_docker_connection_popup_shows_contexts_and_selected_endpoint() -> None:
     )
     state = TerminalSessionState(
         active_docker_context=local_context,
-        docker_connection_menu_state=DockerConnectionMenuState(
+        active_popup=DockerConnectionMenuState(
             [local_context, remote_context],
             active_context_name="default",
             selected_context_index=1,
@@ -194,15 +194,9 @@ def test_docker_connection_popup_shows_contexts_and_selected_endpoint() -> None:
     assert "Not checked" in rendered_text
 
 
-def test_render_shows_diagnostics_above_other_popups() -> None:
+def test_render_shows_diagnostics_popup() -> None:
     state = TerminalSessionState(
-        diagnostics_popup_report=create_initial_diagnostics_report(),
-        container_list_menu_state=ContainerListMenuState(
-            selected_field=ContainerListMenuField.VIEW_MODE,
-            view_mode=ContainerListViewMode.RUNNING_ONLY,
-            sort_field=ContainerSortField.DOCKER_ORDER,
-            sort_descending=False,
-        ),
+        active_popup=create_initial_diagnostics_report(),
     )
     view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
 
@@ -216,12 +210,11 @@ def test_render_shows_diagnostics_above_other_popups() -> None:
     assert "Connection:" in rendered_text
     assert "Checking..." in rendered_text
     assert "Esc Close" in rendered_text
-    assert "Container List" not in rendered_text
 
 
 def test_render_shows_editable_settings_popup() -> None:
     menu_state = SettingsMenuState(AppConfig())
-    state = TerminalSessionState(settings_menu_state=menu_state)
+    state = TerminalSessionState(active_popup=menu_state)
     view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
 
     view.render(state, ["Select a running container."], lambda line: line)
@@ -241,7 +234,7 @@ def test_settings_popup_shows_numeric_editing_and_save_message() -> None:
         editing_value_text="3.5",
         status_message="Settings saved. Restart EDM to apply them.",
     )
-    state = TerminalSessionState(settings_menu_state=menu_state)
+    state = TerminalSessionState(active_popup=menu_state)
     view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
 
     view.render(state, [], lambda line: line)
@@ -306,7 +299,7 @@ def test_container_panel_shows_active_remote_context_name() -> None:
 def test_render_shows_and_hides_container_list_menu() -> None:
     view = TerminalLayoutView(AppConfig())
     state = TerminalSessionState(
-        container_list_menu_state=ContainerListMenuState(
+        active_popup=ContainerListMenuState(
             selected_field=ContainerListMenuField.SORT_FIELD,
             view_mode=ContainerListViewMode.ALL,
             sort_field=ContainerSortField.IMAGE,
@@ -324,7 +317,7 @@ def test_render_shows_and_hides_container_list_menu() -> None:
     assert "Direction    Descending" in rendered_text
     assert "Enter Apply" in rendered_text
 
-    state.container_list_menu_state = None
+    state.active_popup = None
     view.render(state, ["Select a running container."], lambda line: line)
     assert view.layout.original_widget is view._main_layout
 
@@ -332,7 +325,7 @@ def test_render_shows_and_hides_container_list_menu() -> None:
 def test_render_shows_export_form_and_sensitive_data_warning() -> None:
     view = TerminalLayoutView(AppConfig())
     state = TerminalSessionState(
-        tab_export_menu_state=TabExportMenuState(
+        active_popup=TabExportMenuState(
             container_tab_key=ContainerTabKey("container-1", TabName.ENV),
             container_name="web",
             file_path="/tmp/web-env.txt",
@@ -362,7 +355,7 @@ def test_render_shows_export_overwrite_confirmation_and_progress() -> None:
         file_path_cursor_index=len("/tmp/web-logs.log"),
         phase=TabExportPhase.CONFIRMING_OVERWRITE,
     )
-    state = TerminalSessionState(tab_export_menu_state=menu_state)
+    state = TerminalSessionState(active_popup=menu_state)
 
     view.render(state, ["line"], lambda line: line)
     rendered_text = b"\n".join(view.layout.render((120, 40)).text).decode()
@@ -385,7 +378,7 @@ def test_export_path_cursor_and_validation_error_are_rendered() -> None:
         file_path_cursor_index=3,
         error_message="Directory does not exist",
     )
-    state = TerminalSessionState(tab_export_menu_state=menu_state)
+    state = TerminalSessionState(active_popup=menu_state)
 
     view.render(state, ["config"], lambda line: line)
 
