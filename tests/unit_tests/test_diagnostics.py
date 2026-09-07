@@ -9,7 +9,9 @@ from easy_docker_manager.core.docker_connections import (
 )
 from easy_docker_manager.diagnostics import (
     DiagnosticsReport,
+    DiagnosticsReportField,
     DockerConnectionStatus,
+    build_diagnostics_report_sections,
     build_edm_version_label,
     create_initial_diagnostics_report,
     format_diagnostics_report,
@@ -107,6 +109,31 @@ def test_report_formats_docker_failure_on_one_line() -> None:
     assert "Connection:           Failed" in formatted_report
     assert "Daemon version:       N/A" in formatted_report
     assert "Error:                daemon not available" in formatted_report
+
+
+def test_report_sections_keep_labels_and_values_separate() -> None:
+    report = DiagnosticsReport(
+        edm_version="1.2.0",
+        python_version="3.12.3",
+        docker_sdk_version="7.1.0",
+        config_file_path=Path("config.json"),
+        application_log_file_path=Path("edm.log"),
+    )
+    report.record_failed_docker_connection(
+        RuntimeError("Cannot connect: request timed out")
+    )
+
+    report_sections = build_diagnostics_report_sections(report)
+
+    assert [section.title for section in report_sections] == [
+        "Application",
+        "Files",
+        "Docker",
+    ]
+    assert report_sections[-1].fields[-1] == DiagnosticsReportField(
+        "Error",
+        "Cannot connect: request timed out",
+    )
 
 
 def test_initial_report_uses_selected_docker_context_name() -> None:

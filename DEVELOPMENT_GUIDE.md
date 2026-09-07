@@ -375,6 +375,10 @@ active Docker daemon's version, then updates the popup when the request
 finishes. Results from an earlier Help popup are ignored. The request runs in
 a worker so the terminal remains responsive if Docker is unavailable.
 
+`build_diagnostics_report_sections()` turns the report into titled groups of
+label and value fields. The command-line formatter and Urwid popup render those
+groups separately, so the popup does not need to parse the command-line text.
+
 ### Docker Connections
 
 The user setup and menu behavior are documented in
