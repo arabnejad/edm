@@ -57,7 +57,7 @@ class SmokeTestDockerContainerClient(DockerContainerClient):
         self.list_request_count = 0
         self.closed = False
 
-    def list_running_containers(self) -> list[ContainerSummary]:
+    def list_containers(self) -> list[ContainerSummary]:
         self.list_request_count += 1
         return [
             ContainerSummary(

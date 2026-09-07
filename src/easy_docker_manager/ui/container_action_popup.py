@@ -1,4 +1,4 @@
-"""Build the Stop and Restart popup for one running container."""
+"""Build the Stop and Restart popup for one container."""
 
 from __future__ import annotations
 
@@ -99,7 +99,7 @@ def _build_confirmation_content(
 def _get_action_explanation(action: ContainerLifecycleAction) -> str:
     """Return the short explanation shown before one action runs."""
     if action == ContainerLifecycleAction.STOP:
-        return "The container will stop and disappear from the running-container list."
+        return "The container will stop."
     return "The container will restart with its existing Docker configuration."
 
 

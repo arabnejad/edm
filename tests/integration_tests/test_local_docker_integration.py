@@ -14,10 +14,10 @@ def test_running_container_is_returned_by_container_listing(
     docker_test_setup: DockerIntegrationTestContainer,
     local_docker_container_client: DockerSDKContainerClient,
 ) -> None:
-    running_containers = local_docker_container_client.list_running_containers()
+    containers = local_docker_container_client.list_containers()
 
     matching_container = None
-    for container in running_containers:
+    for container in containers:
         if container.container_id == docker_test_setup.container.id:
             matching_container = container
             break
@@ -27,6 +27,28 @@ def test_running_container_is_returned_by_container_listing(
     assert matching_container.status == "running"
     assert matching_container.compose_project_name == "edm-integration"
     assert matching_container.compose_service_name == "test-container"
+
+
+def test_stopped_container_is_returned_with_its_logs(
+    docker_test_setup: DockerIntegrationTestContainer,
+    local_docker_container_client: DockerSDKContainerClient,
+) -> None:
+    container = docker_test_setup.container
+    try:
+        container.stop()
+        container.reload()
+
+        containers = local_docker_container_client.list_containers()
+        matching_container = next(
+            summary for summary in containers if summary.container_id == container.id
+        )
+
+        assert matching_container.status == "exited"
+        assert docker_test_setup.log_message in (
+            local_docker_container_client.get_container_logs(container.id)
+        )
+    finally:
+        container.start()
 
 
 def test_container_logs_are_read_from_docker(

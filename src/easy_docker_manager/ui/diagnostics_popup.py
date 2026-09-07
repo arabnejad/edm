@@ -10,7 +10,7 @@ KEYBOARD_HELP_DETAILS = """  Up/Down     Select a container or detail line
   Enter/Esc   Open details or return to the container list
   [ / ]       Switch detail tabs
   /           Search the active tab
-  f / s / e   Filter containers, sort containers, or export a tab
+  f / s / e   Filter containers, set list options, or export a tab
   a           Open actions for the selected container
   c / p       Change Docker context or open settings
   q           Quit EDM"""

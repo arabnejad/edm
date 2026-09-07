@@ -4,8 +4,9 @@ from easy_docker_manager.core.container_actions import (
     ContainerActionMenuState,
     ContainerLifecycleAction,
 )
+from easy_docker_manager.core.container_list import ContainerList
 from easy_docker_manager.core.container_sorting import ContainerSortField
-from easy_docker_manager.core.running_container_list import RunningContainerList
+from easy_docker_manager.core.containers import ContainerListViewMode
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
@@ -17,9 +18,9 @@ from easy_docker_manager.tab_export.definitions import TabExportMenuState
 def test_state_defaults_describe_the_initial_screen() -> None:
     state = TerminalSessionState()
 
-    assert state.running_container_list.displayed_containers == []
+    assert state.container_list.displayed_containers == []
     assert state.selected_container_index is None
-    assert state.running_container_list.unfiltered_container_count == 0
+    assert state.container_list.all_container_count == 0
     assert state.container_filter_query == ""
     assert not state.is_editing_container_filter
     assert state.container_filter_query_before_editing is None
@@ -28,7 +29,8 @@ def test_state_defaults_describe_the_initial_screen() -> None:
     assert state.status_message == "Loading containers..."
     assert state.container_sort_field == ContainerSortField.DOCKER_ORDER
     assert not state.container_sort_descending
-    assert state.container_sort_menu_state is None
+    assert state.container_list_view_mode == ContainerListViewMode.RUNNING_ONLY
+    assert state.container_list_menu_state is None
     assert state.container_action_menu_state is None
     assert state.tab_export_menu_state is None
     assert state.settings_menu_state is None
@@ -38,7 +40,7 @@ def test_selected_container_properties_require_a_valid_index(
     container_summary_factory,
 ) -> None:
     state = TerminalSessionState(
-        running_container_list=RunningContainerList([container_summary_factory()])
+        container_list=ContainerList([container_summary_factory()])
     )
 
     assert state.selected_container_summary is None
@@ -56,11 +58,11 @@ def test_selected_container_properties_require_a_valid_index(
     assert state.selected_container_summary is None
 
 
-def test_find_running_container_index_returns_matching_position(
+def test_find_container_index_returns_matching_position(
     container_summary_factory,
 ) -> None:
     state = TerminalSessionState(
-        running_container_list=RunningContainerList(
+        container_list=ContainerList(
             [
                 container_summary_factory("one"),
                 container_summary_factory("two"),
@@ -68,9 +70,9 @@ def test_find_running_container_index_returns_matching_position(
         )
     )
 
-    assert state.find_running_container_index("two") == 1
-    assert state.find_running_container_index("missing") is None
-    assert state.find_running_container_index(None) is None
+    assert state.find_container_index("two") == 1
+    assert state.find_container_index("missing") is None
+    assert state.find_container_index(None) is None
 
 
 def test_selected_detail_line_is_kept_within_available_range() -> None:
@@ -87,7 +89,7 @@ def test_selected_detail_line_is_kept_within_available_range() -> None:
     assert state.detail_selected_line_index == 0
 
 
-def test_remove_state_for_stopped_containers_removes_its_cached_data() -> None:
+def test_remove_state_for_missing_containers_removes_its_cached_data() -> None:
     state = TerminalSessionState()
     live_container_tab_key = ContainerTabKey("live", TabName.LOGS)
     stopped_container_tab_key = ContainerTabKey("stopped", TabName.ENV)
@@ -114,7 +116,7 @@ def test_remove_state_for_stopped_containers_removes_its_cached_data() -> None:
         available_actions=[ContainerLifecycleAction.RESTART],
     )
 
-    state.remove_state_for_stopped_containers({"live"})
+    state.remove_state_for_missing_containers({"live"})
 
     assert live_container_tab_key in state.tab_content_cache
     assert stopped_container_tab_key not in state.tab_content_cache
@@ -125,15 +127,26 @@ def test_remove_state_for_stopped_containers_removes_its_cached_data() -> None:
     assert state.container_action_menu_state is None
 
 
+def test_stopped_container_data_is_kept_while_the_container_still_exists() -> None:
+    state = TerminalSessionState()
+    stopped_logs_key = ContainerTabKey("stopped", TabName.LOGS)
+    state.tab_content_cache[stopped_logs_key] = "final logs"
+
+    state.remove_state_for_missing_containers({"stopped"})
+
+    assert state.tab_content_cache[stopped_logs_key] == "final logs"
+
+
 def test_context_change_clears_container_data_but_keeps_display_options(
     container_summary_factory,
 ) -> None:
     state = TerminalSessionState(
-        running_container_list=RunningContainerList([container_summary_factory()]),
+        container_list=ContainerList([container_summary_factory()]),
         selected_container_index=0,
         container_filter_query="web",
         container_sort_field=ContainerSortField.NAME,
         container_sort_descending=True,
+        container_list_view_mode=ContainerListViewMode.ALL,
         active_focus_area=FocusArea.DETAIL,
     )
     container_tab_key = ContainerTabKey("container-1", TabName.LOGS)
@@ -144,7 +157,7 @@ def test_context_change_clears_container_data_but_keeps_display_options(
 
     state.clear_container_data_for_docker_context_change()
 
-    assert state.running_container_list.displayed_containers == []
+    assert state.container_list.displayed_containers == []
     assert state.selected_container_index is None
     assert len(state.tab_content_cache) == 0
     assert state.tab_search_queries == {}
@@ -154,3 +167,4 @@ def test_context_change_clears_container_data_but_keeps_display_options(
     assert state.container_filter_query == "web"
     assert state.container_sort_field == ContainerSortField.NAME
     assert state.container_sort_descending
+    assert state.container_list_view_mode == ContainerListViewMode.ALL

@@ -6,11 +6,11 @@ from typing import Any, Callable, Optional
 
 import pytest
 
+from easy_docker_manager.core.container_list import ContainerList
 from easy_docker_manager.core.containers import (
     ContainerResourceStatsSnapshot,
     ContainerSummary,
 )
-from easy_docker_manager.core.running_container_list import RunningContainerList
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 
@@ -116,7 +116,7 @@ def session_state_factory(
         tab: TabName = TabName.LOGS,
     ) -> TerminalSessionState:
         return TerminalSessionState(
-            running_container_list=RunningContainerList(
+            container_list=ContainerList(
                 [container_summary_factory(container_id=container_id)]
             ),
             selected_container_index=0,

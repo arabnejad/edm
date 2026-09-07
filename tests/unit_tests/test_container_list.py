@@ -1,10 +1,12 @@
+"""Tests for filtering, grouping, and sorting the container list."""
+
 from __future__ import annotations
 
 import pytest
 
+from easy_docker_manager.core.container_list import ContainerList
 from easy_docker_manager.core.container_sorting import ContainerSortField
-from easy_docker_manager.core.containers import ContainerSummary
-from easy_docker_manager.core.running_container_list import RunningContainerList
+from easy_docker_manager.core.containers import ContainerListViewMode, ContainerSummary
 
 
 @pytest.fixture
@@ -37,20 +39,21 @@ def test_new_list_uses_the_docker_order_for_its_initial_display(
     first_container = container_summary_factory("first")
     second_container = container_summary_factory("second")
 
-    running_container_list = RunningContainerList([first_container, second_container])
+    container_list = ContainerList([first_container, second_container])
 
-    assert running_container_list.displayed_containers == [
+    assert container_list.displayed_containers == [
         first_container,
         second_container,
     ]
-    assert running_container_list.unfiltered_container_count == 2
-    assert running_container_list.all_running_container_ids == {"first", "second"}
+    assert container_list.all_container_count == 2
+    assert container_list.all_container_ids == {"first", "second"}
+    assert container_list.running_container_ids == {"first", "second"}
 
 
 def test_rebuilding_the_display_sorts_then_filters_the_docker_list(
     container_summary_factory,
 ) -> None:
-    running_container_list = RunningContainerList(
+    container_list = ContainerList(
         [
             container_summary_factory(
                 "worker",
@@ -70,7 +73,8 @@ def test_rebuilding_the_display_sorts_then_filters_the_docker_list(
         ]
     )
 
-    displayed_containers = running_container_list.rebuild_displayed_containers(
+    displayed_containers = container_list.rebuild_displayed_containers(
+        ContainerListViewMode.ALL,
         ContainerSortField.NAME,
         False,
         "redis",
@@ -80,25 +84,27 @@ def test_rebuilding_the_display_sorts_then_filters_the_docker_list(
         "cache",
         "worker",
     ]
-    assert running_container_list.unfiltered_container_count == 3
+    assert container_list.all_container_count == 3
 
 
 def test_clearing_the_filter_restores_containers_without_a_new_docker_list(
     container_summary_factory,
 ) -> None:
-    running_container_list = RunningContainerList(
+    container_list = ContainerList(
         [
             container_summary_factory("web", image_name="python:3.12"),
             container_summary_factory("cache", image_name="redis:7"),
         ]
     )
-    running_container_list.rebuild_displayed_containers(
+    container_list.rebuild_displayed_containers(
+        ContainerListViewMode.RUNNING_ONLY,
         ContainerSortField.DOCKER_ORDER,
         False,
         "redis",
     )
 
-    displayed_containers = running_container_list.rebuild_displayed_containers(
+    displayed_containers = container_list.rebuild_displayed_containers(
+        ContainerListViewMode.RUNNING_ONLY,
         ContainerSortField.DOCKER_ORDER,
         False,
         "",
@@ -110,25 +116,26 @@ def test_clearing_the_filter_restores_containers_without_a_new_docker_list(
     ]
 
 
-def test_replacing_all_running_containers_updates_count_and_container_ids(
+def test_replacing_all_containers_updates_count_and_container_ids(
     container_summary_factory,
 ) -> None:
-    running_container_list = RunningContainerList([container_summary_factory("old")])
+    container_list = ContainerList([container_summary_factory("old")])
 
-    running_container_list.replace_all_running_containers(
+    container_list.replace_all_containers(
         [
             container_summary_factory("new-1"),
             container_summary_factory("new-2"),
         ]
     )
-    running_container_list.rebuild_displayed_containers(
+    container_list.rebuild_displayed_containers(
+        ContainerListViewMode.RUNNING_ONLY,
         ContainerSortField.DOCKER_ORDER,
         False,
         "",
     )
 
-    assert running_container_list.unfiltered_container_count == 2
-    assert running_container_list.all_running_container_ids == {"new-1", "new-2"}
+    assert container_list.all_container_count == 2
+    assert container_list.all_container_ids == {"new-1", "new-2"}
 
 
 @pytest.mark.parametrize(
@@ -146,9 +153,10 @@ def test_filter_matches_name_image_and_status_without_case_sensitivity(
     filter_query: str,
     expected_container_ids: list[str],
 ) -> None:
-    running_container_list = RunningContainerList(containers_for_filtering)
+    container_list = ContainerList(containers_for_filtering)
 
-    displayed_containers = running_container_list.rebuild_displayed_containers(
+    displayed_containers = container_list.rebuild_displayed_containers(
+        ContainerListViewMode.ALL,
         ContainerSortField.DOCKER_ORDER,
         False,
         filter_query,
@@ -162,9 +170,10 @@ def test_filter_matches_name_image_and_status_without_case_sensitivity(
 def test_empty_filter_keeps_the_full_container_list(
     containers_for_filtering: list[ContainerSummary],
 ) -> None:
-    running_container_list = RunningContainerList(containers_for_filtering)
+    container_list = ContainerList(containers_for_filtering)
 
-    displayed_containers = running_container_list.rebuild_displayed_containers(
+    displayed_containers = container_list.rebuild_displayed_containers(
+        ContainerListViewMode.ALL,
         ContainerSortField.DOCKER_ORDER,
         False,
         "",
@@ -177,7 +186,7 @@ def test_empty_filter_keeps_the_full_container_list(
 def test_compose_projects_are_grouped_and_other_containers_are_kept_at_the_end(
     container_summary_factory,
 ) -> None:
-    running_container_list = RunningContainerList(
+    container_list = ContainerList(
         [
             container_summary_factory(
                 "project-z-worker",
@@ -201,7 +210,8 @@ def test_compose_projects_are_grouped_and_other_containers_are_kept_at_the_end(
         ]
     )
 
-    displayed_containers = running_container_list.rebuild_displayed_containers(
+    displayed_containers = container_list.rebuild_displayed_containers(
+        ContainerListViewMode.RUNNING_ONLY,
         ContainerSortField.NAME,
         False,
         "",
@@ -225,14 +235,35 @@ def test_filter_matches_compose_project_and_service_names(
         compose_project_name="accounts",
         compose_service_name="web-service",
     )
-    running_container_list = RunningContainerList(
+    container_list = ContainerList(
         [compose_container, container_summary_factory("standalone")]
     )
 
-    displayed_containers = running_container_list.rebuild_displayed_containers(
+    displayed_containers = container_list.rebuild_displayed_containers(
+        ContainerListViewMode.RUNNING_ONLY,
         ContainerSortField.DOCKER_ORDER,
         False,
         filter_query,
     )
 
     assert displayed_containers == [compose_container]
+
+
+def test_running_view_hides_stopped_containers(container_summary_factory) -> None:
+    running_container = container_summary_factory("running")
+    stopped_container = container_summary_factory("stopped", status="exited")
+    container_list = ContainerList([running_container, stopped_container])
+
+    running_view = container_list.rebuild_displayed_containers(
+        ContainerListViewMode.RUNNING_ONLY,
+        ContainerSortField.DOCKER_ORDER,
+        False,
+        "",
+    )
+
+    assert running_view == [running_container]
+    assert (
+        container_list.get_container_count_for_view(ContainerListViewMode.RUNNING_ONLY)
+        == 1
+    )
+    assert container_list.get_container_count_for_view(ContainerListViewMode.ALL) == 2

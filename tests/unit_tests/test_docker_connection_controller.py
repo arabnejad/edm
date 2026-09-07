@@ -154,9 +154,7 @@ def test_successful_validation_reuses_client_and_refreshes_containers() -> None:
 
     docker_manager.reset_after_docker_context_change.assert_called_once_with()
     sdk_client.switch_docker_connection.assert_called_once_with(validated_docker_client)
-    docker_manager.start_running_container_list_refresh.assert_called_once_with(
-        force=True
-    )
+    docker_manager.start_container_list_refresh.assert_called_once_with(force=True)
     assert state.active_docker_context == remote_context
     assert state.docker_connection_menu_state is None
     assert state.status_message == 'Connecting to Docker context "staging"...'

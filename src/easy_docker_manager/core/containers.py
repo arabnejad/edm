@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Optional
+
+
+class ContainerListViewMode(str, Enum):
+    """Choose whether the container list includes stopped containers."""
+
+    RUNNING_ONLY = "Running only"
+    ALL = "All containers"
 
 
 @dataclass
@@ -23,6 +31,11 @@ class ContainerSummary:
     created_at: str
     compose_project_name: Optional[str] = None
     compose_service_name: Optional[str] = None
+
+    @property
+    def is_running(self) -> bool:
+        """Return whether Docker reports this container as running."""
+        return self.status.casefold() == "running"
 
 
 @dataclass
@@ -73,6 +86,7 @@ class ContainerResourceStatsSnapshot:
 
 
 __all__ = [
+    "ContainerListViewMode",
     "ContainerProcessTable",
     "ContainerResourceStatsSnapshot",
     "ContainerSummary",

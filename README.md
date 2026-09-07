@@ -23,14 +23,14 @@ Docker Python SDK to read container data.
 
 With EDM, you can view:
 
-- a list of running containers
+- running containers, with an option to include stopped containers
 - recent logs with automatic updates
 - container environment variables
 - a readable summary of Docker inspection data
 - current CPU, memory, network, disk, and process statistics
 - the process list returned by Docker top
 - Stop and Restart actions for running containers
-- live filtering and sorting of the running-container list
+- live filtering, grouping, and sorting of the container list
 - a separate search query for each container tab
 - export of the active tab to a local text file
 - a local JSON configuration file
@@ -174,7 +174,7 @@ docker --context remote-server-context ps
 
 Inside EDM, press `c` or `C`, select `remote-server-context`, and press
 `Enter`. EDM checks the connection in the background. If it succeeds, EDM
-clears the old container data and loads running containers from the selected
+clears the old container data and loads containers from the selected
 context. If it fails, the current connection stays active and the popup shows
 the reason.
 
@@ -249,7 +249,7 @@ and the server certificate is verified. A context created with
 | `]` | Open the next detail tab |
 | `/` | Start editing the search for the current tab |
 | `f` | Start editing the container filter while the container panel is active |
-| `s` | Open container sorting while the container panel is active |
+| `s` | Open container list options while the container panel is active |
 | `a` or `A` | Open actions for the selected running container |
 | `e` | Export the active tab while the detail panel is active |
 | `Page Up` / `Page Down` | Move through the detail panel one page at a time |
@@ -287,8 +287,8 @@ sends the request to Docker. Press `Esc` to close the popup without making a
 change.
 
 The Docker request runs in the background. After it succeeds, EDM reloads the
-running-container list. A stopped container disappears from the list because
-EDM does not show stopped containers yet.
+container list. A stopped container disappears while **Running only** is
+selected and remains visible while **All containers** is selected.
 
 Restart uses the existing container and its current Docker configuration. It
 does not reread a Compose file or recreate a Compose service.
@@ -304,7 +304,8 @@ already loaded in EDM and does not send another request to Docker.
 * localhost (active)
 ────────────────────────
  f  Filter: off
- s  Sort: Docker order
+ s  Containers: Running only
+    Sort: Docker order
 ────────────────────────
 > container-one (running)
   container-two (running)
@@ -316,10 +317,10 @@ filter, or press `Esc` to restore the filter that was active before you pressed
 printable key, including `q`, becomes part of the query.
 
 The filter and match count are shown below `localhost (active)`, next to the
-`f` shortcut. The active sort appears on the following line. EDM reapplies the
-filter and sort after each container-list refresh. If the selected container
-no longer matches, the first matching container is selected. Filtering only
-hides list entries; cached tab data for hidden running containers is kept.
+`f` shortcut. The visibility and sort choices appear below it. EDM reapplies
+all three after each container-list refresh. If the selected container no
+longer matches, the first matching container is selected. Filtering only hides
+list entries; cached tab data for hidden containers is kept.
 
 ## Docker Compose Grouping
 
@@ -342,39 +343,37 @@ are shown as normal container rows without a `Standalone` heading.
 
 Project headings and separator lines are not selectable. `Up` and `Down` move
 directly between containers. EDM keeps the current container selected after a
-list refresh when that container is still running and still matches the filter.
+list refresh when that container is still visible and still matches the filter.
 
-## Container Sorting
+## Container List Options
 
 Press `s` while the container panel is active to open this menu:
 
 ```text
-Sort Containers
+Container List
 
-  Docker order
-> Name
-  Image
-  Status
-  Creation time
+> Containers   Running only
+  Sort by      Docker order
+  Direction    Not applicable
 
-Direction: Ascending
-
-Up/Down Field   Left/Right Direction
+Up/Down Field   Left/Right Change
 Enter Apply     Esc Cancel
 ```
 
-Use `Up` and `Down` to choose a field. Use `Left` for ascending order and
-`Right` for descending order. `Enter` applies the choice, while `Esc` closes
-the menu without changing the list. The active sort is shown above the
-container list, directly below the active filter.
+Use `Up` and `Down` to choose a row, then use `Left` or `Right` to change its
+value. **Running only** keeps the normal compact list. **All containers** also
+shows exited, paused, created, and dead containers. The list remains scrollable
+when there are many entries, and the existing `f` filter can narrow it. `Enter`
+applies every choice, while `Esc` closes the menu without changing the list.
 
-Applying a sort does not change the selected container. The sort stays active
-after the container list refreshes. Compose projects stay in name order. Docker
-order restores the order returned by Docker inside each project and among the
-containers without a Compose project at the end.
+The chosen visibility and sort stay active after the container list refreshes.
+Compose projects stay in name order. Docker order restores the order returned
+by Docker inside each project and among containers without a Compose project.
 
-EDM currently shows running containers only, so they usually have the same
-status. For this reason, sorting by Status may not visibly change the list.
+Stopped containers keep their last logs, Env, and Config available. Logs load
+once and do not poll for updates. Stats and Top show `Container is not running.`
+without sending an unsupported request to Docker. Stop and Restart remain
+available only when the selected container is running.
 
 ## Exporting Tab Content
 
@@ -459,7 +458,7 @@ cleaned configuration back to the file.
 
 | Setting | Default | Purpose |
 | --- | ---: | --- |
-| `container_list_refresh_interval_seconds` | `2.0` | Seconds between running-container refreshes |
+| `container_list_refresh_interval_seconds` | `2.0` | Seconds between container-list refreshes |
 | `tab_refresh_interval` | `2.0` | Seconds between reloads of the visible Env, Config, Stats, or Top tab |
 | `initial_log_tail_lines` | `100` | Number of recent lines loaded when Logs first opens |
 | `max_log_lines` | `2000` | Maximum log lines kept for one container |

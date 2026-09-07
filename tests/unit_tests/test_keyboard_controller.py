@@ -12,9 +12,11 @@ from easy_docker_manager.core.container_actions import (
     ContainerLifecycleAction,
 )
 from easy_docker_manager.core.container_sorting import (
+    ContainerListMenuField,
+    ContainerListMenuState,
     ContainerSortField,
-    ContainerSortMenuState,
 )
+from easy_docker_manager.core.containers import ContainerListViewMode
 from easy_docker_manager.core.docker_connections import DockerConnectionMenuState
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import (
@@ -254,21 +256,21 @@ def test_bracket_keys_switch_tabs_in_both_directions(
     ].args == (1,)
 
 
-def test_sort_key_opens_menu_only_from_running_container_list_panel(
+def test_list_key_opens_menu_only_from_container_list_panel(
     keyboard_controller_factory,
 ) -> None:
     state = TerminalSessionState()
     test_setup = keyboard_controller_factory(state)
-    test_setup.terminal_controller.open_container_sort_menu.return_value = True
+    test_setup.terminal_controller.open_container_list_menu.return_value = True
 
     assert test_setup.keyboard_controller.handle_keypress("s") == KeyAction.REDRAW
-    test_setup.terminal_controller.open_container_sort_menu.assert_called_once_with()
+    test_setup.terminal_controller.open_container_list_menu.assert_called_once_with()
 
     state.active_focus_area = FocusArea.DETAIL
     assert test_setup.keyboard_controller.handle_keypress("S") == KeyAction.NONE
 
 
-def test_filter_key_starts_input_only_from_running_container_list_panel(
+def test_filter_key_starts_input_only_from_container_list_panel(
     keyboard_controller_factory,
 ) -> None:
     state = TerminalSessionState()
@@ -344,23 +346,25 @@ def test_export_menu_does_not_redraw_when_its_controller_reports_no_change(
 @pytest.mark.parametrize(
     ("pressed_key", "controller_method", "expected_arguments"),
     [
-        ("up", "move_container_sort_menu_selection", (-1,)),
-        ("down", "move_container_sort_menu_selection", (1,)),
-        ("left", "set_container_sort_menu_direction", ()),
-        ("right", "set_container_sort_menu_direction", ()),
-        ("enter", "apply_container_sort_menu", ()),
-        ("esc", "close_container_sort_menu", ()),
+        ("up", "move_container_list_menu_selection", (-1,)),
+        ("down", "move_container_list_menu_selection", (1,)),
+        ("left", "change_selected_container_list_menu_value", (-1,)),
+        ("right", "change_selected_container_list_menu_value", (1,)),
+        ("enter", "apply_container_list_menu", ()),
+        ("esc", "close_container_list_menu", ()),
     ],
 )
-def test_sort_menu_routes_its_keyboard_controls(
+def test_container_list_menu_routes_its_keyboard_controls(
     keyboard_controller_factory,
     pressed_key: str,
     controller_method: str,
     expected_arguments: tuple[object, ...],
 ) -> None:
     state = TerminalSessionState(
-        container_sort_menu_state=ContainerSortMenuState(
-            selected_sort_field=ContainerSortField.DOCKER_ORDER,
+        container_list_menu_state=ContainerListMenuState(
+            selected_field=ContainerListMenuField.VIEW_MODE,
+            view_mode=ContainerListViewMode.RUNNING_ONLY,
+            sort_field=ContainerSortField.DOCKER_ORDER,
             sort_descending=False,
         )
     )
@@ -373,14 +377,16 @@ def test_sort_menu_routes_its_keyboard_controls(
     )
     method.assert_called_once()
     assert method.call_args.args == expected_arguments
-    if pressed_key in {"left", "right"}:
-        assert method.call_args.kwargs == {"descending": pressed_key == "right"}
 
 
-def test_sort_menu_ignores_unrelated_keys(keyboard_controller_factory) -> None:
+def test_container_list_menu_ignores_unrelated_keys(
+    keyboard_controller_factory,
+) -> None:
     state = TerminalSessionState(
-        container_sort_menu_state=ContainerSortMenuState(
-            selected_sort_field=ContainerSortField.DOCKER_ORDER,
+        container_list_menu_state=ContainerListMenuState(
+            selected_field=ContainerListMenuField.VIEW_MODE,
+            view_mode=ContainerListViewMode.RUNNING_ONLY,
+            sort_field=ContainerSortField.DOCKER_ORDER,
             sort_descending=False,
         )
     )
@@ -515,7 +521,7 @@ def test_search_navigation_moves_detail_without_changing_query(
     assert next(iter(state.tab_search_queries.values())) == "x"
 
 
-def test_page_navigation_is_ignored_while_running_container_list_panel_is_active(
+def test_page_navigation_is_ignored_while_container_list_panel_is_active(
     keyboard_controller_factory,
 ) -> None:
     test_setup = keyboard_controller_factory(TerminalSessionState())

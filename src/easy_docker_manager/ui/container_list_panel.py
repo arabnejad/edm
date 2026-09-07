@@ -1,4 +1,4 @@
-"""Build and update the running-container list shown on the left."""
+"""Build and update the container list shown on the left."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import urwid
 
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_sorting import ContainerSortField
-from easy_docker_manager.core.containers import ContainerSummary
+from easy_docker_manager.core.containers import ContainerListViewMode, ContainerSummary
 from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
     TerminalSessionState,
@@ -30,8 +30,8 @@ APPLICATION_NAME = "Easy Docker Manager"
 GITHUB_REPOSITORY_TEXT = "github.com/arabnejad/edm"
 
 
-class RunningContainerListPanel:
-    """Draw the running containers and the controls shown above the list.
+class ContainerListPanel:
+    """Draw the containers and the controls shown above the list.
 
     TerminalLayoutView creates this panel once. On each redraw, render() reads
     TerminalSessionState and updates the existing Urwid widgets. This class
@@ -46,7 +46,7 @@ class RunningContainerListPanel:
         )
         self.container_list_view = urwid.ListBox(self.container_rows)
         self.container_filter_text = urwid.Text("", wrap="clip")
-        self.container_sort_text = urwid.Text("", wrap="clip")
+        self.container_list_options_text = urwid.Text("", wrap="clip")
         self.active_docker_context_text = urwid.Text("", wrap="clip")
         self.panel = urwid.AttrMap(
             urwid.LineBox(self._build_container_frame()),
@@ -64,7 +64,7 @@ class RunningContainerListPanel:
         self._rebuild_container_list_and_focus_on_selected_container(state)
         self._update_active_docker_context_display_text(state)
         self._update_container_filter_display_text(state)
-        self._update_selected_sort_display_text(state)
+        self._update_container_list_options_display_text(state)
         border_style = (
             "border_active"
             if state.active_focus_area == FocusArea.CONTAINERS
@@ -133,7 +133,7 @@ class RunningContainerListPanel:
                 ),
                 ("pack", urwid.AttrMap(urwid.Divider("─"), "muted")),
                 ("pack", self.container_filter_text),
-                ("pack", self.container_sort_text),
+                ("pack", self.container_list_options_text),
                 ("pack", urwid.AttrMap(urwid.Divider("─"), "muted")),
             ]
         )
@@ -179,7 +179,7 @@ class RunningContainerListPanel:
         matches selected_container_index. This method moves Urwid's focus but
         does not change the selected index stored in the session state.
         """
-        displayed_containers = state.running_container_list.displayed_containers
+        displayed_containers = state.container_list.displayed_containers
 
         # Count each project's containers before building its heading. For
         # example, a project with two containers is shown as "example (2)".
@@ -200,7 +200,7 @@ class RunningContainerListPanel:
             container_row = self._build_container_row(state, index, container)
             compose_project_name = container.compose_project_name
 
-            # RunningContainerList has already grouped the containers. A new
+            # ContainerList has already grouped the containers. A new
             # project name means this row starts the next section.
             starts_new_container_section = (
                 compose_project_name != previous_compose_project_name
@@ -238,13 +238,22 @@ class RunningContainerListPanel:
             previous_compose_project_name = compose_project_name
 
         if not rows:
-            empty_message = "No running containers."
+            container_description = (
+                "running containers"
+                if state.container_list_view_mode == ContainerListViewMode.RUNNING_ONLY
+                else "containers"
+            )
+            empty_message = f"No {container_description}."
             if (
                 state.container_filter_query
-                and state.running_container_list.unfiltered_container_count > 0
+                and state.container_list.get_container_count_for_view(
+                    state.container_list_view_mode
+                )
+                > 0
             ):
                 empty_message = (
-                    f'No running containers match "{state.container_filter_query}".'
+                    f"No {container_description} match "
+                    f'"{state.container_filter_query}".'
                 )
             rows.append(urwid.Text(("muted", empty_message), wrap="clip"))
 
@@ -277,7 +286,14 @@ class RunningContainerListPanel:
             ("muted", "  "),
             ("container", container.name),
             ("muted", " ("),
-            ("container_status", container.status),
+            (
+                (
+                    "container_status_running"
+                    if container.is_running
+                    else "container_status_not_running"
+                ),
+                container.status,
+            ),
             ("muted", ")"),
         ]
         return urwid.Text(row_text, wrap="clip")
@@ -299,8 +315,8 @@ class RunningContainerListPanel:
                     (
                         "muted",
                         " "
-                        f"({len(state.running_container_list.displayed_containers)}/"
-                        f"{state.running_container_list.unfiltered_container_count})",
+                        f"({len(state.container_list.displayed_containers)}/"
+                        f"{state.container_list.get_container_count_for_view(state.container_list_view_mode)})",
                     ),
                 ]
             )
@@ -310,20 +326,25 @@ class RunningContainerListPanel:
             filter_text.append(("accent", " [editing]"))
         self.container_filter_text.set_text(filter_text)
 
-    def _update_selected_sort_display_text(self, state: TerminalSessionState) -> None:
-        """Show the selected sort field and direction above the container list."""
+    def _update_container_list_options_display_text(
+        self,
+        state: TerminalSessionState,
+    ) -> None:
+        """Show the current visibility and sort choices above the list."""
         sort_field = state.container_sort_field
-        sort_text: list[MarkupSegment] = [
+        list_options_text: list[MarkupSegment] = [
             ("shortcut_key", " s "),
-            ("muted", " Sort: "),
+            ("muted", " Containers: "),
+            ("value", state.container_list_view_mode.value),
+            ("muted", "\n    Sort: "),
             ("value", sort_field.value),
         ]
         if sort_field != ContainerSortField.DOCKER_ORDER:
             direction = (
                 " descending" if state.container_sort_descending else " ascending"
             )
-            sort_text.append(("muted", direction))
-        self.container_sort_text.set_text(sort_text)
+            list_options_text.append(("muted", direction))
+        self.container_list_options_text.set_text(list_options_text)
 
 
-__all__ = ["RunningContainerListPanel"]
+__all__ = ["ContainerListPanel"]

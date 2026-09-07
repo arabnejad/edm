@@ -28,9 +28,9 @@ class SelectedTabContentLoader:
 
     DockerManager calls this after the selected container or tab changes. This
     class tracks the current tab request, reuses cached text, and periodically
-    reloads Env, Config, Stats, and Top. Results are saved under the container
-    and tab that requested them, even when the user changes selection before a
-    request finishes.
+    reloads live container data. Results are saved under the container and tab
+    that requested them, even when the user changes selection before a request
+    finishes.
     """
 
     PERIODICALLY_REFRESHED_TABS = (
@@ -62,6 +62,7 @@ class SelectedTabContentLoader:
         if (
             self.state.active_detail_tab_name not in self.PERIODICALLY_REFRESHED_TABS
             or not self.state.selected_container_id
+            or not self._selected_container_is_running()
             or current_time < self._next_tab_refresh_at
             or self._tab_load_future is not None
         ):
@@ -73,6 +74,7 @@ class SelectedTabContentLoader:
         if (
             self.state.active_detail_tab_name not in self.PERIODICALLY_REFRESHED_TABS
             or not self.state.selected_container_id
+            or not self._selected_container_is_running()
             or self._tab_load_future is not None
         ):
             return None
@@ -87,6 +89,9 @@ class SelectedTabContentLoader:
         """
         container_tab_key = self.state.selected_container_tab_key
         if container_tab_key is None:
+            return False
+        selected_container = self.state.selected_container_summary
+        if selected_container is None:
             return False
         if not force and container_tab_key in self.state.tab_content_cache:
             return False
@@ -104,12 +109,16 @@ class SelectedTabContentLoader:
 
         self.state.tab_content_error_messages.pop(container_tab_key, None)
         initial_log_request_started_at = (
-            int(time.time()) if container_tab_key.tab_name == TabName.LOGS else None
+            int(time.time())
+            if container_tab_key.tab_name == TabName.LOGS
+            and selected_container.is_running
+            else None
         )
         self._tab_load_future = self.background_executor.submit(
             self.tab_data_loader.load_tab_text,
             container_tab_key.container_id,
             container_tab_key.tab_name,
+            selected_container.is_running,
             on_complete=partial(
                 self._apply_tab_content_load_result,
                 container_tab_key,
@@ -117,13 +126,16 @@ class SelectedTabContentLoader:
             ),
         )
 
-        if container_tab_key.tab_name in self.PERIODICALLY_REFRESHED_TABS:
+        if (
+            selected_container.is_running
+            and container_tab_key.tab_name in self.PERIODICALLY_REFRESHED_TABS
+        ):
             self._next_tab_refresh_at = (
                 time.monotonic() + self.app_config.tab_refresh_interval
             )
         return True
 
-    def prepare_selected_container_details(self) -> None:
+    def prepare_selected_container_details(self, force_reload: bool = False) -> None:
         """Reset detail navigation and load the newly selected container tab."""
         self.state.detail_selected_line_index = 0
         self.state.follow_log_tail = True
@@ -137,7 +149,9 @@ class SelectedTabContentLoader:
                 selected_tab_key,
                 f"Loaded {self.state.active_detail_tab_name.value}",
             )
-        self.load_selected_tab_content_if_needed(force=not has_cached_content)
+        self.load_selected_tab_content_if_needed(
+            force=force_reload or not has_cached_content
+        )
 
     def prepare_active_detail_tab(self) -> None:
         """Reset detail navigation and load or reuse the newly active tab."""
@@ -169,6 +183,11 @@ class SelectedTabContentLoader:
             logs_cache_key not in self.state.tab_content_cache
             and self._tab_load_future is not None
         )
+
+    def _selected_container_is_running(self) -> bool:
+        """Return whether the selected container can provide live tab data."""
+        selected_container = self.state.selected_container_summary
+        return selected_container is not None and selected_container.is_running
 
     def _apply_tab_content_load_result(
         self,

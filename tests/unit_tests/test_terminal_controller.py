@@ -5,11 +5,13 @@ from unittest.mock import Mock
 
 import pytest
 
+from easy_docker_manager.core.container_list import ContainerList
 from easy_docker_manager.core.container_sorting import (
+    ContainerListMenuField,
+    ContainerListMenuState,
     ContainerSortField,
-    ContainerSortMenuState,
 )
-from easy_docker_manager.core.running_container_list import RunningContainerList
+from easy_docker_manager.core.containers import ContainerListViewMode
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
@@ -52,11 +54,9 @@ def test_active_detail_tab_display_lines_show_empty_and_error_messages(
     state = TerminalSessionState()
     test_setup = terminal_controller_factory(state)
     controller = test_setup.terminal_controller
-    assert controller.get_active_detail_tab_display_lines() == [
-        "Select a running container."
-    ]
+    assert controller.get_active_detail_tab_display_lines() == ["Select a container."]
 
-    state.running_container_list = RunningContainerList([container_summary_factory()])
+    state.container_list = ContainerList([container_summary_factory()])
     state.selected_container_index = 0
     container_tab_key = state.selected_container_tab_key
     assert container_tab_key is not None
@@ -204,7 +204,7 @@ def test_move_selected_container_index_loads_the_new_container(
     container_summary_factory,
 ) -> None:
     state = TerminalSessionState(
-        running_container_list=RunningContainerList(
+        container_list=ContainerList(
             [
                 container_summary_factory("one"),
                 container_summary_factory("two"),
@@ -232,12 +232,12 @@ def test_container_selection_does_not_move_outside_bounds(
     docker_manager.prepare_selected_container_details.assert_not_called()
 
 
-def test_sort_menu_applies_the_selected_field_and_direction(
+def test_container_list_menu_applies_visibility_sort_field_and_direction(
     terminal_controller_factory,
     container_summary_factory,
 ) -> None:
     state = TerminalSessionState(
-        running_container_list=RunningContainerList(
+        container_list=ContainerList(
             [
                 container_summary_factory("z", name="Zulu"),
                 container_summary_factory("a", name="alpha"),
@@ -247,58 +247,62 @@ def test_sort_menu_applies_the_selected_field_and_direction(
     )
     test_setup = terminal_controller_factory(state)
 
-    assert test_setup.terminal_controller.open_container_sort_menu()
-    assert test_setup.terminal_controller.move_container_sort_menu_selection(1)
-    assert isinstance(state.container_sort_menu_state, ContainerSortMenuState)
-    assert (
-        state.container_sort_menu_state.selected_sort_field == ContainerSortField.NAME
-    )
-    assert test_setup.terminal_controller.set_container_sort_menu_direction(
-        descending=True
-    )
-    assert test_setup.terminal_controller.apply_container_sort_menu()
+    controller = test_setup.terminal_controller
+    assert controller.open_container_list_menu()
+    assert isinstance(state.container_list_menu_state, ContainerListMenuState)
+    assert controller.change_selected_container_list_menu_value(1)
+    assert controller.move_container_list_menu_selection(1)
+    assert controller.change_selected_container_list_menu_value(1)
+    assert controller.move_container_list_menu_selection(1)
+    assert controller.change_selected_container_list_menu_value(1)
+    assert controller.apply_container_list_menu()
 
+    assert state.container_list_view_mode == ContainerListViewMode.ALL
     assert state.container_sort_field == ContainerSortField.NAME
     assert state.container_sort_descending
-    assert state.container_sort_menu_state is None
+    assert state.container_list_menu_state is None
     docker_manager = test_setup.docker_manager
     docker_manager.rebuild_displayed_container_list.assert_called_once_with()
 
 
-def test_sort_menu_can_cancel_and_reject_unavailable_movements(
+def test_container_list_menu_can_cancel_and_reject_unavailable_movements(
     terminal_controller_factory,
 ) -> None:
     state = TerminalSessionState()
     test_setup = terminal_controller_factory(state)
 
-    assert not test_setup.terminal_controller.close_container_sort_menu()
-    assert not test_setup.terminal_controller.move_container_sort_menu_selection(1)
-    assert not test_setup.terminal_controller.set_container_sort_menu_direction(
-        descending=True
-    )
-    assert not test_setup.terminal_controller.apply_container_sort_menu()
+    controller = test_setup.terminal_controller
+    assert not controller.close_container_list_menu()
+    assert not controller.move_container_list_menu_selection(1)
+    assert not controller.change_selected_container_list_menu_value(1)
+    assert not controller.apply_container_list_menu()
 
-    assert test_setup.terminal_controller.open_container_sort_menu()
-    assert not test_setup.terminal_controller.open_container_sort_menu()
-    assert not test_setup.terminal_controller.move_container_sort_menu_selection(-1)
-    assert not test_setup.terminal_controller.set_container_sort_menu_direction(
-        descending=True
-    )
-    assert test_setup.terminal_controller.close_container_sort_menu()
+    assert controller.open_container_list_menu()
+    assert not controller.open_container_list_menu()
+    assert not controller.move_container_list_menu_selection(-1)
+    assert controller.change_selected_container_list_menu_value(1)
+    assert controller.close_container_list_menu()
+    assert state.container_list_view_mode == ContainerListViewMode.RUNNING_ONLY
     assert state.container_sort_field == ContainerSortField.DOCKER_ORDER
 
 
-def test_docker_order_ignores_direction_in_the_sort_menu(
+def test_docker_order_ignores_direction_in_the_container_list_menu(
     terminal_controller_factory,
 ) -> None:
     state = TerminalSessionState()
     test_setup = terminal_controller_factory(state)
 
-    test_setup.terminal_controller.open_container_sort_menu()
-    assert not test_setup.terminal_controller.set_container_sort_menu_direction(
-        descending=True
+    controller = test_setup.terminal_controller
+    controller.open_container_list_menu()
+    assert controller.move_container_list_menu_selection(1)
+    assert controller.move_container_list_menu_selection(1)
+    assert state.container_list_menu_state is not None
+    assert (
+        state.container_list_menu_state.selected_field
+        == ContainerListMenuField.SORT_DIRECTION
     )
-    assert test_setup.terminal_controller.apply_container_sort_menu()
+    assert not controller.change_selected_container_list_menu_value(1)
+    assert controller.apply_container_list_menu()
     assert not state.container_sort_descending
 
 

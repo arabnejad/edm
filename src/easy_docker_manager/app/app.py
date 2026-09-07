@@ -108,7 +108,7 @@ class EDMApp:
                 self.urwid_main_loop,
                 self._process_completed_background_tasks,
             )
-            self.docker_manager.start_running_container_list_refresh(force=True)
+            self.docker_manager.start_container_list_refresh(force=True)
             self.terminal_controller.update_terminal_view()
             self._schedule_next_docker_data_refresh_check(delay=0)
             self.urwid_main_loop.run()

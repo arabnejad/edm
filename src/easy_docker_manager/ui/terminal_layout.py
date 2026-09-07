@@ -10,7 +10,7 @@ import urwid
 from easy_docker_manager.config.settings_definitions import SettingsMenuState
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_actions import ContainerActionMenuState
-from easy_docker_manager.core.container_sorting import ContainerSortMenuState
+from easy_docker_manager.core.container_sorting import ContainerListMenuState
 from easy_docker_manager.core.docker_connections import DockerConnectionMenuState
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.diagnostics import get_installed_edm_version
@@ -21,17 +21,17 @@ from easy_docker_manager.ui.container_action_popup import (
 from easy_docker_manager.ui.container_details_panel import (
     SelectedContainerDetailsPanel,
 )
-from easy_docker_manager.ui.container_sort_menu import (
-    build_container_sort_popup_menu,
+from easy_docker_manager.ui.container_list_menu import (
+    build_container_list_popup_menu,
+)
+from easy_docker_manager.ui.container_list_panel import (
+    ContainerListPanel,
 )
 from easy_docker_manager.ui.diagnostics_popup import build_diagnostics_popup
 from easy_docker_manager.ui.docker_connection_popup import (
     build_docker_connection_popup_menu,
 )
 from easy_docker_manager.ui.formatting import MarkupSegment
-from easy_docker_manager.ui.running_container_list_panel import (
-    RunningContainerListPanel,
-)
 from easy_docker_manager.ui.settings_popup import build_settings_popup_menu
 from easy_docker_manager.ui.tab_export_menu import build_tab_export_popup_menu
 
@@ -40,7 +40,7 @@ class TerminalLayoutView:
     """Combine EDM's panels, footer, and active popup.
 
     TerminalController calls render() with the current session state and the
-    lines to display. RunningContainerListPanel updates the left side,
+    lines to display. ContainerListPanel updates the left side,
     SelectedContainerDetailsPanel updates the right side, and this object
     chooses which popup appears above them. This class does not load Docker
     data, write files, or change navigation state.
@@ -57,7 +57,7 @@ class TerminalLayoutView:
             if installed_edm_version is not None
             else get_installed_edm_version()
         )
-        self.running_container_list_panel = RunningContainerListPanel(
+        self.container_list_panel = ContainerListPanel(
             app_config,
             resolved_edm_version,
         )
@@ -68,7 +68,7 @@ class TerminalLayoutView:
 
         main_columns = urwid.Columns(
             [
-                ("weight", 35, self.running_container_list_panel.widget),
+                ("weight", 35, self.container_list_panel.widget),
                 ("weight", 65, self.selected_container_details_panel.widget),
             ],
             dividechars=1,
@@ -103,7 +103,8 @@ class TerminalLayoutView:
             ("selected_inactive", "white", "dark gray"),
             ("detail_selected", "black", "light gray"),
             ("container", "light gray", "default"),
-            ("container_status", "light green", "default"),
+            ("container_status_running", "light green", "default"),
+            ("container_status_not_running", "dark gray", "default"),
             ("tab", "white", "default"),
             ("active_detail_tab", "black,bold", "white"),
             ("status", "dark gray", "default"),
@@ -119,9 +120,9 @@ class TerminalLayoutView:
             ("log_error", "light red,bold", "default"),
             ("log_number", "light cyan", "default"),
             ("log_http", "light green", "default"),
-            ("sort_menu", "light gray", "default"),
-            ("sort_menu_title", "yellow,bold", "default"),
-            ("sort_menu_selected", "white,bold", "light cyan"),
+            ("container_list_menu", "light gray", "default"),
+            ("container_list_menu_title", "light cyan,bold", "default"),
+            ("container_list_menu_selected", "white,bold", "light cyan"),
             ("export_menu", "light gray", "default"),
             ("export_menu_title", "light cyan,bold", "default"),
             ("export_menu_selected", "white,bold", "light cyan"),
@@ -150,7 +151,7 @@ class TerminalLayoutView:
             "detail_selected",
             "active_detail_tab",
             "highlight",
-            "sort_menu_selected",
+            "container_list_menu_selected",
             "export_menu_selected",
             "export_path_cursor",
             "settings_menu_selected",
@@ -169,7 +170,7 @@ class TerminalLayoutView:
             "status_ok",
             "error",
             "log_error",
-            "sort_menu_title",
+            "container_list_menu_title",
             "export_menu_title",
             "export_warning",
             "settings_menu_title",
@@ -193,7 +194,7 @@ class TerminalLayoutView:
         format_detail_line: Callable[[str], Union[str, list[MarkupSegment]]],
     ) -> None:
         """Update both panels and show the active popup, if there is one."""
-        self.running_container_list_panel.render(state)
+        self.container_list_panel.render(state)
         self.selected_container_details_panel.render(
             state,
             detail_lines,
@@ -228,9 +229,9 @@ class TerminalLayoutView:
                 state.tab_export_menu_state,
                 self._main_layout,
             )
-        elif isinstance(state.container_sort_menu_state, ContainerSortMenuState):
-            self.layout.original_widget = build_container_sort_popup_menu(
-                state.container_sort_menu_state,
+        elif isinstance(state.container_list_menu_state, ContainerListMenuState):
+            self.layout.original_widget = build_container_list_popup_menu(
+                state.container_list_menu_state,
                 self._main_layout,
             )
         else:
@@ -259,7 +260,7 @@ class TerminalLayoutView:
             ("shortcut_key", " f "),
             ("footer", "Filter "),
             ("shortcut_key", " s "),
-            ("footer", "Sort "),
+            ("footer", "List "),
             ("shortcut_key", " a "),
             ("footer", "Actions "),
             ("shortcut_key", " e "),

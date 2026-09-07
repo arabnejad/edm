@@ -87,12 +87,12 @@ def test_remote_context_can_be_discovered_validated_and_used(
             name=container_name,
         )
 
-        running_containers = docker_container_client.list_running_containers()
+        containers = docker_container_client.list_containers()
         matching_container = next(
             (
-                running_container
-                for running_container in running_containers
-                if running_container.container_id == container.id
+                container_summary
+                for container_summary in containers
+                if container_summary.container_id == container.id
             ),
             None,
         )

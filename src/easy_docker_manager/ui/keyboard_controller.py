@@ -66,8 +66,8 @@ class KeyboardController:
             return self._handle_docker_connection_menu_keypress(key)
         if self.state.tab_export_menu_state is not None:
             return self._handle_tab_export_menu_keypress(key)
-        if self.state.container_sort_menu_state is not None:
-            return self._handle_container_sort_menu_keypress(key)
+        if self.state.container_list_menu_state is not None:
+            return self._handle_container_list_menu_keypress(key)
         if self.state.is_editing_container_filter:
             return self._handle_container_filter_keypress(key)
         if self.state.is_search_active:
@@ -163,7 +163,7 @@ class KeyboardController:
         elif key in {"s", "S"} and self.state.active_focus_area == FocusArea.CONTAINERS:
             return (
                 KeyAction.REDRAW
-                if self.terminal_controller.open_container_sort_menu()
+                if self.terminal_controller.open_container_list_menu()
                 else KeyAction.NONE
             )
         elif key in {"f", "F"} and self.state.active_focus_area == FocusArea.CONTAINERS:
@@ -221,25 +221,25 @@ class KeyboardController:
         changed = self.tab_export_controller.handle_menu_keypress(key)
         return KeyAction.REDRAW if changed else KeyAction.NONE
 
-    def _handle_container_sort_menu_keypress(self, key: str) -> KeyAction:
-        """Handle navigation, apply, and cancel keys in the sorting menu."""
+    def _handle_container_list_menu_keypress(self, key: str) -> KeyAction:
+        """Handle navigation, changes, apply, and cancel in the list menu."""
         changed = False
         if key == "up":
-            changed = self.terminal_controller.move_container_sort_menu_selection(-1)
+            changed = self.terminal_controller.move_container_list_menu_selection(-1)
         elif key == "down":
-            changed = self.terminal_controller.move_container_sort_menu_selection(1)
+            changed = self.terminal_controller.move_container_list_menu_selection(1)
         elif key == "left":
-            changed = self.terminal_controller.set_container_sort_menu_direction(
-                descending=False
+            changed = (
+                self.terminal_controller.change_selected_container_list_menu_value(-1)
             )
         elif key == "right":
-            changed = self.terminal_controller.set_container_sort_menu_direction(
-                descending=True
+            changed = (
+                self.terminal_controller.change_selected_container_list_menu_value(+1)
             )
         elif key == "enter":
-            changed = self.terminal_controller.apply_container_sort_menu()
+            changed = self.terminal_controller.apply_container_list_menu()
         elif key == "esc":
-            changed = self.terminal_controller.close_container_sort_menu()
+            changed = self.terminal_controller.close_container_list_menu()
         return KeyAction.REDRAW if changed else KeyAction.NONE
 
     def _handle_container_filter_keypress(self, key: str) -> KeyAction:

@@ -5,11 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from easy_docker_manager.core.containers import ContainerSummary
+from easy_docker_manager.core.containers import (
+    ContainerListViewMode,
+    ContainerSummary,
+)
 
 
 class ContainerSortField(str, Enum):
-    """Fields users can choose from the container sorting menu."""
+    """Fields users can choose from the container list menu."""
 
     DOCKER_ORDER = "Docker order"
     NAME = "Name"
@@ -18,16 +21,21 @@ class ContainerSortField(str, Enum):
     CREATED_AT = "Creation time"
 
 
+class ContainerListMenuField(str, Enum):
+    """Rows that can be selected in the container list menu."""
+
+    VIEW_MODE = "Containers"
+    SORT_FIELD = "Sort by"
+    SORT_DIRECTION = "Direction"
+
+
 @dataclass
-class ContainerSortMenuState:
-    """Store the choices currently shown in the container sorting menu.
+class ContainerListMenuState:
+    """Keep list choices separate until the user applies them."""
 
-    TerminalController creates this object when the menu opens. These temporary
-    choices do not change the container list until the user presses Enter.
-    Pressing Esc discards them and keeps the current order.
-    """
-
-    selected_sort_field: ContainerSortField
+    selected_field: ContainerListMenuField
+    view_mode: ContainerListViewMode
+    sort_field: ContainerSortField
     sort_descending: bool
 
 
@@ -38,8 +46,8 @@ def get_container_list_in_requested_order(
 ) -> list[ContainerSummary]:
     """Return containers in the requested order without changing the input list.
 
-    RunningContainerListRefresher calls this after Docker refreshes the
-    container list and when the user applies a choice from the sorting menu.
+    ContainerListRefresher calls this after Docker refreshes the
+    container list and when the user applies a choice from the list menu.
     An empty image name or creation time stays at the end in either direction.
     """
     if sort_field == ContainerSortField.DOCKER_ORDER:
@@ -83,7 +91,8 @@ def _container_sort_value(
 
 
 __all__ = [
+    "ContainerListMenuField",
+    "ContainerListMenuState",
     "ContainerSortField",
-    "ContainerSortMenuState",
     "get_container_list_in_requested_order",
 ]

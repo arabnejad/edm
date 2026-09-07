@@ -108,15 +108,15 @@ def test_cache_removes_one_entry_and_updates_its_byte_count() -> None:
     assert cache.total_size_bytes == 3
 
 
-def test_cache_prunes_stopped_containers_and_can_be_cleared() -> None:
+def test_cache_prunes_missing_containers_and_can_be_cleared() -> None:
     cache = TabContentCache(max_entries=2, max_total_bytes=100)
     cache[container_tab_key("live")] = "one"
-    cache[container_tab_key("stopped")] = "two"
+    cache[container_tab_key("missing")] = "two"
 
-    cache.remove_cached_tab_content_for_stopped_containers({"live"})
+    cache.remove_cached_tab_content_for_missing_containers({"live"})
 
     assert container_tab_key("live") in cache
-    assert container_tab_key("stopped") not in cache
+    assert container_tab_key("missing") not in cache
     cache.clear()
     assert len(cache) == 0
     assert cache.total_size_bytes == 0

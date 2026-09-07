@@ -224,7 +224,7 @@ def test_run_starts_ui_and_closes_resources(
         edm_app_setup.app._process_completed_background_tasks,
     )
     runtime = edm_app_setup.runtime
-    runtime.docker_manager.start_running_container_list_refresh.assert_called_once_with(
+    runtime.docker_manager.start_container_list_refresh.assert_called_once_with(
         force=True
     )
     runtime.terminal_controller.update_terminal_view.assert_called_once_with()

@@ -17,6 +17,8 @@ from easy_docker_manager.tabs.resource_stats_formatter import (
     format_container_resource_stats_tab_text,
 )
 
+CONTAINER_NOT_RUNNING_MESSAGE = "Container is not running."
+
 
 class ContainerTabTextLoader:
     """Load display text for a container's Logs, Env, Config, Stats, or Top tab.
@@ -34,7 +36,12 @@ class ContainerTabTextLoader:
         self.docker_container_client = docker_container_client
         self.app_config = app_config
 
-    def load_tab_text(self, container_id: str, tab_name: TabName) -> str:
+    def load_tab_text(
+        self,
+        container_id: str,
+        tab_name: TabName,
+        container_is_running: bool = True,
+    ) -> str:
         """Load and format the text for one container tab."""
         if tab_name == TabName.LOGS:
             return self._load_initial_container_logs_tab_text(container_id)
@@ -43,8 +50,12 @@ class ContainerTabTextLoader:
         if tab_name == TabName.CONFIG:
             return self._load_container_config_tab_text(container_id)
         if tab_name == TabName.STATS:
+            if not container_is_running:
+                return CONTAINER_NOT_RUNNING_MESSAGE
             return self._load_container_resource_stats_tab_text(container_id)
         if tab_name == TabName.TOP:
+            if not container_is_running:
+                return CONTAINER_NOT_RUNNING_MESSAGE
             return self._load_container_top_tab_text(container_id)
         raise ValueError(f"Unsupported tab: {tab_name!r}")
 
@@ -118,6 +129,7 @@ def build_logs_unavailable_error_message(
 
 
 __all__ = [
+    "CONTAINER_NOT_RUNNING_MESSAGE",
     "ContainerTabTextLoader",
     "build_logs_unavailable_error_message",
 ]

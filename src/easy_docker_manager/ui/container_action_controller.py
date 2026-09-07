@@ -122,7 +122,7 @@ class ContainerActionController:
         menu_state: ContainerActionMenuState,
     ) -> bool:
         """Check the latest loaded status before submitting the chosen action."""
-        for container in self.state.running_container_list.displayed_containers:
+        for container in self.state.container_list.displayed_containers:
             if container.container_id != menu_state.container_id:
                 continue
             return (

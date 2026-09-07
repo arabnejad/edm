@@ -8,10 +8,10 @@ from easy_docker_manager.core.container_sorting import (
     ContainerSortField,
     get_container_list_in_requested_order,
 )
-from easy_docker_manager.core.containers import ContainerSummary
+from easy_docker_manager.core.containers import ContainerListViewMode, ContainerSummary
 
 
-class RunningContainerList:
+class ContainerList:
     """Keep Docker's full container list and the list currently shown in EDM.
 
     Keeping both lists lets EDM apply Compose grouping, sorting, and filtering
@@ -24,12 +24,14 @@ class RunningContainerList:
     ) -> None:
         # Keep our own list so later changes to the caller's list cannot change
         # the container state stored by EDM.
-        self._all_running_containers = (
+        self._all_containers = (
             list(containers_received_from_docker)
             if containers_received_from_docker is not None
             else []
         )
-        self._displayed_containers = list(self._all_running_containers)
+        self._displayed_containers = [
+            container for container in self._all_containers if container.is_running
+        ]
 
     @property
     def displayed_containers(self) -> list[ContainerSummary]:
@@ -37,16 +39,36 @@ class RunningContainerList:
         return self._displayed_containers
 
     @property
-    def unfiltered_container_count(self) -> int:
-        """Return the number of running containers reported by Docker."""
-        return len(self._all_running_containers)
+    def all_container_count(self) -> int:
+        """Return the number of containers reported by Docker."""
+        return len(self._all_containers)
 
     @property
-    def all_running_container_ids(self) -> set[str]:
-        """Return the IDs from the latest successful Docker refresh."""
-        return {container.container_id for container in self._all_running_containers}
+    def all_container_ids(self) -> set[str]:
+        """Return every ID from the latest successful Docker refresh."""
+        return {container.container_id for container in self._all_containers}
 
-    def replace_all_running_containers(
+    @property
+    def running_container_ids(self) -> set[str]:
+        """Return the IDs Docker currently reports as running."""
+        return {
+            container.container_id
+            for container in self._all_containers
+            if container.is_running
+        }
+
+    @property
+    def running_container_count(self) -> int:
+        """Return the number of containers currently running."""
+        return sum(container.is_running for container in self._all_containers)
+
+    def get_container_count_for_view(self, view_mode: ContainerListViewMode) -> int:
+        """Return the number of containers available before text filtering."""
+        if view_mode == ContainerListViewMode.RUNNING_ONLY:
+            return self.running_container_count
+        return self.all_container_count
+
+    def replace_all_containers(
         self,
         containers: list[ContainerSummary],
     ) -> None:
@@ -55,17 +77,23 @@ class RunningContainerList:
         A copy is stored so later changes to the Docker result cannot change the
         list kept by EDM.
         """
-        self._all_running_containers = list(containers)
+        self._all_containers = list(containers)
 
     def rebuild_displayed_containers(
         self,
+        view_mode: ContainerListViewMode,
         sort_field: ContainerSortField,
         sort_descending: bool,
         filter_query: str,
     ) -> list[ContainerSummary]:
         """Apply the current filter and sort, then group Compose containers."""
+        containers_in_selected_view = (
+            [container for container in self._all_containers if container.is_running]
+            if view_mode == ContainerListViewMode.RUNNING_ONLY
+            else self._all_containers
+        )
         matching_containers = self._filter_containers(
-            self._all_running_containers,
+            containers_in_selected_view,
             filter_query,
         )
         self._displayed_containers = self._group_containers_by_compose_project(
@@ -153,4 +181,4 @@ class RunningContainerList:
         ]
 
 
-__all__ = ["RunningContainerList"]
+__all__ = ["ContainerList"]
