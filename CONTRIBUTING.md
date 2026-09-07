@@ -11,7 +11,8 @@ Thank you for helping improve Easy Docker Manager.
 
 ## Development Setup
 
-Fork and clone the repository, then create a virtual environment:
+Fork and clone the repository, then use Python 3.10 or newer to create a
+virtual environment:
 
 ```bash
 python -m venv .venv
@@ -38,7 +39,9 @@ pre-commit install
 ```
 
 The development tools require a recent pip version because pip uses the
-dependency groups defined in `pyproject.toml`.
+dependency groups defined in `pyproject.toml`. EDM still supports Python 3.9
+as a runtime; the newer Python requirement applies only to its development
+tools.
 
 ## Making A Change
 
