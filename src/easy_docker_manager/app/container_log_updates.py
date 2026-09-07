@@ -65,6 +65,7 @@ class ContainerLogUpdater:
         if (
             self.state.active_detail_tab_name != TabName.LOGS
             or not container_id
+            or not self._selected_container_is_running()
             or container_id in self.state.unreadable_log_container_ids
             or current_time < self._next_log_poll_at
             or self._log_poll_future is not None
@@ -85,6 +86,7 @@ class ContainerLogUpdater:
         if (
             self.state.active_detail_tab_name != TabName.LOGS
             or not container_id
+            or not self._selected_container_is_running()
             or container_id in self.state.unreadable_log_container_ids
             or self._log_poll_future is not None
             or initial_log_load_in_progress
@@ -160,7 +162,7 @@ class ContainerLogUpdater:
         if update_status:
             self.state.status_message = message
 
-    def remove_log_cursors_for_stopped_containers(
+    def remove_log_cursors_for_non_running_containers(
         self,
         running_container_ids: set[str],
     ) -> None:
@@ -172,6 +174,11 @@ class ContainerLogUpdater:
             )
             if container_id in running_container_ids
         }
+
+    def _selected_container_is_running(self) -> bool:
+        """Return whether the selected container should receive log updates."""
+        selected_container = self.state.selected_container_summary
+        return selected_container is not None and selected_container.is_running
 
     def apply_configured_limits_to_log_content(self, content: str) -> str:
         """Apply EDM's line-count and line-length limits to log text."""

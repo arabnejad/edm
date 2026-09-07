@@ -18,7 +18,7 @@ src/
       background_executor.py      Runs blocking functions in worker threads
       docker_manager.py
                                   Coordinates the Docker data components
-      running_container_refresh.py
+      container_list_refresh.py
                                   Refreshes the list and preserves its selection
       selected_tab_load.py        Loads the selected container tab
       container_log_updates.py    Polls and merges container logs
@@ -30,7 +30,7 @@ src/
 
     core/
       config.py                   AppConfig values and validation
-      running_container_list.py  Keeps Docker's list and the displayed list
+      container_list.py          Keeps Docker's list and the displayed list
       container_actions.py        Container actions and action-menu state
       container_sorting.py       Container sort fields and ordering
       containers.py               Container, process, and resource data classes
@@ -63,9 +63,8 @@ src/
       writer.py                   Writes tab snapshots to UTF-8 text files
 
     ui/
-      running_container_list_panel.py
-                                  Builds the running-container list panel
-      container_sort_menu.py      Builds the container sorting menu
+      container_list_panel.py    Builds the container list panel
+      container_list_menu.py     Builds the container list options menu
       container_details_panel.py Builds the selected container details panel
       formatting.py               Adds terminal colors and search highlights
       keyboard_controller.py      Maps keypresses to actions
@@ -113,7 +112,7 @@ flowchart TD
     ConnectionController[DockerConnectionController]
     State[(TerminalSessionState)]
     DockerManager[DockerManager]
-    ContainerRefresh[RunningContainerListRefresher]
+    ContainerRefresh[ContainerListRefresher]
     TabLoad[SelectedTabContentLoader]
     LogUpdates[ContainerLogUpdater]
     Lifecycle[ContainerLifecycleActionRunner]
@@ -207,14 +206,14 @@ The main responsibilities are:
 - `DockerManager` gives the rest of EDM one place to request Docker data. It
   passes container-list, tab-load, log-poll, and lifecycle work to the matching
   class.
-- `RunningContainerListRefresher`, `SelectedTabContentLoader`,
+- `ContainerListRefresher`, `SelectedTabContentLoader`,
   `ContainerLogUpdater`, and `ContainerLifecycleActionRunner` track their own
   background work and apply its result to the session state.
 - `BackgroundExecutor` runs Docker requests and file writes outside the UI
   thread.
 - `TerminalLayoutView` combines the two panels, popups, and shortcut footer.
   Together, these visible parts are called the terminal view.
-- `RunningContainerListPanel` and `SelectedContainerDetailsPanel` update the
+- `ContainerListPanel` and `SelectedContainerDetailsPanel` update the
   Urwid widgets in their panel.
 - `DockerContextReader` reads the context names and endpoints stored by
   Docker. It does not connect to those endpoints.
@@ -411,9 +410,9 @@ but `DockerManager` ignores its results. The old clients are closed when EDM
 shuts down.
 
 After switching, EDM clears the old containers, tab content, searches, errors,
-statistics samples, and log positions. It then loads the running containers
-from the new daemon. The filter and sort choices remain because they are UI
-preferences, not Docker data.
+statistics samples, and log positions. It then loads the container summaries
+from the new daemon. The visibility, filter, and sort choices remain because
+they are UI preferences, not Docker data.
 
 EDM never calls `docker context use`, so changing context inside EDM does not
 change the context used by another terminal.
@@ -451,13 +450,13 @@ passes the request to `DockerManager` and closes the popup.
 
 `ContainerLifecycleActionRunner` sends Stop or Restart to
 `BackgroundExecutor`. Only one lifecycle action can run at a time. After a
-successful request, it asks `RunningContainerListRefresher` to reload the list
+successful request, it asks `ContainerListRefresher` to reload the list
 immediately. If an older list refresh is already running, that result is
 discarded and a new refresh starts after it finishes.
 
-Stopping removes the container from EDM because the application currently
-loads running containers only. Restarting uses the existing Docker container
-and does not recreate a Compose service.
+Stopping hides the container when the list uses **Running only**. It remains
+visible when **All containers** is selected. Restarting uses the existing
+Docker container and does not recreate a Compose service.
 
 ### Container Filtering
 
@@ -465,11 +464,11 @@ The keys and visible behavior are documented in
 [Container Filtering](README.md#container-filtering).
 
 `TerminalSessionState.container_filter_query` stores the query applied to the
-running-container list. `container_filter_query_before_editing` stores the
+container list. `container_filter_query_before_editing` stores the
 previous query while input is active. `Enter` keeps the edited query. `Esc`
 restores the saved query. Other shortcuts are ignored until editing ends.
 
-`RunningContainerList` keeps the latest list received from Docker and the list
+`ContainerList` keeps the latest list received from Docker and the list
 shown in the left panel. Each query change asks `DockerManager` to rebuild that
 displayed list. The comparison ignores letter case and checks the container
 name, image name, status, Compose project, and Compose service. It is quick
@@ -477,9 +476,8 @@ because it only reads container summaries already held in memory.
 
 If the selected container still matches, it remains selected. Otherwise, EDM
 selects the first match and prepares that container's active tab. Containers
-hidden by the filter are still running, so their cached tab text and log
-tracking are not removed. A later Docker refresh groups the new list and
-reapplies the same sort and filter.
+hidden by the filter keep their cached tab text. A later Docker refresh groups
+the new list and reapplies the same visibility, sort, and filter choices.
 
 ### Docker Compose Grouping
 
@@ -487,31 +485,31 @@ reapplies the same sort and filter.
 `com.docker.compose.service` labels during the normal container refresh. This
 does not need another Docker request.
 
-`RunningContainerList` automatically keeps containers from each project
+`ContainerList` automatically keeps containers from each project
 together, orders projects by name, and places containers without a project
 label at the end. The active sort is applied separately inside each project.
 
-The displayed container list remains flat. `RunningContainerListPanel` adds a
+The displayed container list remains flat. `ContainerListPanel` adds a
 project heading to the first container row in each Compose section and draws a
 separator before the next section. Containers without Compose labels receive
 no heading. Keeping headings out of the data list means selected indexes and
 keyboard navigation still refer only to containers.
 
-### Container Sorting
+### Container List Options
 
 The menu and its keyboard controls are documented in
-[Container Sorting](README.md#container-sorting). Sorting uses a small Urwid
-popup rather than opening another terminal window.
+[Container List Options](README.md#container-list-options). The choices use a
+small Urwid popup rather than opening another terminal window.
 
-While the sort menu is open, `KeyboardController` handles its keys before the
-normal shortcuts. `TerminalSessionState.container_sort_menu_state` stores the
-choices shown in the menu. The active sort changes only when the user presses
-`Enter`, so `Esc` can close the menu without changing the list.
+While the list menu is open, `KeyboardController` handles its keys before the
+normal shortcuts. `TerminalSessionState.container_list_menu_state` stores the
+choices shown in the menu. The active visibility and sort change only when the
+user presses `Enter`, so `Esc` can close the menu without changing the list.
 
-When `Enter` applies the choice, `DockerManager` rebuilds the latest list from
+When `Enter` applies the choices, `DockerManager` rebuilds the latest list from
 Docker with the active filter. It also finds the selected container's new
 position. The same container and loaded tab stay selected when that container
-still matches. Later refreshes use the same choices. `Docker order` restores
+is still visible. Later refreshes use the same choices. `Docker order` restores
 Docker's order inside each Compose project and among containers that do not
 belong to a Compose project.
 
@@ -553,7 +551,7 @@ These objects split the background work:
 
 - `DockerManager` asks the matching Docker data class to start work and
   reports how long EDM should wait before checking again.
-- `RunningContainerListRefresher`, `SelectedTabContentLoader`,
+- `ContainerListRefresher`, `SelectedTabContentLoader`,
   `ContainerLogUpdater`, and `ContainerLifecycleActionRunner` handle their
   Docker requests from start to finish.
 - `TabExportController` prepares a user-requested export and handles its result.
@@ -604,8 +602,8 @@ Four smaller classes do the actual request tracking:
 
 | Component | What it handles |
 | --- | --- |
-| `RunningContainerListRefresher` | Container-list refreshes, selection preservation, and stopped-container cleanup |
-| `SelectedTabContentLoader` | Initial tab loads, cached-tab reuse, and periodic Env, Config, Stats, and Top refreshes |
+| `ContainerListRefresher` | Container-list refreshes, selection preservation, and missing-container cleanup |
+| `SelectedTabContentLoader` | Initial tab loads, cached-tab reuse, and periodic live-tab refreshes |
 | `ContainerLogUpdater` | Incremental log polls, Docker since timestamps, overlap removal, and log limits |
 | `ContainerLifecycleActionRunner` | One confirmed Stop or Restart request and the list refresh that follows it |
 
@@ -641,9 +639,11 @@ does not skip output. Docker can repeat lines where two requests meet;
 `count_repeated_lines_between_batches()` removes that repeated section before
 new lines are added to the cache.
 
-Env, Config, Stats, and Top reload while they are visible, using
-`tab_refresh_interval`. Hidden tabs are left alone. Logs has a separate polling
-path that asks only for newer lines.
+Env, Config, Stats, and Top reload while they are visible on a running
+container, using `tab_refresh_interval`. Hidden tabs and stopped containers are
+left alone. Logs has a separate polling path that asks only for newer lines.
+Stopped-container logs load once. Stats and Top do not make Docker requests for
+a stopped container.
 
 ### Background Executor And Notifier
 
@@ -654,8 +654,8 @@ path that asks only for newer lines.
 3. An `on_complete` callback that knows how to handle its Future.
 
 For example, a container refresh submits
-`DockerContainerClient.list_running_containers` together with
-`RunningContainerListRefresher._apply_running_container_list_refresh_result`.
+`DockerContainerClient.list_containers` together with
+`ContainerListRefresher._apply_container_list_refresh_result`.
 The first function runs in a worker. The second function runs later on the UI
 thread.
 Tab export follows the same pattern with `TabExportWriter.export_text()` and
@@ -728,13 +728,14 @@ Important fields are:
 
 | Field | Meaning |
 | --- | --- |
-| `running_container_list` | Latest Docker list and the sorted, filtered list shown in the left panel |
+| `container_list` | Latest Docker list and the sorted, filtered list shown in the left panel |
 | `selected_container_index` | Selected position in that list |
 | `container_filter_query` | Plain-text query matched against container names, images, and statuses |
 | `container_filter_query_before_editing` | Query to restore if filter editing is cancelled, or `None` when editing is inactive |
 | `container_sort_field` | Sort field currently applied to the container list |
 | `container_sort_descending` | Whether the active sort runs in descending order |
-| `container_sort_menu_state` | Temporary choices in the open sort menu, or `None` when it is closed |
+| `container_list_view_mode` | Whether the displayed list includes only running containers or all containers |
+| `container_list_menu_state` | Temporary choices in the open list menu, or `None` when it is closed |
 | `container_action_menu_state` | Target container and selected action while the action popup is open |
 | `tab_export_menu_state` | Path, scope, selection, and phase of the open export menu, or `None` when it is closed |
 | `active_detail_tab_name` | Logs, Env, Config, Stats, or Top |
@@ -759,8 +760,8 @@ data.
 - `tab_content_cache_max_bytes` limits the combined UTF-8 size of cached text.
 
 When either limit is exceeded, the least recently used entries are removed.
-State belonging to stopped containers is also removed after a successful
-container refresh.
+State belonging to containers that no longer exist is also removed after a
+successful container refresh.
 
 ## Display And Search
 
@@ -796,7 +797,7 @@ environment keys, structured values, search matches, and errors.
 | `EDMRuntimeFactory` | Creates and connects the objects used by `EDMApp` |
 | `EDMRuntime` | Holds the objects that `EDMApp` uses directly |
 | `DockerManager` | Delegates Docker work and calculates the next overall refresh delay |
-| `RunningContainerListRefresher` | Refreshes the running-container list, preserves selection, and removes stopped-container state |
+| `ContainerListRefresher` | Refreshes all containers, preserves selection, and removes missing-container state |
 | `SelectedTabContentLoader` | Loads and periodically refreshes selected-tab content |
 | `ContainerLogUpdater` | Polls for new logs and updates cached log text |
 | `ContainerLifecycleActionRunner` | Runs one confirmed Stop or Restart request at a time |
@@ -819,8 +820,9 @@ environment keys, structured values, search matches, and errors.
 | `ContainerActionMenuState` | Stores the target and selected action while its popup is open |
 | `DockerContextDetails` | Stores one context name, endpoint, transport, and TLS checks |
 | `DockerConnectionMenuState` | Stores discovered contexts, selection, checks, and connection errors while its popup is open |
-| `RunningContainerList` | Stores all running containers and applies grouping, sorting, and filtering |
-| `ContainerSortField` | Names the choices shown in the container sorting menu |
+| `ContainerList` | Stores all containers and applies visibility, grouping, sorting, and filtering |
+| `ContainerListViewMode` | Chooses between running-only and all-container views |
+| `ContainerSortField` | Names the available container sort fields |
 | `get_container_list_in_requested_order` | Returns a sorted copy of the latest Docker container list |
 | `ContainerProcessTable` | Stores process column names and rows from Docker top |
 | `ContainerResourceStatsSnapshot` | Stores one resource sample returned by Docker |
@@ -865,10 +867,10 @@ environment keys, structured values, search matches, and errors.
 | `ContainerActionController` | Opens actions for the selected container and submits a confirmed choice |
 | `DockerConnectionController` | Opens context selection and applies a successful connection check |
 | `TerminalLayoutView` | Combines the panels, active popup, and shortcut footer |
-| `RunningContainerListPanel` | Displays the running-container list, header, footer, and border |
+| `ContainerListPanel` | Displays the container list, header, footer, and border |
 | `SelectedContainerDetailsPanel` | Displays the selected container's tabs, rows, status, and border |
-| `ContainerSortMenuState` | Holds choices being edited in the sort menu |
-| `build_container_sort_popup_menu` | Builds the sort popup menu over the main layout |
+| `ContainerListMenuState` | Holds visibility and sort choices being edited in the list menu |
+| `build_container_list_popup_menu` | Builds the list options popup over the main layout |
 | `build_container_action_popup_menu` | Builds the container action popup over the main layout |
 | `build_docker_connection_popup_menu` | Builds the Docker context popup over the main layout |
 | `build_tab_export_popup_menu` | Builds the export popup menu over the main layout |

@@ -22,12 +22,12 @@ from easy_docker_manager.core.containers import (
 )
 from easy_docker_manager.docker.container_client import (
     ContainerLifecycleActionError,
+    ContainerListRefreshError,
     ContainerLogsUnavailableError,
     ContainerNotFoundError,
     DockerContainerClient,
     DockerDaemonDetails,
     FailedDockerRequestType,
-    RunningContainerListRefreshError,
 )
 from easy_docker_manager.docker.container_mapper import to_container_summary
 from easy_docker_manager.docker.container_resource_stats_builder import (
@@ -68,15 +68,15 @@ class DockerSDKContainerClient(DockerContainerClient):
 
         return self._docker_client
 
-    def list_running_containers(self) -> list[ContainerSummary]:
-        """Return running containers or raise RunningContainerListRefreshError."""
+    def list_containers(self) -> list[ContainerSummary]:
+        """Return all containers or raise ContainerListRefreshError."""
         try:
             docker_containers = self._get_or_create_docker_client().containers.list(
-                filters={"status": "running"}
+                all=True
             )
         except Exception as exc:
-            logger.warning("Error fetching running containers: %s", exc)
-            raise RunningContainerListRefreshError(str(exc)) from exc
+            logger.warning("Error fetching containers: %s", exc)
+            raise ContainerListRefreshError(str(exc)) from exc
 
         container_summaries = []
         for container in docker_containers:
@@ -84,8 +84,12 @@ class DockerSDKContainerClient(DockerContainerClient):
                 container_summaries.append(to_container_summary(container))
             except Exception as exc:
                 logger.warning("Skipping container summary: %s", exc)
-        self._remove_last_resource_stats_samples_for_stopped_containers(
-            {container.container_id for container in container_summaries}
+        self._remove_last_resource_stats_samples_for_non_running_containers(
+            {
+                container.container_id
+                for container in container_summaries
+                if container.is_running
+            }
         )
         return container_summaries
 
@@ -344,16 +348,16 @@ class DockerSDKContainerClient(DockerContainerClient):
             )
             return {}
 
-    def _remove_last_resource_stats_samples_for_stopped_containers(
+    def _remove_last_resource_stats_samples_for_non_running_containers(
         self,
         running_container_ids: set[str],
     ) -> None:
         """Remove saved rate samples for containers that are no longer running."""
-        stopped_container_ids = (
+        non_running_container_ids = (
             self._last_resource_stats_snapshot_by_container_id.keys()
             - running_container_ids
         )
-        for container_id in stopped_container_ids:
+        for container_id in non_running_container_ids:
             del self._last_resource_stats_snapshot_by_container_id[container_id]
 
 

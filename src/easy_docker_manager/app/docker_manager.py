@@ -13,10 +13,10 @@ from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.app.container_lifecycle_action_runner import (
     ContainerLifecycleActionRunner,
 )
-from easy_docker_manager.app.container_log_updates import ContainerLogUpdater
-from easy_docker_manager.app.running_container_refresh import (
-    RunningContainerListRefresher,
+from easy_docker_manager.app.container_list_refresh import (
+    ContainerListRefresher,
 )
+from easy_docker_manager.app.container_log_updates import ContainerLogUpdater
 from easy_docker_manager.app.selected_tab_load import SelectedTabContentLoader
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_actions import ContainerLifecycleAction
@@ -30,7 +30,7 @@ class DockerManager:
 
     EDMApp asks when Docker data should be refreshed. TerminalController uses
     the same object after the user changes a container, tab, or sort order.
-    RunningContainerListRefresher handles the container list,
+    ContainerListRefresher handles the container list,
     SelectedTabContentLoader handles full tab loads, and ContainerLogUpdater
     handles later log polls, and ContainerLifecycleActionRunner handles Stop
     and Restart.
@@ -66,19 +66,19 @@ class DockerManager:
             tab_data_loader,
             self.container_log_updater,
         )
-        self.running_container_list_refresher = RunningContainerListRefresher(
+        self.container_list_refresher = ContainerListRefresher(
             state,
             app_config,
             background_executor,
             docker_container_client,
             self.prepare_selected_container_details,
-            self.container_log_updater.remove_log_cursors_for_stopped_containers,
+            self.container_log_updater.remove_log_cursors_for_non_running_containers,
         )
         self.container_lifecycle_action_runner = ContainerLifecycleActionRunner(
             state,
             background_executor,
             docker_container_client,
-            self.running_container_list_refresher.request_immediate_running_container_list_refresh,
+            self.container_list_refresher.request_immediate_container_list_refresh,
         )
 
     def refresh_docker_data_if_needed(self) -> None:
@@ -89,7 +89,7 @@ class DockerManager:
         request is already running.
         """
         current_time = time.monotonic()
-        self.running_container_list_refresher.refresh_if_needed(current_time)
+        self.container_list_refresher.refresh_if_needed(current_time)
         self.selected_tab_content_loader.refresh_if_needed(current_time)
 
         initial_log_load_in_progress = self._is_initial_log_content_load_in_progress()
@@ -104,7 +104,7 @@ class DockerManager:
         request_times = [
             request_time
             for request_time in (
-                self.running_container_list_refresher.get_next_refresh_time(),
+                self.container_list_refresher.get_next_refresh_time(),
                 self.selected_tab_content_loader.get_next_refresh_time(),
                 self.container_log_updater.get_next_poll_time(
                     initial_log_load_in_progress=initial_log_load_in_progress
@@ -119,13 +119,9 @@ class DockerManager:
             min(request_times) - time.monotonic(),
         )
 
-    def start_running_container_list_refresh(self, force: bool = False) -> bool:
-        """Ask the list refresher to load the running containers."""
-        return (
-            self.running_container_list_refresher.start_running_container_list_refresh(
-                force
-            )
-        )
+    def start_container_list_refresh(self, force: bool = False) -> bool:
+        """Ask the list refresher to load the containers."""
+        return self.container_list_refresher.start_container_list_refresh(force)
 
     def load_selected_tab_content_if_needed(self, force: bool = False) -> bool:
         """Ask the tab loader to load or reuse the selected container tab."""
@@ -133,10 +129,12 @@ class DockerManager:
             force
         )
 
-    def prepare_selected_container_details(self) -> None:
+    def prepare_selected_container_details(self, force_reload: bool = False) -> None:
         """Prepare tab content after the user selects another container."""
         self.container_log_updater.reset_after_selection_change()
-        self.selected_tab_content_loader.prepare_selected_container_details()
+        self.selected_tab_content_loader.prepare_selected_container_details(
+            force_reload
+        )
 
     def prepare_active_detail_tab(self) -> None:
         """Prepare tab content after the user switches detail tabs."""
@@ -145,11 +143,11 @@ class DockerManager:
 
     def rebuild_displayed_container_list(self) -> None:
         """Rebuild the grouped list after its sort or filter changes."""
-        self.running_container_list_refresher.rebuild_displayed_container_list()
+        self.container_list_refresher.rebuild_displayed_container_list()
 
     def reset_after_docker_context_change(self) -> None:
         """Reset Docker work that belongs to the previous context."""
-        self.running_container_list_refresher.reset_after_docker_context_change()
+        self.container_list_refresher.reset_after_docker_context_change()
         self.selected_tab_content_loader.reset_after_docker_context_change()
         self.container_log_updater.reset_after_docker_context_change()
 

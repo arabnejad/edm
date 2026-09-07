@@ -88,7 +88,7 @@ class TabExportController:
             container_tab_key.tab_name,
         )
         file_path = self._format_export_path_for_menu(self.launch_directory / file_name)
-        self.state.container_sort_menu_state = None
+        self.state.container_list_menu_state = None
         self.state.tab_export_menu_state = TabExportMenuState(
             container_tab_key=container_tab_key,
             container_name=selected_container.name,

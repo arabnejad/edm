@@ -203,7 +203,7 @@ class DockerConnectionController:
         self.state.status_message = (
             f'Connecting to Docker context "{selected_context.display_name}"...'
         )
-        self.docker_manager.start_running_container_list_refresh(force=True)
+        self.docker_manager.start_container_list_refresh(force=True)
         return True
 
 

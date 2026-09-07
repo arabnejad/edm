@@ -9,12 +9,12 @@ from docker.errors import DockerException, NotFound
 from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.docker.container_client import (
     ContainerLifecycleActionError,
+    ContainerListRefreshError,
     ContainerLogFetchError,
     ContainerLogsUnavailableError,
     ContainerNotFoundError,
     DockerDaemonDetails,
     DockerRequestFailedError,
-    RunningContainerListRefreshError,
 )
 from easy_docker_manager.docker.docker_sdk_container_client import (
     DockerSDKContainerClient,
@@ -118,26 +118,30 @@ def test_docker_connection_error_becomes_refresh_error() -> None:
         create_docker_client=Mock(side_effect=DockerException("offline"))
     )
 
-    with pytest.raises(RunningContainerListRefreshError, match="offline"):
-        docker_container_client.list_running_containers()
+    with pytest.raises(ContainerListRefreshError, match="offline"):
+        docker_container_client.list_containers()
 
 
-def test_list_running_containers_filters_and_maps_containers(
+def test_list_containers_requests_and_maps_running_and_stopped_containers(
     docker_client_factory,
     docker_container_factory,
 ) -> None:
     first_container = docker_container_factory(id="one", name="one")
-    second_container = docker_container_factory(id="two", name="two")
+    second_container = docker_container_factory(
+        id="two",
+        name="two",
+        status="exited",
+    )
     client = docker_client_factory()
     client.containers.list.return_value = [first_container, second_container]
     docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
 
-    running_containers = docker_container_client.list_running_containers()
+    containers = docker_container_client.list_containers()
 
-    client.containers.list.assert_called_once_with(filters={"status": "running"})
-    assert running_containers == [
+    client.containers.list.assert_called_once_with(all=True)
+    assert containers == [
         ContainerSummary(
             "one",
             "one",
@@ -148,14 +152,41 @@ def test_list_running_containers_filters_and_maps_containers(
         ContainerSummary(
             "two",
             "two",
-            "running",
+            "exited",
             "example:latest",
             "2026-01-01T12:00:00Z",
         ),
     ]
 
 
-def test_list_running_containers_skips_a_container_that_cannot_be_mapped(
+def test_list_containers_removes_saved_stats_for_non_running_containers(
+    docker_client_factory,
+    docker_container_factory,
+) -> None:
+    running_container = docker_container_factory(id="running", name="running")
+    stopped_container = docker_container_factory(
+        id="stopped",
+        name="stopped",
+        status="exited",
+    )
+    client = docker_client_factory()
+    client.containers.list.return_value = [running_container, stopped_container]
+    docker_container_client = DockerSDKContainerClient(
+        create_docker_client=lambda: client
+    )
+    docker_container_client._last_resource_stats_snapshot_by_container_id = {
+        "running": Mock(),
+        "stopped": Mock(),
+    }
+
+    docker_container_client.list_containers()
+
+    assert set(
+        docker_container_client._last_resource_stats_snapshot_by_container_id
+    ) == {"running"}
+
+
+def test_list_containers_skips_a_container_that_cannot_be_mapped(
     monkeypatch,
     docker_client_factory,
     docker_container_factory,
@@ -187,18 +218,18 @@ def test_list_running_containers_skips_a_container_that_cannot_be_mapped(
         map_container,
     )
 
-    assert docker_container_client.list_running_containers() == [expected_container]
+    assert docker_container_client.list_containers() == [expected_container]
 
 
-def test_list_running_containers_wraps_docker_failure(docker_client_factory) -> None:
+def test_list_containers_wraps_docker_failure(docker_client_factory) -> None:
     client = docker_client_factory()
     client.containers.list.side_effect = RuntimeError("offline")
     docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
 
-    with pytest.raises(RunningContainerListRefreshError, match="offline"):
-        docker_container_client.list_running_containers()
+    with pytest.raises(ContainerListRefreshError, match="offline"):
+        docker_container_client.list_containers()
 
 
 def test_get_container_logs_decodes_bad_bytes_and_passes_options(

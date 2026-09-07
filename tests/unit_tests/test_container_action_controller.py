@@ -62,7 +62,7 @@ def test_unsupported_container_status_shows_why_menu_did_not_open(
     session_state_factory,
 ) -> None:
     state = session_state_factory()
-    state.running_container_list.displayed_containers[0].status = "paused"
+    state.container_list.displayed_containers[0].status = "paused"
     docker_manager = Mock(spec=DockerManager)
     docker_manager.is_container_lifecycle_action_in_progress = False
     controller = ContainerActionController(state, docker_manager)
@@ -173,7 +173,7 @@ def test_confirmation_rejects_an_action_after_container_status_changes(
     controller = ContainerActionController(state, docker_manager)
     controller.open_container_action_menu()
     controller.handle_menu_keypress("enter")
-    state.running_container_list.displayed_containers[0].status = "exited"
+    state.container_list.displayed_containers[0].status = "exited"
 
     assert controller.handle_menu_keypress("enter")
 

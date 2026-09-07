@@ -1,7 +1,7 @@
 """Store the data that changes during one EDM terminal session.
 
 A terminal session starts when EDM opens and ends when the application exits.
-The state includes the running containers, current selection, active tab,
+The state includes the containers, current selection, active tab,
 keyboard focus, loaded text, search queries, open menu, status message, and
 Docker request errors.
 
@@ -19,17 +19,17 @@ from typing import Optional
 from easy_docker_manager.config.settings_definitions import SettingsMenuState
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_actions import ContainerActionMenuState
+from easy_docker_manager.core.container_list import ContainerList
 from easy_docker_manager.core.container_sorting import (
+    ContainerListMenuState,
     ContainerSortField,
-    ContainerSortMenuState,
 )
-from easy_docker_manager.core.containers import ContainerSummary
+from easy_docker_manager.core.containers import ContainerListViewMode, ContainerSummary
 from easy_docker_manager.core.docker_connections import (
     DockerConnectionMenuState,
     DockerConnectionTransport,
     DockerContextDetails,
 )
-from easy_docker_manager.core.running_container_list import RunningContainerList
 from easy_docker_manager.core.tab_content_cache import TabContentCache
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.diagnostics import DiagnosticsReport
@@ -72,9 +72,7 @@ class TerminalSessionState:
     """
 
     # Latest Docker list together with the sorted and filtered list shown in EDM.
-    running_container_list: RunningContainerList = field(
-        default_factory=RunningContainerList
-    )
+    container_list: ContainerList = field(default_factory=ContainerList)
     # Docker context used for container requests.
     active_docker_context: DockerContextDetails = field(
         default_factory=_create_default_docker_context_details
@@ -90,8 +88,10 @@ class TerminalSessionState:
     # Sort order currently applied to the container list.
     container_sort_field: ContainerSortField = ContainerSortField.DOCKER_ORDER
     container_sort_descending: bool = False
-    # Temporary choices in the container sort menu. None means the menu is closed.
-    container_sort_menu_state: Optional[ContainerSortMenuState] = None
+    # Which containers are currently included in the displayed list.
+    container_list_view_mode: ContainerListViewMode = ContainerListViewMode.RUNNING_ONLY
+    # Temporary choices in the list menu. None means the menu is closed.
+    container_list_menu_state: Optional[ContainerListMenuState] = None
     # Selected lifecycle action and target container while its menu is open.
     container_action_menu_state: Optional[ContainerActionMenuState] = None
     # Current choices in the tab export menu. None means the menu is closed.
@@ -110,7 +110,7 @@ class TerminalSessionState:
     follow_log_tail: bool = True
     # Status text displayed below the right detail panel.
     status_message: str = "Loading containers..."
-    # Most recent running-container list refresh error, or None after success.
+    # Most recent container-list refresh error, or None after success.
     container_list_refresh_error_message: Optional[str] = None
     # Whether printable keyboard input is editing the active search query.
     is_search_active: bool = False
@@ -132,8 +132,8 @@ class TerminalSessionState:
 
     @property
     def selected_container_summary(self) -> Optional[ContainerSummary]:
-        """Return the selected running-container summary, if the index is valid."""
-        displayed_containers = self.running_container_list.displayed_containers
+        """Return the selected container summary, if the index is valid."""
+        displayed_containers = self.container_list.displayed_containers
         if self.selected_container_index is None:
             return None
         if not 0 <= self.selected_container_index < len(displayed_containers):
@@ -156,16 +156,14 @@ class TerminalSessionState:
             tab_name=self.active_detail_tab_name,
         )
 
-    def find_running_container_index(
+    def find_container_index(
         self,
         container_id: Optional[str],
     ) -> Optional[int]:
         """Return a container's index in the displayed container list."""
         if container_id is None:
             return None
-        for index, container in enumerate(
-            self.running_container_list.displayed_containers
-        ):
+        for index, container in enumerate(self.container_list.displayed_containers):
             if container.container_id == container_id:
                 return index
         return None
@@ -186,42 +184,43 @@ class TerminalSessionState:
             0, min(line_count - 1, self.detail_selected_line_index)
         )
 
-    def remove_state_for_stopped_containers(
+    def remove_state_for_missing_containers(
         self,
-        running_container_ids: set[str],
+        existing_container_ids: set[str],
     ) -> None:
-        """Remove saved session data for containers that are no longer running."""
-        self.tab_content_cache.remove_cached_tab_content_for_stopped_containers(
-            running_container_ids
+        """Remove saved session data for containers that no longer exist."""
+        self.tab_content_cache.remove_cached_tab_content_for_missing_containers(
+            existing_container_ids
         )
         self.tab_search_queries = {
             key: query
             for key, query in self.tab_search_queries.items()
-            if not key.container_id or key.container_id in running_container_ids
+            if not key.container_id or key.container_id in existing_container_ids
         }
-        self.unreadable_log_container_ids.intersection_update(running_container_ids)
+        self.unreadable_log_container_ids.intersection_update(existing_container_ids)
         self.tab_content_error_messages = {
             key: message
             for key, message in self.tab_content_error_messages.items()
-            if key.container_id in running_container_ids
+            if key.container_id in existing_container_ids
         }
         if (
             self.tab_export_menu_state is not None
             and self.tab_export_menu_state.container_tab_key.container_id
-            not in running_container_ids
+            not in existing_container_ids
         ):
             self.tab_export_menu_state = None
         if (
             self.container_action_menu_state is not None
             and self.container_action_menu_state.container_id
-            not in running_container_ids
+            not in existing_container_ids
         ):
             self.container_action_menu_state = None
 
     def clear_container_data_for_docker_context_change(self) -> None:
         """Clear containers and tab data loaded from the previous Docker daemon."""
-        self.running_container_list.replace_all_running_containers([])
-        self.running_container_list.rebuild_displayed_containers(
+        self.container_list.replace_all_containers([])
+        self.container_list.rebuild_displayed_containers(
+            self.container_list_view_mode,
             self.container_sort_field,
             self.container_sort_descending,
             self.container_filter_query,

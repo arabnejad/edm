@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, TypeVar
 
 from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.core.container_sorting import (
+    ContainerListMenuField,
+    ContainerListMenuState,
     ContainerSortField,
-    ContainerSortMenuState,
 )
+from easy_docker_manager.core.containers import ContainerListViewMode
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.tabs.tab_text_filter import TabTextFilter
 from easy_docker_manager.ui.formatting import DetailTabTextFormatter
 from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
+
+MenuValue = TypeVar("MenuValue")
 
 
 class TerminalController:
@@ -26,6 +30,8 @@ class TerminalController:
     """
 
     DETAIL_TAB_ORDER = tuple(TabName)
+    CONTAINER_LIST_MENU_FIELD_ORDER = tuple(ContainerListMenuField)
+    CONTAINER_LIST_VIEW_MODE_ORDER = tuple(ContainerListViewMode)
     CONTAINER_SORT_FIELD_ORDER = tuple(ContainerSortField)
 
     def __init__(
@@ -54,8 +60,8 @@ class TerminalController:
     def update_terminal_view(self) -> None:
         """Update the parts of EDM's terminal screen that can change.
 
-        The terminal view is the full-screen layout containing the running
-        container list, selected container details, shortcut footer, and any
+        The terminal view is the full-screen layout containing the container
+        list, selected container details, shortcut footer, and any
         open popup. EDMApp calls this method at startup and after keyboard or
         background activity changes visible information.
         """
@@ -99,7 +105,7 @@ class TerminalController:
         """Return the loading, error, empty, or content lines for the active tab."""
         container_tab_key = self.state.selected_container_tab_key
         if container_tab_key is None:
-            return ["Select a running container."]
+            return ["Select a container."]
         content_error = self.state.tab_content_error_messages.get(container_tab_key)
         if content_error and container_tab_key not in self.state.tab_content_cache:
             return [content_error]
@@ -181,7 +187,7 @@ class TerminalController:
 
     def move_selected_container_index(self, selection_offset: int) -> bool:
         """Move the selection without passing the first or last container."""
-        displayed_containers = self.state.running_container_list.displayed_containers
+        displayed_containers = self.state.container_list.displayed_containers
         if not displayed_containers:
             return False
         previous_index = self.state.selected_container_index
@@ -241,69 +247,96 @@ class TerminalController:
             return False
         return self._set_container_filter_query(self.state.container_filter_query[:-1])
 
-    def open_container_sort_menu(self) -> bool:
-        """Open the sorting menu with the active sort choices selected."""
-        if self.state.container_sort_menu_state is not None:
+    def open_container_list_menu(self) -> bool:
+        """Open the list menu with the active choices selected."""
+        if self.state.container_list_menu_state is not None:
             return False
-        self.state.container_sort_menu_state = ContainerSortMenuState(
-            selected_sort_field=self.state.container_sort_field,
+        self.state.container_list_menu_state = ContainerListMenuState(
+            selected_field=ContainerListMenuField.VIEW_MODE,
+            view_mode=self.state.container_list_view_mode,
+            sort_field=self.state.container_sort_field,
             sort_descending=self.state.container_sort_descending,
         )
         return True
 
-    def close_container_sort_menu(self) -> bool:
-        """Close the sorting menu without changing the container order."""
-        if self.state.container_sort_menu_state is None:
+    def close_container_list_menu(self) -> bool:
+        """Close the list menu without applying its choices."""
+        if self.state.container_list_menu_state is None:
             return False
-        self.state.container_sort_menu_state = None
+        self.state.container_list_menu_state = None
         return True
 
-    def move_container_sort_menu_selection(self, selection_offset: int) -> bool:
-        """Move the selection without passing the first or last sort option."""
-        sort_menu_state = self.state.container_sort_menu_state
-        if sort_menu_state is None:
+    def move_container_list_menu_selection(self, selection_offset: int) -> bool:
+        """Move between the fields in the container list menu."""
+        menu_state = self.state.container_list_menu_state
+        if menu_state is None:
             return False
-        previous_field = sort_menu_state.selected_sort_field
-        previous_index = self.CONTAINER_SORT_FIELD_ORDER.index(previous_field)
+        previous_field = menu_state.selected_field
+        previous_index = self.CONTAINER_LIST_MENU_FIELD_ORDER.index(previous_field)
         selected_index = max(
             0,
             min(
-                len(self.CONTAINER_SORT_FIELD_ORDER) - 1,
+                len(self.CONTAINER_LIST_MENU_FIELD_ORDER) - 1,
                 previous_index + selection_offset,
             ),
         )
-        sort_menu_state.selected_sort_field = self.CONTAINER_SORT_FIELD_ORDER[
-            selected_index
-        ]
-        return sort_menu_state.selected_sort_field != previous_field
+        menu_state.selected_field = self.CONTAINER_LIST_MENU_FIELD_ORDER[selected_index]
+        return menu_state.selected_field != previous_field
 
-    def set_container_sort_menu_direction(self, *, descending: bool) -> bool:
-        """Choose the sort direction shown in the sorting menu."""
-        sort_menu_state = self.state.container_sort_menu_state
-        if (
-            sort_menu_state is None
-            or sort_menu_state.selected_sort_field == ContainerSortField.DOCKER_ORDER
-            or sort_menu_state.sort_descending == descending
-        ):
+    def change_selected_container_list_menu_value(self, value_offset: int) -> bool:
+        """Change the value of the selected list-menu field."""
+        menu_state = self.state.container_list_menu_state
+        if menu_state is None or value_offset == 0:
             return False
-        sort_menu_state.sort_descending = descending
+
+        if menu_state.selected_field == ContainerListMenuField.VIEW_MODE:
+            menu_state.view_mode = self._get_next_enum_value(
+                self.CONTAINER_LIST_VIEW_MODE_ORDER,
+                menu_state.view_mode,
+                value_offset,
+            )
+            return True
+        if menu_state.selected_field == ContainerListMenuField.SORT_FIELD:
+            menu_state.sort_field = self._get_next_enum_value(
+                self.CONTAINER_SORT_FIELD_ORDER,
+                menu_state.sort_field,
+                value_offset,
+            )
+            return True
+        if menu_state.sort_field == ContainerSortField.DOCKER_ORDER:
+            return False
+        requested_sort_descending = value_offset > 0
+        if menu_state.sort_descending == requested_sort_descending:
+            return False
+        menu_state.sort_descending = requested_sort_descending
         return True
 
-    def apply_container_sort_menu(self) -> bool:
-        """Apply the menu choices while keeping the same container selected."""
-        sort_menu_state = self.state.container_sort_menu_state
-        if sort_menu_state is None:
+    def apply_container_list_menu(self) -> bool:
+        """Apply the list choices while keeping the same container selected."""
+        menu_state = self.state.container_list_menu_state
+        if menu_state is None:
             return False
 
-        self.state.container_sort_field = sort_menu_state.selected_sort_field
+        self.state.container_list_view_mode = menu_state.view_mode
+        self.state.container_sort_field = menu_state.sort_field
         self.state.container_sort_descending = (
-            sort_menu_state.sort_descending
+            menu_state.sort_descending
             if self.state.container_sort_field != ContainerSortField.DOCKER_ORDER
             else False
         )
-        self.state.container_sort_menu_state = None
+        self.state.container_list_menu_state = None
         self.docker_manager.rebuild_displayed_container_list()
         return True
+
+    @staticmethod
+    def _get_next_enum_value(
+        enum_values: tuple[MenuValue, ...],
+        current_value: MenuValue,
+        value_offset: int,
+    ) -> MenuValue:
+        """Move through a small menu value list and wrap at either end."""
+        current_index = enum_values.index(current_value)
+        return enum_values[(current_index + value_offset) % len(enum_values)]
 
     def switch_active_detail_tab(self, tab_offset: int) -> bool:
         """Switch tabs, restore cached text, or schedule a missing tab load."""

@@ -8,16 +8,18 @@ from easy_docker_manager.core.container_actions import (
     ContainerActionMenuState,
     ContainerLifecycleAction,
 )
+from easy_docker_manager.core.container_list import ContainerList
 from easy_docker_manager.core.container_sorting import (
+    ContainerListMenuField,
+    ContainerListMenuState,
     ContainerSortField,
-    ContainerSortMenuState,
 )
+from easy_docker_manager.core.containers import ContainerListViewMode
 from easy_docker_manager.core.docker_connections import (
     DockerConnectionMenuState,
     DockerConnectionTransport,
     DockerContextDetails,
 )
-from easy_docker_manager.core.running_container_list import RunningContainerList
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import (
     FocusArea,
@@ -99,7 +101,7 @@ def test_no_color_palette_uses_terminal_defaults_and_keeps_selection_visible() -
 
 def test_title_panel_shows_terminal_logo_version_and_repository_inside_border() -> None:
     view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
-    title_panel = view.running_container_list_panel.widget.contents[0][0]
+    title_panel = view.container_list_panel.widget.contents[0][0]
 
     rendered_title_canvas = title_panel.render((80,))
     rendered_title_lines = [line.decode() for line in rendered_title_canvas.text]
@@ -158,8 +160,7 @@ def test_container_action_popup_shows_actions_and_confirmation() -> None:
     view.render(state, [], lambda line: line)
     rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
     assert 'Stop container "web"?' in rendered_text
-    assert "The container will stop and disappear from the" in rendered_text
-    assert "running-container list." in rendered_text
+    assert "The container will stop." in rendered_text
 
 
 def test_docker_connection_popup_shows_contexts_and_selected_endpoint() -> None:
@@ -196,8 +197,10 @@ def test_docker_connection_popup_shows_contexts_and_selected_endpoint() -> None:
 def test_render_shows_diagnostics_above_other_popups() -> None:
     state = TerminalSessionState(
         diagnostics_popup_report=create_initial_diagnostics_report(),
-        container_sort_menu_state=ContainerSortMenuState(
-            selected_sort_field=ContainerSortField.DOCKER_ORDER,
+        container_list_menu_state=ContainerListMenuState(
+            selected_field=ContainerListMenuField.VIEW_MODE,
+            view_mode=ContainerListViewMode.RUNNING_ONLY,
+            sort_field=ContainerSortField.DOCKER_ORDER,
             sort_descending=False,
         ),
     )
@@ -213,7 +216,7 @@ def test_render_shows_diagnostics_above_other_popups() -> None:
     assert "Connection:" in rendered_text
     assert "Checking..." in rendered_text
     assert "Esc Close" in rendered_text
-    assert "Sort Containers" not in rendered_text
+    assert "Container List" not in rendered_text
 
 
 def test_render_shows_editable_settings_popup() -> None:
@@ -254,21 +257,20 @@ def test_render_shows_empty_container_state() -> None:
 
     view.render(state, ["Select a running container."], lambda line: line)
 
-    running_container_list_panel = view.running_container_list_panel
+    container_list_panel = view.container_list_panel
     details_panel = view.selected_container_details_panel
     assert (
-        running_container_list_panel.container_rows[0].get_text()[0]
-        == "No running containers."
+        container_list_panel.container_rows[0].get_text()[0] == "No running containers."
     )
     assert (
         details_panel.container_title_text.get_text()[0] == "Container: none selected"
     )
     assert details_panel.detail_status_text.get_text()[0] == "No running containers."
     assert (
-        running_container_list_panel.container_sort_text.get_text()[0]
-        == " s  Sort: Docker order"
+        container_list_panel.container_list_options_text.get_text()[0]
+        == " s  Containers: Running only\n    Sort: Docker order"
     )
-    assert running_container_list_panel.container_filter_text.get_text()[0] == (
+    assert container_list_panel.container_filter_text.get_text()[0] == (
         " f  Filter: off"
     )
     rendered_text = b"\n".join(view.layout.render((120, 40)).text).decode()
@@ -301,11 +303,13 @@ def test_container_panel_shows_active_remote_context_name() -> None:
     assert "staging (active)" in rendered_text
 
 
-def test_render_shows_and_hides_container_sort_menu() -> None:
+def test_render_shows_and_hides_container_list_menu() -> None:
     view = TerminalLayoutView(AppConfig())
     state = TerminalSessionState(
-        container_sort_menu_state=ContainerSortMenuState(
-            selected_sort_field=ContainerSortField.IMAGE,
+        container_list_menu_state=ContainerListMenuState(
+            selected_field=ContainerListMenuField.SORT_FIELD,
+            view_mode=ContainerListViewMode.ALL,
+            sort_field=ContainerSortField.IMAGE,
             sort_descending=True,
         ),
     )
@@ -314,12 +318,13 @@ def test_render_shows_and_hides_container_sort_menu() -> None:
 
     assert isinstance(view.layout.original_widget, urwid.Overlay)
     rendered_text = b"\n".join(view.layout.render((120, 40)).text).decode()
-    assert "Sort Containers" in rendered_text
-    assert "> Image" in rendered_text
-    assert "Direction: Descending" in rendered_text
+    assert "Container List" in rendered_text
+    assert "Containers   All containers" in rendered_text
+    assert "> Sort by" in rendered_text
+    assert "Direction    Descending" in rendered_text
     assert "Enter Apply" in rendered_text
 
-    state.container_sort_menu_state = None
+    state.container_list_menu_state = None
     view.render(state, ["Select a running container."], lambda line: line)
     assert view.layout.original_widget is view._main_layout
 
@@ -393,7 +398,7 @@ def test_export_path_cursor_and_validation_error_are_rendered() -> None:
     assert "Directory does not exist" in rendered_text
 
 
-def test_container_footer_shows_active_sort_direction() -> None:
+def test_container_header_shows_visibility_and_active_sort_direction() -> None:
     view = TerminalLayoutView(AppConfig())
     state = TerminalSessionState(
         container_sort_field=ContainerSortField.CREATED_AT,
@@ -403,8 +408,8 @@ def test_container_footer_shows_active_sort_direction() -> None:
     view.render(state, ["Select a running container."], lambda line: line)
 
     assert (
-        view.running_container_list_panel.container_sort_text.get_text()[0]
-        == " s  Sort: Creation time descending"
+        view.container_list_panel.container_list_options_text.get_text()[0]
+        == " s  Containers: Running only\n    Sort: Creation time descending"
     )
 
 
@@ -412,20 +417,21 @@ def test_container_panel_shows_filter_query_match_count_and_editing_state(
     container_summary_factory,
 ) -> None:
     view = TerminalLayoutView(AppConfig())
-    running_container_list = RunningContainerList(
+    container_list = ContainerList(
         [
             container_summary_factory("cache", image_name="redis:7"),
             container_summary_factory("web", image_name="python:3.12"),
             container_summary_factory("worker", image_name="python:3.12"),
         ]
     )
-    running_container_list.rebuild_displayed_containers(
+    container_list.rebuild_displayed_containers(
+        ContainerListViewMode.RUNNING_ONLY,
         ContainerSortField.DOCKER_ORDER,
         False,
         "redis",
     )
     state = TerminalSessionState(
-        running_container_list=running_container_list,
+        container_list=container_list,
         selected_container_index=0,
         container_filter_query="redis",
         container_filter_query_before_editing="",
@@ -433,7 +439,7 @@ def test_container_panel_shows_filter_query_match_count_and_editing_state(
 
     view.render(state, ["Loading..."], lambda line: line)
 
-    assert view.running_container_list_panel.container_filter_text.get_text()[0] == (
+    assert view.container_list_panel.container_filter_text.get_text()[0] == (
         " f  Filter: redis (1/3) [editing]"
     )
     assert " f Filter" in view.shortcut_footer_text.get_text()[0]
@@ -443,7 +449,7 @@ def test_container_panel_shows_compose_sections_and_plain_container_rows(
     container_summary_factory,
 ) -> None:
     view = TerminalLayoutView(AppConfig())
-    running_container_list = RunningContainerList(
+    container_list = ContainerList(
         [
             container_summary_factory(
                 "api",
@@ -463,19 +469,20 @@ def test_container_panel_shows_compose_sections_and_plain_container_rows(
             container_summary_factory("standalone", name="cadvisor"),
         ]
     )
-    running_container_list.rebuild_displayed_containers(
+    container_list.rebuild_displayed_containers(
+        ContainerListViewMode.RUNNING_ONLY,
         ContainerSortField.DOCKER_ORDER,
         False,
         "",
     )
     state = TerminalSessionState(
-        running_container_list=running_container_list,
+        container_list=container_list,
         selected_container_index=0,
     )
 
     view.render(state, ["Loading..."], lambda line: line)
 
-    container_rows = view.running_container_list_panel.container_rows
+    container_rows = view.container_list_panel.container_rows
     rendered_container_rows = "\n".join(
         line.decode() for row in container_rows for line in row.render((60,)).text
     )
@@ -487,29 +494,55 @@ def test_container_panel_shows_compose_sections_and_plain_container_rows(
     assert "─" in rendered_container_rows
 
 
+def test_stopped_container_status_uses_the_inactive_status_style(
+    container_summary_factory,
+) -> None:
+    container_list = ContainerList(
+        [container_summary_factory("stopped", status="exited")]
+    )
+    container_list.rebuild_displayed_containers(
+        ContainerListViewMode.ALL,
+        ContainerSortField.DOCKER_ORDER,
+        False,
+        "",
+    )
+    state = TerminalSessionState(
+        container_list=container_list,
+        container_list_view_mode=ContainerListViewMode.ALL,
+    )
+    view = TerminalLayoutView(AppConfig())
+
+    view.render(state, [], lambda line: line)
+
+    row_text, row_attributes = view.container_list_panel.container_rows[0].get_text()
+    assert row_text == "  web (exited)"
+    assert ("container_status_not_running", len("exited")) in row_attributes
+
+
 def test_container_panel_explains_when_no_running_container_matches_filter(
     container_summary_factory,
 ) -> None:
     view = TerminalLayoutView(AppConfig())
-    running_container_list = RunningContainerList(
+    container_list = ContainerList(
         [
             container_summary_factory("web"),
             container_summary_factory("worker"),
         ]
     )
-    running_container_list.rebuild_displayed_containers(
+    container_list.rebuild_displayed_containers(
+        ContainerListViewMode.RUNNING_ONLY,
         ContainerSortField.DOCKER_ORDER,
         False,
         "redis",
     )
     state = TerminalSessionState(
-        running_container_list=running_container_list,
+        container_list=container_list,
         container_filter_query="redis",
     )
 
     view.render(state, ["Select a running container."], lambda line: line)
 
-    assert view.running_container_list_panel.container_rows[0].get_text()[0] == (
+    assert view.container_list_panel.container_rows[0].get_text()[0] == (
         'No running containers match "redis".'
     )
 
@@ -527,16 +560,16 @@ def test_render_updates_container_header_tabs_search_and_focus(
 
     view.render(state, ["PATH=/bin"], lambda line: [("value", line)])
 
-    running_container_list_panel = view.running_container_list_panel
+    container_list_panel = view.container_list_panel
     details_panel = view.selected_container_details_panel
-    selected_container = running_container_list_panel.container_rows[0]
+    selected_container = container_list_panel.container_rows[0]
     assert isinstance(selected_container, urwid.AttrMap)
     assert selected_container.original_widget.get_text()[0] == "> web (running)"
     assert selected_container.get_attr_map()[None] == "selected_inactive"
     assert details_panel.container_title_text.get_text()[0] == "Container: web"
     assert "Env" in details_panel.detail_tabs_text.get_text()[0]
     assert details_panel.search_query_text.get_text()[0] == "/PATH"
-    assert running_container_list_panel.panel.get_attr_map()[None] == "border_inactive"
+    assert container_list_panel.panel.get_attr_map()[None] == "border_inactive"
     assert details_panel.panel.get_attr_map()[None] == "border_active"
     assert isinstance(details_panel.detail_rows[0], urwid.AttrMap)
 

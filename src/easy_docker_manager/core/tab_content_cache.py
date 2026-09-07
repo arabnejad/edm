@@ -66,15 +66,15 @@ class TabContentCache:
         if removed_value is not None:
             self._total_size_bytes -= self._utf8_size(removed_value)
 
-    def remove_cached_tab_content_for_stopped_containers(
+    def remove_cached_tab_content_for_missing_containers(
         self,
-        running_container_ids: set[str],
+        existing_container_ids: set[str],
     ) -> None:
-        """Remove cached tabs for containers that are no longer running."""
+        """Remove cached tabs for containers that no longer exist."""
         stale_keys = [
             key
             for key in self._entries
-            if key.container_id and key.container_id not in running_container_ids
+            if key.container_id and key.container_id not in existing_container_ids
         ]
         for key in stale_keys:
             removed_value = self._entries.pop(key)

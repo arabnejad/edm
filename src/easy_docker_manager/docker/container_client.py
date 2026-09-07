@@ -96,7 +96,7 @@ class ContainerLogsUnavailableError(DockerContainerClientError):
         )
 
 
-class RunningContainerListRefreshError(DockerContainerClientError):
+class ContainerListRefreshError(DockerContainerClientError):
     """Raised when a container refresh fails before a valid list is available."""
 
 
@@ -126,8 +126,8 @@ class DockerContainerClient(ABC):
     """
 
     @abstractmethod
-    def list_running_containers(self) -> list[ContainerSummary]:
-        """Return running containers or report that the list could not load."""
+    def list_containers(self) -> list[ContainerSummary]:
+        """Return all containers or report that the list could not load."""
 
     @abstractmethod
     def get_container_logs(
@@ -190,7 +190,7 @@ __all__ = [
     "ContainerLifecycleActionError",
     "ContainerLogFetchError",
     "ContainerNotFoundError",
-    "RunningContainerListRefreshError",
+    "ContainerListRefreshError",
     "DockerContainerClientError",
     "DockerRequestFailedError",
     "DockerDaemonDetails",
