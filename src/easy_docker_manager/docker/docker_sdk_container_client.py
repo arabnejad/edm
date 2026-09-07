@@ -101,7 +101,9 @@ class DockerSDKContainerClient(DockerContainerClient):
         docker_connection = self._active_docker_connection
         try:
             docker_client = self._get_or_create_docker_client(docker_connection)
-            docker_containers = docker_client.containers.list(all=True)
+            # The list response has every field used in the left panel. sparse=True
+            # stops the SDK from inspecting each container separately.
+            docker_containers = docker_client.containers.list(all=True, sparse=True)
         except Exception as exc:
             logger.warning("Error fetching containers: %s", exc)
             raise ContainerListRefreshError(str(exc)) from exc
@@ -109,7 +111,7 @@ class DockerSDKContainerClient(DockerContainerClient):
         container_summaries = []
         for container in docker_containers:
             try:
-                container_summaries.append(to_container_summary(container))
+                container_summaries.append(to_container_summary(container.attrs))
             except Exception as exc:
                 logger.warning("Skipping container summary: %s", exc)
         self._remove_last_resource_stats_samples_for_non_running_containers(

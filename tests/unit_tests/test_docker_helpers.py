@@ -262,26 +262,20 @@ def test_validated_docker_context_client_formats_connection_errors(
         client_factory.create_validated_docker_client_for_context(docker_context, 3.5)
 
 
-def test_container_mapper_prefers_sdk_attributes() -> None:
-    container = SimpleNamespace(
-        id="full-id",
-        short_id="short-id",
-        name="web",
-        status="running",
-        attrs={
-            "State": {"Status": "stopped"},
-            "Config": {
-                "Image": "nginx:latest",
-                "Labels": {
-                    "com.docker.compose.project": "example",
-                    "com.docker.compose.service": "web",
-                },
-            },
-            "Created": "2026-01-01T12:00:00Z",
+def test_container_mapper_reads_docker_list_response_fields() -> None:
+    docker_container_list_item = {
+        "Id": "full-id",
+        "Names": ["/web"],
+        "State": "running",
+        "Image": "nginx:latest",
+        "Created": 1767268800,
+        "Labels": {
+            "com.docker.compose.project": "example",
+            "com.docker.compose.service": "web",
         },
-    )
+    }
 
-    container_summary = to_container_summary(container)
+    container_summary = to_container_summary(docker_container_list_item)
 
     assert container_summary.container_id == "full-id"
     assert container_summary.name == "web"
@@ -292,32 +286,37 @@ def test_container_mapper_prefers_sdk_attributes() -> None:
     assert container_summary.compose_service_name == "web"
 
 
-def test_container_mapper_uses_inspection_fallbacks() -> None:
-    container = SimpleNamespace(
-        attrs={
-            "Id": "abcdefghijklmnop",
-            "Name": "/worker",
-            "State": {"Status": "paused"},
-            "Config": {"Image": "worker:1.0"},
-            "Created": "2025-12-01T12:00:00Z",
-        }
-    )
+def test_container_mapper_uses_short_id_when_name_is_missing() -> None:
+    docker_container_list_item = {
+        "Id": "abcdefghijklmnop",
+        "Names": [],
+        "State": "paused",
+        "Image": "worker:1.0",
+        "Created": 1767268800,
+    }
 
-    container_summary = to_container_summary(container)
+    container_summary = to_container_summary(docker_container_list_item)
 
     assert container_summary.container_id == "abcdefghijklmnop"
-    assert container_summary.name == "worker"
+    assert container_summary.name == "abcdefghijkl"
     assert container_summary.status == "paused"
     assert container_summary.image_name == "worker:1.0"
-    assert container_summary.created_at == "2025-12-01T12:00:00Z"
+    assert container_summary.created_at == "2026-01-01T12:00:00Z"
     assert container_summary.compose_project_name is None
     assert container_summary.compose_service_name is None
 
 
 def test_container_mapper_uses_unknown_when_no_name_exists() -> None:
-    container_summary = to_container_summary(SimpleNamespace(attrs={}))
+    container_summary = to_container_summary({})
     assert container_summary.name == "unknown"
     assert container_summary.status == "unknown"
+    assert container_summary.created_at == ""
+
+
+def test_container_mapper_keeps_an_already_formatted_creation_time() -> None:
+    container_summary = to_container_summary({"Created": "2026-01-01T12:00:00Z"})
+
+    assert container_summary.created_at == "2026-01-01T12:00:00Z"
 
 
 def test_docker_error_types_keep_request_details() -> None:
