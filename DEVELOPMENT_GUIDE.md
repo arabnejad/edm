@@ -639,8 +639,14 @@ still the active one. This stops an older request from overwriting newer data.
 
 A Docker request that has started cannot be stopped. If the user changes
 container or tab while a tab load is running, the old request finishes first.
-Its text is cached under the container and tab that requested it.
-`SelectedTabContentLoader` then starts a load for the current selection.
+Its text is cached under the container and tab that requested it, then
+`SelectedTabContentLoader` starts a load for the current selection.
+
+Tab loads remember the container status they started with. If Docker reports a
+different status before the request finishes, EDM ignores the old result and
+loads the selected tab again. For example, a Stats request started while a
+container was running cannot restore that CPU sample after the container stops.
+An incremental log result is also ignored if its container is no longer running.
 
 Each successful log request saves the time at which it started. The next Docker
 request uses that time as its `since_timestamp`, which asks for lines written
@@ -653,7 +659,15 @@ Env, Config, Stats, and Top reload while they are visible on a running
 container, using `tab_refresh_interval`. Hidden tabs and stopped containers are
 left alone. Logs has a separate polling path that asks only for newer lines.
 Stopped-container logs load once. Stats and Top do not make Docker requests for
-a stopped container.
+a stopped container; their message is added immediately without starting a
+worker.
+
+When a container-list refresh finds a status change, EDM clears that container's
+saved tab text and errors. The visible tab reloads, while other tabs wait until
+the user opens them. A container that has never been selected has no saved tab
+text to clear. If it stops and the user later opens Env, EDM loads its environment
+normally from Docker. Search queries, logging-driver availability, and details
+belonging to other containers stay intact.
 
 ### Background Executor And Notifier
 

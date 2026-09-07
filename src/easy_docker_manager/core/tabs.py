@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+CONTAINER_NOT_RUNNING_MESSAGE = "Container is not running."
+
 
 class TabName(str, Enum):
     """Detail tabs shown for the selected container."""
@@ -14,6 +16,11 @@ class TabName(str, Enum):
     CONFIG = "Config"
     STATS = "Stats"
     TOP = "Top"
+
+    @property
+    def requires_running_container(self) -> bool:
+        """Return whether this tab needs a running container."""
+        return self in (TabName.STATS, TabName.TOP)
 
 
 @dataclass(frozen=True)
@@ -29,4 +36,4 @@ class ContainerTabKey:
     tab_name: TabName
 
 
-__all__ = ["ContainerTabKey", "TabName"]
+__all__ = ["CONTAINER_NOT_RUNNING_MESSAGE", "ContainerTabKey", "TabName"]

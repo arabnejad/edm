@@ -30,7 +30,11 @@ from easy_docker_manager.core.container_actions import ContainerLifecycleAction
 from easy_docker_manager.core.container_list import ContainerList
 from easy_docker_manager.core.container_sorting import ContainerSortField
 from easy_docker_manager.core.containers import ContainerListViewMode
-from easy_docker_manager.core.tabs import ContainerTabKey, TabName
+from easy_docker_manager.core.tabs import (
+    CONTAINER_NOT_RUNNING_MESSAGE,
+    ContainerTabKey,
+    TabName,
+)
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import (
     ContainerListRefreshError,
@@ -201,7 +205,7 @@ def test_visible_periodically_refreshed_tab_is_reloaded_on_its_interval(
 
     request = test_setup.background_executor.requests[0]
     assert request.fn == test_setup.tab_data_loader.load_tab_text
-    assert request.arguments == ("container-1", tab_name, True)
+    assert request.arguments == ("container-1", tab_name)
     assert test_setup.selected_tab_content_loader._next_tab_refresh_at == 13.0
 
 
@@ -265,7 +269,7 @@ def test_stopped_container_logs_load_once_without_starting_live_polling(
 
     assert test_setup.docker_manager.load_selected_tab_content_if_needed()
     initial_log_request = test_setup.background_executor.requests[0]
-    assert initial_log_request.arguments == ("stopped", TabName.LOGS, False)
+    assert initial_log_request.arguments == ("stopped", TabName.LOGS)
     assert test_setup.background_executor.complete_submission(result="final log")
     assert test_setup.container_log_updater._log_cursor_by_container_id == {}
 
@@ -280,6 +284,37 @@ def test_stopped_container_logs_load_once_without_starting_live_polling(
         )
         is None
     )
+
+
+@pytest.mark.parametrize("tab_name", [TabName.STATS, TabName.TOP])
+def test_stopped_container_live_tab_shows_message_without_worker_request(
+    tab_name: TabName,
+    docker_manager_factory,
+    container_summary_factory,
+) -> None:
+    state = TerminalSessionState(
+        container_list=ContainerList(
+            [container_summary_factory("stopped", status="exited")]
+        ),
+        container_list_view_mode=ContainerListViewMode.ALL,
+        selected_container_index=0,
+        active_detail_tab_name=tab_name,
+    )
+    state.container_list.rebuild_displayed_containers(
+        ContainerListViewMode.ALL,
+        ContainerSortField.DOCKER_ORDER,
+        False,
+        "",
+    )
+    test_setup = docker_manager_factory(state)
+
+    assert test_setup.docker_manager.load_selected_tab_content_if_needed()
+
+    assert test_setup.background_executor.requests == []
+    assert state.tab_content_cache[state.selected_container_tab_key] == (
+        CONTAINER_NOT_RUNNING_MESSAGE
+    )
+    assert state.status_message == f"Loaded {tab_name.value}"
 
 
 def test_next_request_check_uses_nearest_deadline_and_idle_delay(
@@ -344,7 +379,6 @@ def test_refresh_selects_first_container_and_loads_its_active_tab(
     assert test_setup.background_executor.requests[1].arguments == (
         "one",
         TabName.LOGS,
-        True,
     )
 
 
@@ -390,7 +424,171 @@ def test_selected_container_stopping_reloads_its_final_logs(
     )
 
     log_request = test_setup.background_executor.requests[1]
-    assert log_request.arguments == ("container-1", TabName.LOGS, False)
+    assert log_request.arguments == ("container-1", TabName.LOGS)
+
+
+@pytest.mark.parametrize("unavailable_tab", [TabName.STATS, TabName.TOP])
+def test_status_change_clears_all_cached_tabs_and_reloads_the_visible_tab(
+    unavailable_tab: TabName,
+    docker_manager_factory,
+    session_state_factory,
+    container_summary_factory,
+) -> None:
+    state = session_state_factory(tab=TabName.ENV)
+    state.container_list_view_mode = ContainerListViewMode.ALL
+    state.container_list.replace_all_containers(
+        [container_summary_factory(), container_summary_factory("other")]
+    )
+    state.container_list.rebuild_displayed_containers(
+        ContainerListViewMode.ALL,
+        ContainerSortField.DOCKER_ORDER,
+        False,
+        "",
+    )
+    for tab_name in TabName:
+        state.tab_content_cache[ContainerTabKey("container-1", tab_name)] = (
+            "details from before the container stopped"
+        )
+    retained_logs_key = ContainerTabKey("other", TabName.LOGS)
+    state.tab_content_cache[retained_logs_key] = "other container logs"
+    logs_key = ContainerTabKey("container-1", TabName.LOGS)
+    state.tab_search_queries[logs_key] = "shutdown"
+    state.unreadable_log_container_ids.add("container-1")
+    state.tab_content_error_messages[logs_key] = "old error"
+    test_setup = docker_manager_factory(state)
+    test_setup.docker_manager.start_container_list_refresh(force=True)
+
+    test_setup.background_executor.complete_submission(
+        result=[
+            container_summary_factory(status="exited"),
+            container_summary_factory("other"),
+        ]
+    )
+    assert all(
+        ContainerTabKey("container-1", tab_name) not in state.tab_content_cache
+        for tab_name in TabName
+    )
+    assert state.tab_content_cache[retained_logs_key] == "other container logs"
+    assert state.tab_content_error_messages == {}
+    assert state.tab_search_queries[logs_key] == "shutdown"
+    assert state.unreadable_log_container_ids == {"container-1"}
+    assert test_setup.background_executor.requests[-1].arguments == (
+        "container-1",
+        TabName.ENV,
+    )
+
+    test_setup.background_executor.complete_submission(result="ENV=value")
+    state.active_detail_tab_name = unavailable_tab
+    request_count = len(test_setup.background_executor.requests)
+    test_setup.docker_manager.prepare_active_detail_tab()
+
+    unavailable_tab_key = ContainerTabKey("container-1", unavailable_tab)
+    assert state.tab_content_cache[unavailable_tab_key] == (
+        CONTAINER_NOT_RUNNING_MESSAGE
+    )
+    assert len(test_setup.background_executor.requests) == request_count
+
+
+def test_stopped_container_that_was_never_selected_loads_environment_on_demand(
+    docker_manager_factory,
+    container_summary_factory,
+) -> None:
+    initially_selected = container_summary_factory("selected", name="selected")
+    later_selected = container_summary_factory("later", name="later")
+    state = TerminalSessionState(
+        container_list=ContainerList([initially_selected, later_selected]),
+        container_list_view_mode=ContainerListViewMode.ALL,
+        selected_container_index=0,
+        active_detail_tab_name=TabName.ENV,
+    )
+    state.container_list.rebuild_displayed_containers(
+        ContainerListViewMode.ALL,
+        ContainerSortField.DOCKER_ORDER,
+        False,
+        "",
+    )
+    state.tab_content_cache[ContainerTabKey("selected", TabName.ENV)] = "SELECTED=1"
+    test_setup = docker_manager_factory(state)
+    test_setup.docker_manager.start_container_list_refresh(force=True)
+
+    test_setup.background_executor.complete_submission(
+        result=[
+            initially_selected,
+            container_summary_factory("later", name="later", status="exited"),
+        ]
+    )
+    assert len(test_setup.background_executor.requests) == 1
+
+    state.selected_container_index = state.find_container_index("later")
+    test_setup.docker_manager.prepare_selected_container_details()
+
+    assert test_setup.background_executor.requests[-1].arguments == (
+        "later",
+        TabName.ENV,
+    )
+    test_setup.background_executor.complete_submission(result="STOPPED_CONTAINER=1")
+    assert state.tab_content_cache[ContainerTabKey("later", TabName.ENV)] == (
+        "STOPPED_CONTAINER=1"
+    )
+
+
+def test_tab_load_started_before_stop_is_discarded_before_final_logs_load(
+    docker_manager_factory,
+    session_state_factory,
+    container_summary_factory,
+) -> None:
+    state = session_state_factory()
+    state.container_list_view_mode = ContainerListViewMode.ALL
+    logs_key = state.selected_container_tab_key
+    test_setup = docker_manager_factory(state)
+    test_setup.docker_manager.load_selected_tab_content_if_needed()
+    test_setup.background_executor.requests[0].future.set_running_or_notify_cancel()
+
+    test_setup.docker_manager.start_container_list_refresh(force=True)
+    test_setup.background_executor.complete_submission(
+        result=[container_summary_factory(status="exited")]
+    )
+    test_setup.background_executor.complete_submission(0, result="logs before stop")
+
+    assert logs_key not in state.tab_content_cache
+    assert test_setup.background_executor.requests[-1].arguments == (
+        "container-1",
+        TabName.LOGS,
+    )
+    test_setup.background_executor.complete_submission(result="final shutdown logs")
+    assert state.tab_content_cache[logs_key] == "final shutdown logs"
+
+
+def test_late_log_poll_cannot_change_final_stopped_container_logs(
+    docker_manager_factory,
+    session_state_factory,
+    container_summary_factory,
+) -> None:
+    state = session_state_factory()
+    state.container_list_view_mode = ContainerListViewMode.ALL
+    logs_key = state.selected_container_tab_key
+    state.tab_content_cache[logs_key] = "old logs"
+    test_setup = docker_manager_factory(state)
+    test_setup.container_log_updater.record_initial_log_load_success("container-1", 100)
+    test_setup.container_log_updater.poll_if_needed(
+        10.0, initial_log_load_in_progress=False
+    )
+    test_setup.background_executor.requests[0].future.set_running_or_notify_cancel()
+
+    test_setup.docker_manager.start_container_list_refresh(force=True)
+    test_setup.background_executor.complete_submission(
+        result=[container_summary_factory(status="exited")]
+    )
+    test_setup.background_executor.complete_submission(result="final shutdown logs")
+
+    assert not test_setup.background_executor.complete_submission(
+        0,
+        result="old log batch",
+    )
+    assert state.tab_content_cache[logs_key] == "final shutdown logs"
+    assert state.tab_content_error_messages == {}
+    assert state.status_message == "Loaded Logs"
+    assert test_setup.container_log_updater._log_cursor_by_container_id == {}
 
 
 def test_refresh_preserves_selection_and_reapplies_active_sort(
@@ -574,7 +772,6 @@ def test_running_old_tab_load_finishes_before_loading_new_selection(
     assert test_setup.background_executor.requests[1].arguments == (
         "two",
         TabName.ENV,
-        True,
     )
 
 
@@ -639,7 +836,6 @@ def test_hidden_tab_result_is_cached_before_current_tab_load_starts(
     assert test_setup.background_executor.requests[1].arguments == (
         "container-1",
         TabName.ENV,
-        True,
     )
 
 
@@ -919,10 +1115,18 @@ def test_successful_log_poll_clears_previous_failure_status(
 
 def test_hidden_container_log_update_changes_cache_without_redraw(
     docker_manager_factory,
-    session_state_factory,
+    container_summary_factory,
     completed_future_factory,
 ) -> None:
-    state = session_state_factory("visible")
+    state = TerminalSessionState(
+        container_list=ContainerList(
+            [
+                container_summary_factory("visible"),
+                container_summary_factory("hidden"),
+            ]
+        ),
+        selected_container_index=0,
+    )
     container_log_updater = docker_manager_factory(state).container_log_updater
     completed_request = completed_future_factory("line")
     container_log_updater._log_poll_future = completed_request

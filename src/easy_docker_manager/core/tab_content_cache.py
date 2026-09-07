@@ -66,19 +66,29 @@ class TabContentCache:
         if removed_value is not None:
             self._total_size_bytes -= self._utf8_size(removed_value)
 
+    def remove_cached_tab_content_for_containers(
+        self,
+        container_ids: set[str],
+    ) -> None:
+        """Remove every cached tab belonging to the given containers."""
+        keys_to_remove = [
+            key for key in self._entries if key.container_id in container_ids
+        ]
+        for key in keys_to_remove:
+            self.remove_cached_tab_content(key)
+
     def remove_cached_tab_content_for_missing_containers(
         self,
         existing_container_ids: set[str],
     ) -> None:
         """Remove cached tabs for containers that no longer exist."""
-        stale_keys = [
+        keys_to_remove = [
             key
             for key in self._entries
             if key.container_id and key.container_id not in existing_container_ids
         ]
-        for key in stale_keys:
-            removed_value = self._entries.pop(key)
-            self._total_size_bytes -= self._utf8_size(removed_value)
+        for key in keys_to_remove:
+            self.remove_cached_tab_content(key)
 
     def clear(self) -> None:
         """Remove all cached tab data."""

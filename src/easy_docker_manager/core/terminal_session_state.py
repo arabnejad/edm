@@ -216,6 +216,15 @@ class TerminalSessionState:
         ):
             self.container_action_menu_state = None
 
+    def clear_loaded_details_for_containers(self, container_ids: set[str]) -> None:
+        """Clear loaded tab results after the listed containers change status."""
+        self.tab_content_cache.remove_cached_tab_content_for_containers(container_ids)
+        self.tab_content_error_messages = {
+            key: message
+            for key, message in self.tab_content_error_messages.items()
+            if key.container_id not in container_ids
+        }
+
     def clear_container_data_for_docker_context_change(self) -> None:
         """Clear containers and tab data loaded from the previous Docker daemon."""
         self.container_list.replace_all_containers([])

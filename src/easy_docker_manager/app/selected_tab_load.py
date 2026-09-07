@@ -11,7 +11,11 @@ from typing import Optional
 from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.app.container_log_updates import ContainerLogUpdater
 from easy_docker_manager.core.config import AppConfig
-from easy_docker_manager.core.tabs import ContainerTabKey, TabName
+from easy_docker_manager.core.tabs import (
+    CONTAINER_NOT_RUNNING_MESSAGE,
+    ContainerTabKey,
+    TabName,
+)
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import (
     ContainerLogFetchError,
@@ -96,6 +100,19 @@ class SelectedTabContentLoader:
         if not force and container_tab_key in self.state.tab_content_cache:
             return False
 
+        if (
+            container_tab_key.tab_name.requires_running_container
+            and not selected_container.is_running
+        ):
+            self.state.tab_content_error_messages.pop(container_tab_key, None)
+            self.state.tab_content_cache[container_tab_key] = (
+                CONTAINER_NOT_RUNNING_MESSAGE
+            )
+            self.state.status_message = (
+                f"Loaded {self.state.active_detail_tab_name.value}"
+            )
+            return True
+
         self.state.status_message = f"Loading {container_tab_key.tab_name.value}..."
 
         if (
@@ -114,15 +131,16 @@ class SelectedTabContentLoader:
             and selected_container.is_running
             else None
         )
+        requested_container_status = selected_container.status
         self._tab_load_future = self.background_executor.submit(
             self.tab_data_loader.load_tab_text,
             container_tab_key.container_id,
             container_tab_key.tab_name,
-            selected_container.is_running,
             on_complete=partial(
                 self._apply_tab_content_load_result,
                 container_tab_key,
                 initial_log_request_started_at,
+                requested_container_status,
             ),
         )
 
@@ -193,12 +211,21 @@ class SelectedTabContentLoader:
         self,
         requested_tab_key: ContainerTabKey,
         initial_log_request_started_at: Optional[int],
+        requested_container_status: str,
         tab_load_future: Future[str],
     ) -> bool:
         """Store the finished tab load, then load the latest selection if needed."""
         if tab_load_future is not self._tab_load_future:
             return False
         self._tab_load_future = None
+
+        current_container_status = self.state.container_list.get_container_status(
+            requested_tab_key.container_id
+        )
+        if current_container_status != requested_container_status:
+            # A container can stop while Docker is loading a tab. Ignore that
+            # result and load the tab again for the container's current status.
+            return self.load_selected_tab_content_if_needed()
 
         selection_changed_while_loading = (
             requested_tab_key != self.state.selected_container_tab_key

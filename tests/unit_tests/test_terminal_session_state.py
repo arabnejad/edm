@@ -137,6 +137,25 @@ def test_stopped_container_data_is_kept_while_the_container_still_exists() -> No
     assert state.tab_content_cache[stopped_logs_key] == "final logs"
 
 
+def test_status_change_clears_results_but_keeps_search_and_log_availability() -> None:
+    state = TerminalSessionState()
+    changed_key = ContainerTabKey("changed", TabName.LOGS)
+    retained_key = ContainerTabKey("retained", TabName.LOGS)
+    state.tab_content_cache[changed_key] = "old logs"
+    state.tab_content_cache[retained_key] = "keep logs"
+    state.tab_content_error_messages[changed_key] = "old error"
+    state.tab_search_queries[changed_key] = "shutdown"
+    state.unreadable_log_container_ids.add("changed")
+
+    state.clear_loaded_details_for_containers({"changed"})
+
+    assert changed_key not in state.tab_content_cache
+    assert state.tab_content_cache[retained_key] == "keep logs"
+    assert state.tab_content_error_messages == {}
+    assert state.tab_search_queries[changed_key] == "shutdown"
+    assert state.unreadable_log_container_ids == {"changed"}
+
+
 def test_context_change_clears_container_data_but_keeps_display_options(
     container_summary_factory,
 ) -> None:

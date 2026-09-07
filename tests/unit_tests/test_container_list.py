@@ -138,6 +138,38 @@ def test_replacing_all_containers_updates_count_and_container_ids(
     assert container_list.all_container_ids == {"new-1", "new-2"}
 
 
+def test_replacing_containers_reports_only_known_status_changes(
+    container_summary_factory,
+) -> None:
+    container_list = ContainerList(
+        [
+            container_summary_factory("stopping"),
+            container_summary_factory("starting", status="exited"),
+            container_summary_factory("paused", status="paused"),
+            container_summary_factory("unchanged"),
+            container_summary_factory("removed"),
+        ]
+    )
+    refreshed_containers = [
+        container_summary_factory("stopping", status="exited"),
+        container_summary_factory("starting"),
+        container_summary_factory("paused", status="exited"),
+        container_summary_factory("unchanged", name="renamed"),
+        container_summary_factory("new", status="exited"),
+    ]
+
+    assert container_list.replace_all_containers(refreshed_containers) == {
+        "stopping",
+        "starting",
+        "paused",
+    }
+    assert container_list.get_container_status("stopping") == "exited"
+    assert container_list.get_container_status("unchanged") == "running"
+    assert container_list.get_container_status("new") == "exited"
+    assert container_list.get_container_status("removed") is None
+    assert container_list.replace_all_containers(refreshed_containers) == set()
+
+
 @pytest.mark.parametrize(
     ("filter_query", "expected_container_ids"),
     [
