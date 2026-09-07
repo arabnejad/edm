@@ -10,7 +10,6 @@ from easy_docker_manager.core.docker_connections import (
 from easy_docker_manager.diagnostics import (
     DiagnosticsReport,
     DockerConnectionStatus,
-    build_edm_title,
     build_edm_version_label,
     create_initial_diagnostics_report,
     format_diagnostics_report,
@@ -120,14 +119,6 @@ def test_initial_report_uses_selected_docker_context_name() -> None:
     )
 
     assert report.docker_context_name == "staging"
-
-
-def test_application_title_hides_local_build_suffix() -> None:
-    assert build_edm_title("1.2.0") == "Easy Docker Manager (v1.2.0)"
-    assert build_edm_title("1.3.0.dev4+g123abc") == (
-        "Easy Docker Manager (v1.3.0.dev4)"
-    )
-    assert build_edm_title("unknown") == "Easy Docker Manager"
 
 
 def test_application_version_label_hides_local_build_suffix() -> None:

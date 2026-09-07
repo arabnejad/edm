@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.ui.formatting import (
-    DetailLineRenderer,
     DetailTabTextFormatter,
     append_markup_piece,
     format_log_line,
@@ -32,28 +31,32 @@ def test_plain_text_match_ranges_escape_regex_characters() -> None:
     assert plain_text_match_ranges("text", "") == []
 
 
-def test_detail_renderer_marks_errors_explicitly() -> None:
-    renderer = DetailLineRenderer()
-    assert renderer.render_line("failed", TabName.CONFIG, "", is_error=True) == [
-        ("error", "failed")
-    ]
+def test_detail_formatter_marks_errors_explicitly() -> None:
+    formatter = DetailTabTextFormatter()
+    assert formatter.format_detail_line(
+        "failed", TabName.CONFIG, "", is_error=True
+    ) == [("error", "failed")]
 
 
-def test_detail_renderer_highlights_plain_text_without_losing_text() -> None:
-    markup = DetailLineRenderer().render_line("API_KEY=value", TabName.ENV, "key")
+def test_detail_formatter_highlights_plain_text_without_losing_text() -> None:
+    markup = DetailTabTextFormatter().format_detail_line(
+        "API_KEY=value", TabName.ENV, "key"
+    )
 
     assert flatten_markup_text(markup) == "API_KEY=value"
     assert ("highlight", "KEY") in markup
 
 
-def test_detail_renderer_highlights_log_regex() -> None:
-    markup = DetailLineRenderer().render_line("ERROR failed", TabName.LOGS, "err.*")
+def test_detail_formatter_highlights_log_regex() -> None:
+    markup = DetailTabTextFormatter().format_detail_line(
+        "ERROR failed", TabName.LOGS, "err.*"
+    )
 
     assert flatten_markup_text(markup) == "ERROR failed"
     assert any(piece == ("highlight", "ERROR failed") for piece in markup)
 
 
-def test_detail_formatter_delegates_line_rendering() -> None:
+def test_detail_formatter_adds_tab_specific_colors() -> None:
     formatter = DetailTabTextFormatter()
 
     assert formatter.format_detail_line("A=1", TabName.ENV, "") == [
