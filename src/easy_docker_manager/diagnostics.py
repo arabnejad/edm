@@ -28,6 +28,22 @@ class DockerConnectionStatus(str, Enum):
     FAILED = "Failed"
 
 
+@dataclass(frozen=True)
+class DiagnosticsReportField:
+    """Hold one label and value shown in a diagnostics section."""
+
+    label: str
+    value: str
+
+
+@dataclass(frozen=True)
+class DiagnosticsReportSection:
+    """Group related diagnostics fields under one title."""
+
+    title: str
+    fields: tuple[DiagnosticsReportField, ...]
+
+
 @dataclass
 class DiagnosticsReport:
     """Hold the application, file, and Docker details shown to the user.
@@ -99,7 +115,25 @@ def format_diagnostics_report(
     *,
     include_heading: bool = True,
 ) -> str:
-    """Build the plain text printed by the command and shown in the popup."""
+    """Build the plain text printed by the diagnostics command."""
+    lines = []
+    if include_heading:
+        lines.extend(["Easy Docker Manager Diagnostics", ""])
+
+    for section_index, section in enumerate(build_diagnostics_report_sections(report)):
+        if section_index > 0:
+            lines.append("")
+        lines.append(section.title)
+        lines.extend(
+            _format_diagnostics_report_field(field) for field in section.fields
+        )
+    return "\n".join(lines)
+
+
+def build_diagnostics_report_sections(
+    report: DiagnosticsReport,
+) -> tuple[DiagnosticsReportSection, ...]:
+    """Return the report as titled sections containing label and value fields."""
     docker_daemon_details = report.docker_daemon_details
     daemon_version = (
         docker_daemon_details.daemon_version
@@ -113,41 +147,51 @@ def format_diagnostics_report(
     )
     docker_platform = _format_docker_platform(docker_daemon_details)
 
-    lines = []
-    if include_heading:
-        lines.extend(["Easy Docker Manager Diagnostics", ""])
-    lines.extend(
-        [
-            "Application",
-            _format_report_value("EDM version:", report.edm_version),
-            _format_report_value("Python version:", report.python_version),
-            _format_report_value("Docker SDK version:", report.docker_sdk_version),
-            "",
-            "Files",
-            _format_report_value(
-                "Config file:", _shorten_home_path(report.config_file_path)
-            ),
-            _format_report_value(
-                "Application log:",
-                _shorten_home_path(report.application_log_file_path),
-            ),
-            "",
-            "Docker",
-            _format_report_value("Context:", report.docker_context_name),
-            _format_report_value("Connection:", report.docker_connection_status.value),
-            _format_report_value("Daemon version:", daemon_version),
-            _format_report_value("API version:", api_version),
-            _format_report_value("Platform:", docker_platform),
-        ]
-    )
+    docker_fields = [
+        DiagnosticsReportField("Context", report.docker_context_name),
+        DiagnosticsReportField(
+            "Connection",
+            report.docker_connection_status.value,
+        ),
+        DiagnosticsReportField("Daemon version", daemon_version),
+        DiagnosticsReportField("API version", api_version),
+        DiagnosticsReportField("Platform", docker_platform),
+    ]
     if report.docker_connection_error_message:
-        lines.append(
-            _format_report_value(
-                "Error:",
+        docker_fields.append(
+            DiagnosticsReportField(
+                "Error",
                 report.docker_connection_error_message,
-            )
+            ),
         )
-    return "\n".join(lines)
+
+    return (
+        DiagnosticsReportSection(
+            "Application",
+            (
+                DiagnosticsReportField("EDM version", report.edm_version),
+                DiagnosticsReportField("Python version", report.python_version),
+                DiagnosticsReportField(
+                    "Docker SDK version",
+                    report.docker_sdk_version,
+                ),
+            ),
+        ),
+        DiagnosticsReportSection(
+            "Files",
+            (
+                DiagnosticsReportField(
+                    "Config file",
+                    _shorten_home_path(report.config_file_path),
+                ),
+                DiagnosticsReportField(
+                    "Application log",
+                    _shorten_home_path(report.application_log_file_path),
+                ),
+            ),
+        ),
+        DiagnosticsReportSection("Docker", tuple(docker_fields)),
+    )
 
 
 def _get_installed_distribution_version(distribution_name: str) -> str:
@@ -158,9 +202,10 @@ def _get_installed_distribution_version(distribution_name: str) -> str:
         return UNKNOWN_VERSION
 
 
-def _format_report_value(label: str, value: str) -> str:
-    """Align one label and value in the text report."""
-    return f"  {label:<22}{value}"
+def _format_diagnostics_report_field(field: DiagnosticsReportField) -> str:
+    """Align one field label and value in the command-line report."""
+    label_with_colon = f"{field.label}:"
+    return f"  {label_with_colon:<22}{field.value}"
 
 
 def _format_docker_platform(
@@ -202,8 +247,11 @@ def _format_exception_message(error: BaseException) -> str:
 
 __all__ = [
     "DiagnosticsReport",
+    "DiagnosticsReportField",
+    "DiagnosticsReportSection",
     "DockerConnectionStatus",
     "build_edm_version_label",
+    "build_diagnostics_report_sections",
     "create_initial_diagnostics_report",
     "format_diagnostics_report",
     "get_installed_edm_version",

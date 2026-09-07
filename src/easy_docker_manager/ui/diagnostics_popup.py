@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import urwid
 
-from easy_docker_manager.diagnostics import DiagnosticsReport, format_diagnostics_report
+from easy_docker_manager.diagnostics import (
+    DiagnosticsReport,
+    DiagnosticsReportSection,
+    build_diagnostics_report_sections,
+)
 
 KEYBOARD_HELP_DETAILS = """  Up/Down     Select a container or detail line
   Enter/Esc   Open details or return to the container list
@@ -21,10 +25,7 @@ def build_diagnostics_popup(
     background_widget: urwid.Widget,
 ) -> urwid.Overlay:
     """Place the current diagnostics report above the main terminal layout."""
-    report_text = format_diagnostics_report(
-        diagnostics_report,
-        include_heading=False,
-    )
+    diagnostics_report_sections = build_diagnostics_report_sections(diagnostics_report)
     popup_rows: list[urwid.Widget] = [
         urwid.Text(
             [
@@ -34,7 +35,7 @@ def build_diagnostics_popup(
             ],
             wrap="clip",
         ),
-        *_build_diagnostics_report_rows(report_text),
+        *_build_diagnostics_report_rows(diagnostics_report_sections),
         urwid.AttrMap(urwid.Divider("─"), "title_border"),
         urwid.Text("Esc Close", wrap="clip"),
     ]
@@ -60,27 +61,28 @@ def build_diagnostics_popup(
     )
 
 
-def _build_diagnostics_report_rows(report_text: str) -> list[urwid.Widget]:
+def _build_diagnostics_report_rows(
+    diagnostics_report_sections: tuple[DiagnosticsReportSection, ...],
+) -> list[urwid.Widget]:
     """Build full-width section dividers and colored report rows."""
     report_rows: list[urwid.Widget] = []
-    for line in report_text.splitlines():
-        if ":" in line:
-            label, value = line.split(":", 1)
+    for section in diagnostics_report_sections:
+        report_rows.extend(
+            [
+                urwid.AttrMap(urwid.Divider("─"), "title_border"),
+                urwid.Text(("host", section.title), wrap="clip"),
+            ]
+        )
+        for field in section.fields:
+            label_with_colon = f"{field.label}:"
             report_rows.append(
                 urwid.Text(
                     [
-                        f"{label}:",
-                        ("diagnostics_value", value),
+                        f"  {label_with_colon:<22}",
+                        ("diagnostics_value", field.value),
                     ],
                     wrap="any",
                 )
-            )
-        elif line:
-            report_rows.extend(
-                [
-                    urwid.AttrMap(urwid.Divider("─"), "title_border"),
-                    urwid.Text(("host", line), wrap="clip"),
-                ]
             )
     return report_rows
 
