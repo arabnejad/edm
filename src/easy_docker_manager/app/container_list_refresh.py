@@ -160,11 +160,6 @@ class ContainerListRefresher:
     ) -> bool:
         """Store a refreshed list without losing its sort or selected container."""
         previously_selected_container_id = self.state.selected_container_id
-        previously_selected_container_is_running = (
-            self.state.selected_container_summary.is_running
-            if self.state.selected_container_summary is not None
-            else None
-        )
         container_list = self.state.container_list
         previous_displayed_containers = list(container_list.displayed_containers)
         previous_container_count = container_list.all_container_count
@@ -172,7 +167,13 @@ class ContainerListRefresher:
             self.state.container_list_refresh_error_message is not None
         )
         self.state.container_list_refresh_error_message = None
-        container_list.replace_all_containers(containers)
+        status_changed_container_ids = container_list.replace_all_containers(containers)
+        if status_changed_container_ids:
+            # Every cached tab is a snapshot of one container state. For example,
+            # after a stop, Logs needs its final lines and Config needs the exit data.
+            # Tabs that were never opened have no saved result, so there is nothing
+            # to remove for them.
+            self.state.clear_loaded_details_for_containers(status_changed_container_ids)
         displayed_containers = container_list.rebuild_displayed_containers(
             self.state.container_list_view_mode,
             self.state.container_sort_field,
@@ -221,9 +222,7 @@ class ContainerListRefresher:
         )
         selected_container_status_changed = (
             not selected_container_changed
-            and self.state.selected_container_summary is not None
-            and self.state.selected_container_summary.is_running
-            != previously_selected_container_is_running
+            and self.state.selected_container_id in status_changed_container_ids
         )
         if selected_container_changed or selected_container_status_changed:
             self._prepare_selected_container_details(selected_container_status_changed)

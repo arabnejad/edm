@@ -68,16 +68,37 @@ class ContainerList:
             return self.running_container_count
         return self.all_container_count
 
+    def get_container_status(self, container_id: str) -> Optional[str]:
+        """Return the latest status for a container, or None if it is gone."""
+        for container in self._all_containers:
+            if container.container_id == container_id:
+                return container.status
+        return None
+
     def replace_all_containers(
         self,
         containers: list[ContainerSummary],
-    ) -> None:
-        """Replace the complete list after a successful Docker refresh.
+    ) -> set[str]:
+        """Replace the list and return IDs of known containers whose status changed.
 
         A copy is stored so later changes to the Docker result cannot change the
         list kept by EDM.
         """
+        # Compare the full lists. For example, a filtered-out container can stop
+        # while its old Logs and Stats are still saved in the tab cache.
+        previous_status_by_container_id = {
+            container.container_id: container.status
+            for container in self._all_containers
+        }
+        status_changed_container_ids = {
+            container.container_id
+            for container in containers
+            if container.container_id in previous_status_by_container_id
+            and container.status
+            != previous_status_by_container_id[container.container_id]
+        }
         self._all_containers = list(containers)
+        return status_changed_container_ids
 
     def rebuild_displayed_containers(
         self,

@@ -108,6 +108,21 @@ def test_cache_removes_one_entry_and_updates_its_byte_count() -> None:
     assert cache.total_size_bytes == 3
 
 
+def test_cache_removes_every_tab_for_selected_containers() -> None:
+    cache = TabContentCache(max_entries=5, max_total_bytes=100)
+    cache[container_tab_key("changed", TabName.LOGS)] = "logs"
+    cache[container_tab_key("changed", TabName.ENV)] = "env"
+    retained_key = container_tab_key("retained", TabName.LOGS)
+    cache[retained_key] = "keep"
+
+    cache.remove_cached_tab_content_for_containers({"changed"})
+
+    assert container_tab_key("changed", TabName.LOGS) not in cache
+    assert container_tab_key("changed", TabName.ENV) not in cache
+    assert cache[retained_key] == "keep"
+    assert cache.total_size_bytes == 4
+
+
 def test_cache_prunes_missing_containers_and_can_be_cleared() -> None:
     cache = TabContentCache(max_entries=2, max_total_bytes=100)
     cache[container_tab_key("live")] = "one"

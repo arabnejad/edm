@@ -222,6 +222,11 @@ class ContainerLogUpdater:
             return False
         self._log_poll_future = None
 
+        if container_id not in self.state.container_list.running_container_ids:
+            # A log poll may finish after the container stops. Ignore it so it
+            # cannot replace the final logs loaded for the stopped container.
+            return False
+
         is_logs_tab_visible = (
             container_id == self.state.selected_container_id
             and self.state.active_detail_tab_name == TabName.LOGS

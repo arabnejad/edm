@@ -12,7 +12,6 @@ from easy_docker_manager.docker.container_client import (
     DockerContainerClient,
 )
 from easy_docker_manager.tabs.tab_data_loader import (
-    CONTAINER_NOT_RUNNING_MESSAGE,
     ContainerTabTextLoader,
     build_logs_unavailable_error_message,
 )
@@ -124,21 +123,15 @@ def test_empty_process_table_returns_empty_text(
     assert tab_data_loader.load_tab_text("abc", TabName.TOP) == ""
 
 
-@pytest.mark.parametrize("tab_name", [TabName.STATS, TabName.TOP])
-def test_stopped_container_does_not_request_live_tab_data(
-    tab_name: TabName,
-    docker_container_client: Mock,
-    tab_data_loader: ContainerTabTextLoader,
-) -> None:
-    result = tab_data_loader.load_tab_text(
-        "abc",
-        tab_name,
-        container_is_running=False,
-    )
+def test_only_stats_and_top_require_a_running_container() -> None:
+    tabs_requiring_a_running_container = {
+        tab_name for tab_name in TabName if tab_name.requires_running_container
+    }
 
-    assert result == CONTAINER_NOT_RUNNING_MESSAGE
-    docker_container_client.get_container_resource_stats.assert_not_called()
-    docker_container_client.get_container_top_process_table.assert_not_called()
+    assert tabs_requiring_a_running_container == {
+        TabName.STATS,
+        TabName.TOP,
+    }
 
 
 def test_unknown_tab_is_rejected(tab_data_loader: ContainerTabTextLoader) -> None:
