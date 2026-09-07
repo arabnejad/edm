@@ -14,13 +14,13 @@ def test_app_config_uses_expected_defaults() -> None:
     config = AppConfig()
 
     assert config.container_list_refresh_interval_seconds == 2.0
-    assert config.tab_refresh_interval == 2.0
+    assert config.detail_tab_refresh_interval_seconds == 2.0
     assert config.initial_log_tail_lines == 100
     assert config.max_log_lines == 2000
     assert config.max_log_line_chars == 4000
     assert config.tab_content_cache_max_entries == 50
     assert config.tab_content_cache_max_bytes == 25_000_000
-    assert config.docker_request_timeout == 10.0
+    assert config.docker_request_timeout_seconds == 10.0
     assert config.max_background_worker_threads == 4
     assert config.colors_enabled is True
     assert config.application_log_level == "INFO"
@@ -31,12 +31,12 @@ def test_app_config_uses_expected_defaults() -> None:
     "field_name",
     [
         "container_list_refresh_interval_seconds",
-        "tab_refresh_interval",
+        "detail_tab_refresh_interval_seconds",
         "initial_log_tail_lines",
         "max_log_lines",
         "tab_content_cache_max_entries",
         "tab_content_cache_max_bytes",
-        "docker_request_timeout",
+        "docker_request_timeout_seconds",
         "max_background_worker_threads",
     ],
 )

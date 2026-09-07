@@ -110,7 +110,7 @@ def _print_diagnostics() -> int:
         create_docker_client=partial(
             create_docker_client,
             startup_docker_context,
-            AppConfig().docker_request_timeout,
+            AppConfig().docker_request_timeout_seconds,
         )
     )
     try:

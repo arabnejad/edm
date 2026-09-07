@@ -96,7 +96,7 @@ class ContainerTabTextLoader:
         )
         return format_container_resource_stats_tab_text(
             resource_stats_snapshot,
-            self.app_config.tab_refresh_interval,
+            self.app_config.detail_tab_refresh_interval_seconds,
         )
 
 

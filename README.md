@@ -459,17 +459,21 @@ cleaned configuration back to the file.
 | Setting | Default | Purpose |
 | --- | ---: | --- |
 | `container_list_refresh_interval_seconds` | `2.0` | Seconds between container-list refreshes |
-| `tab_refresh_interval` | `2.0` | Seconds between reloads of the visible Env, Config, Stats, or Top tab |
+| `detail_tab_refresh_interval_seconds` | `2.0` | Seconds between reloads of the visible Env, Config, Stats, or Top tab |
 | `initial_log_tail_lines` | `100` | Number of recent lines loaded when Logs first opens |
 | `max_log_lines` | `2000` | Maximum log lines kept for one container |
 | `max_log_line_chars` | `4000` | Maximum characters kept from one log line (minimum `32`) |
 | `tab_content_cache_max_entries` | `50` | Maximum number of cached container tabs |
 | `tab_content_cache_max_bytes` | `25000000` | Maximum UTF-8 size of all cached tab text |
-| `docker_request_timeout` | `10.0` | Docker SDK request timeout in seconds |
+| `docker_request_timeout_seconds` | `10.0` | Docker SDK request timeout in seconds |
 | `max_background_worker_threads` | `4` | Maximum number of background worker threads |
 | `colors_enabled` | `true` | Use terminal colors; set to `false` for monochrome output |
 | `application_log_level` | `"INFO"` | Minimum level written to EDM's application log |
 | `application_log_to_stdout` | `false` | Also write EDM application messages to standard output |
+
+EDM keeps values saved under the former `tab_refresh_interval` and
+`docker_request_timeout` names. On the next startup, it writes them back using
+the current names shown above. If both names are present, the current name wins.
 
 `edm --no-color` disables colors for one run without changing `config.json`.
 

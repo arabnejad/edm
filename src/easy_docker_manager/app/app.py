@@ -17,7 +17,10 @@ from easy_docker_manager.app.runtime_factory import EDMRuntimeFactory
 from easy_docker_manager.config.app_config_store import AppConfigStore
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.docker.container_client import DockerContainerClient
-from easy_docker_manager.ui.keyboard_controller import KeyAction, KeyboardController
+from easy_docker_manager.ui.keyboard_controller import (
+    KeyboardController,
+    KeypressResult,
+)
 from easy_docker_manager.ui.terminal_controller import TerminalController
 from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
 
@@ -123,11 +126,11 @@ class EDMApp:
         key: str,
         terminal_size: Optional[tuple[int, ...]] = None,
     ) -> Optional[str]:
-        """Process one keypress, then redraw or exit when the action requires it."""
-        action = self.keyboard_controller.handle_keypress(key, terminal_size)
-        if action == KeyAction.QUIT:
+        """Process one keypress, then redraw or exit when its result requires it."""
+        keypress_result = self.keyboard_controller.handle_keypress(key, terminal_size)
+        if keypress_result == KeypressResult.QUIT:
             raise urwid.ExitMainLoop()
-        if action == KeyAction.REDRAW:
+        if keypress_result == KeypressResult.REDRAW:
             self.terminal_controller.update_terminal_view()
             self.docker_manager.refresh_docker_data_if_needed()
             self._schedule_next_docker_data_refresh_check()

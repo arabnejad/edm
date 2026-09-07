@@ -42,9 +42,9 @@ SETTINGS_FIELD_DEFINITIONS = (
         " seconds",
     ),
     SettingDefinition(
-        "tab_refresh_interval",
+        "detail_tab_refresh_interval_seconds",
         "Refresh",
-        "Active tab interval",
+        "Detail tab interval",
         SettingInputType.DECIMAL,
         " seconds",
     ),
@@ -80,7 +80,7 @@ SETTINGS_FIELD_DEFINITIONS = (
         " bytes",
     ),
     SettingDefinition(
-        "docker_request_timeout",
+        "docker_request_timeout_seconds",
         "Docker",
         "Request timeout",
         SettingInputType.DECIMAL,

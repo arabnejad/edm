@@ -26,13 +26,13 @@ class AppConfig:
     """
 
     container_list_refresh_interval_seconds: float = 2.0
-    tab_refresh_interval: float = 2.0
+    detail_tab_refresh_interval_seconds: float = 2.0
     initial_log_tail_lines: int = 100
     max_log_lines: int = 2000
     max_log_line_chars: int = 4000
     tab_content_cache_max_entries: int = 50
     tab_content_cache_max_bytes: int = 25_000_000
-    docker_request_timeout: float = 10.0
+    docker_request_timeout_seconds: float = 10.0
     max_background_worker_threads: int = 4
     colors_enabled: bool = True
     application_log_level: str = "INFO"
@@ -42,8 +42,8 @@ class AppConfig:
         """Reject invalid settings before the application starts."""
         if self.container_list_refresh_interval_seconds <= 0:
             raise ValueError("container_list_refresh_interval_seconds must be positive")
-        if self.tab_refresh_interval <= 0:
-            raise ValueError("tab_refresh_interval must be positive")
+        if self.detail_tab_refresh_interval_seconds <= 0:
+            raise ValueError("detail_tab_refresh_interval_seconds must be positive")
         if self.initial_log_tail_lines <= 0:
             raise ValueError("initial_log_tail_lines must be positive")
         if self.max_log_lines <= 0:
@@ -56,15 +56,13 @@ class AppConfig:
             raise ValueError("tab_content_cache_max_entries must be positive")
         if self.tab_content_cache_max_bytes <= 0:
             raise ValueError("tab_content_cache_max_bytes must be positive")
-        if self.docker_request_timeout <= 0:
-            raise ValueError("docker_request_timeout must be positive")
+        if self.docker_request_timeout_seconds <= 0:
+            raise ValueError("docker_request_timeout_seconds must be positive")
         if self.max_background_worker_threads <= 0:
             raise ValueError("max_background_worker_threads must be positive")
         if self.application_log_level not in APPLICATION_LOG_LEVEL_NAMES:
             supported_levels = ", ".join(APPLICATION_LOG_LEVEL_NAMES)
-            raise ValueError(
-                "application_log_level must be one of " f"{supported_levels}"
-            )
+            raise ValueError(f"application_log_level must be one of {supported_levels}")
 
 
 __all__ = ["APPLICATION_LOG_LEVEL_NAMES", "AppConfig"]

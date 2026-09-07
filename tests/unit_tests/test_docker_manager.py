@@ -72,7 +72,7 @@ def test_visible_periodically_refreshed_tab_is_reloaded_on_its_interval(
     state.tab_content_cache[selected_tab_key] = "OLD=value"
     test_setup = docker_manager_factory(
         state,
-        AppConfig(tab_refresh_interval=3.0),
+        AppConfig(detail_tab_refresh_interval_seconds=3.0),
     )
     test_setup.container_list_refresher._next_refresh_at = 100.0
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)

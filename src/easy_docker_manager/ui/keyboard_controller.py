@@ -22,7 +22,7 @@ from easy_docker_manager.ui.tab_export_controller import TabExportController
 from easy_docker_manager.ui.terminal_controller import TerminalController
 
 
-class KeyAction(Enum):
+class KeypressResult(Enum):
     """Tell EDMApp what to do after a keypress."""
 
     NONE = "none"
@@ -60,7 +60,7 @@ class KeyboardController:
         self,
         key: str,
         terminal_size: Optional[tuple[int, ...]] = None,
-    ) -> KeyAction:
+    ) -> KeypressResult:
         """Handle one keypress and tell EDMApp whether to redraw or quit."""
         active_popup = self.state.active_popup
         if isinstance(active_popup, DiagnosticsReport):
@@ -79,156 +79,156 @@ class KeyboardController:
             return self._handle_container_filter_keypress(key)
         if self.state.is_search_active:
             return (
-                KeyAction.REDRAW
+                KeypressResult.REDRAW
                 if self._handle_search_keypress(key, terminal_size)
-                else KeyAction.NONE
+                else KeypressResult.NONE
             )
 
         if key in {"h", "H"}:
             return (
-                KeyAction.REDRAW
+                KeypressResult.REDRAW
                 if self.diagnostics_controller.open_diagnostics_popup()
-                else KeyAction.NONE
+                else KeypressResult.NONE
             )
         if key in {"p", "P"}:
             return (
-                KeyAction.REDRAW
+                KeypressResult.REDRAW
                 if self.settings_controller.open_settings_menu()
-                else KeyAction.NONE
+                else KeypressResult.NONE
             )
         if key in {"a", "A"}:
             return (
-                KeyAction.REDRAW
+                KeypressResult.REDRAW
                 if self.container_action_controller.open_container_action_menu()
-                else KeyAction.NONE
+                else KeypressResult.NONE
             )
         if key in {"c", "C"}:
             return (
-                KeyAction.REDRAW
+                KeypressResult.REDRAW
                 if self.docker_connection_controller.open_docker_connection_menu()
-                else KeyAction.NONE
+                else KeypressResult.NONE
             )
         if key in {"q", "Q"}:
-            return KeyAction.QUIT
+            return KeypressResult.QUIT
         if key == "enter":
             if self.state.active_focus_area == FocusArea.DETAIL:
-                return KeyAction.NONE
+                return KeypressResult.NONE
             self.state.active_focus_area = FocusArea.DETAIL
-            return KeyAction.REDRAW
+            return KeypressResult.REDRAW
         elif key == "esc":
             if self.state.active_focus_area == FocusArea.CONTAINERS:
-                return KeyAction.NONE
+                return KeypressResult.NONE
             self.state.is_search_active = False
             self.state.active_focus_area = FocusArea.CONTAINERS
-            return KeyAction.REDRAW
+            return KeypressResult.REDRAW
         elif key == "up":
             if self.state.active_focus_area == FocusArea.DETAIL:
                 return (
-                    KeyAction.REDRAW
+                    KeypressResult.REDRAW
                     if self.terminal_controller.move_selected_detail_line(
                         "up", terminal_size
                     )
-                    else KeyAction.NONE
+                    else KeypressResult.NONE
                 )
             else:
                 return (
-                    KeyAction.REDRAW
+                    KeypressResult.REDRAW
                     if self.terminal_controller.move_selected_container_index(-1)
-                    else KeyAction.NONE
+                    else KeypressResult.NONE
                 )
         elif key == "down":
             if self.state.active_focus_area == FocusArea.DETAIL:
                 return (
-                    KeyAction.REDRAW
+                    KeypressResult.REDRAW
                     if self.terminal_controller.move_selected_detail_line(
                         "down", terminal_size
                     )
-                    else KeyAction.NONE
+                    else KeypressResult.NONE
                 )
             else:
                 return (
-                    KeyAction.REDRAW
+                    KeypressResult.REDRAW
                     if self.terminal_controller.move_selected_container_index(1)
-                    else KeyAction.NONE
+                    else KeypressResult.NONE
                 )
         elif key == "[":
             return (
-                KeyAction.REDRAW
+                KeypressResult.REDRAW
                 if self.terminal_controller.switch_active_detail_tab(-1)
-                else KeyAction.NONE
+                else KeypressResult.NONE
             )
         elif key == "]":
             return (
-                KeyAction.REDRAW
+                KeypressResult.REDRAW
                 if self.terminal_controller.switch_active_detail_tab(1)
-                else KeyAction.NONE
+                else KeypressResult.NONE
             )
         elif key == "/":
             self.state.active_focus_area = FocusArea.DETAIL
             self.state.is_search_active = True
-            return KeyAction.REDRAW
+            return KeypressResult.REDRAW
         elif key in {"s", "S"} and self.state.active_focus_area == FocusArea.CONTAINERS:
             return (
-                KeyAction.REDRAW
+                KeypressResult.REDRAW
                 if self.terminal_controller.open_container_list_menu()
-                else KeyAction.NONE
+                else KeypressResult.NONE
             )
         elif key in {"f", "F"} and self.state.active_focus_area == FocusArea.CONTAINERS:
             return (
-                KeyAction.REDRAW
+                KeypressResult.REDRAW
                 if self.terminal_controller.start_editing_container_filter()
-                else KeyAction.NONE
+                else KeypressResult.NONE
             )
         elif key in {"e", "E"} and self.state.active_focus_area == FocusArea.DETAIL:
             return (
-                KeyAction.REDRAW
+                KeypressResult.REDRAW
                 if self.tab_export_controller.open_tab_export_menu()
-                else KeyAction.NONE
+                else KeypressResult.NONE
             )
         elif (
             key in {"page up", "page down", "home", "end"}
             and self.state.active_focus_area == FocusArea.DETAIL
         ):
             return (
-                KeyAction.REDRAW
+                KeypressResult.REDRAW
                 if self.terminal_controller.move_selected_detail_line(
                     key, terminal_size
                 )
-                else KeyAction.NONE
+                else KeypressResult.NONE
             )
-        return KeyAction.NONE
+        return KeypressResult.NONE
 
-    def _handle_diagnostics_popup_keypress(self, key: str) -> KeyAction:
+    def _handle_diagnostics_popup_keypress(self, key: str) -> KeypressResult:
         """Close diagnostics with Esc and ignore other keys while it is open."""
         if key != "esc":
-            return KeyAction.NONE
+            return KeypressResult.NONE
         return (
-            KeyAction.REDRAW
+            KeypressResult.REDRAW
             if self.diagnostics_controller.close_diagnostics_popup()
-            else KeyAction.NONE
+            else KeypressResult.NONE
         )
 
-    def _handle_settings_menu_keypress(self, key: str) -> KeyAction:
+    def _handle_settings_menu_keypress(self, key: str) -> KeypressResult:
         """Pass one settings key to SettingsController."""
         changed = self.settings_controller.handle_menu_keypress(key)
-        return KeyAction.REDRAW if changed else KeyAction.NONE
+        return KeypressResult.REDRAW if changed else KeypressResult.NONE
 
-    def _handle_container_action_menu_keypress(self, key: str) -> KeyAction:
+    def _handle_container_action_menu_keypress(self, key: str) -> KeypressResult:
         """Pass one action-menu key to ContainerActionController."""
         changed = self.container_action_controller.handle_menu_keypress(key)
-        return KeyAction.REDRAW if changed else KeyAction.NONE
+        return KeypressResult.REDRAW if changed else KeypressResult.NONE
 
-    def _handle_docker_connection_menu_keypress(self, key: str) -> KeyAction:
+    def _handle_docker_connection_menu_keypress(self, key: str) -> KeypressResult:
         """Pass one connection-menu key to DockerConnectionController."""
         changed = self.docker_connection_controller.handle_menu_keypress(key)
-        return KeyAction.REDRAW if changed else KeyAction.NONE
+        return KeypressResult.REDRAW if changed else KeypressResult.NONE
 
-    def _handle_tab_export_menu_keypress(self, key: str) -> KeyAction:
+    def _handle_tab_export_menu_keypress(self, key: str) -> KeypressResult:
         """Pass one export-menu key to TabExportController."""
         changed = self.tab_export_controller.handle_menu_keypress(key)
-        return KeyAction.REDRAW if changed else KeyAction.NONE
+        return KeypressResult.REDRAW if changed else KeypressResult.NONE
 
-    def _handle_container_list_menu_keypress(self, key: str) -> KeyAction:
+    def _handle_container_list_menu_keypress(self, key: str) -> KeypressResult:
         """Handle navigation, changes, apply, and cancel in the list menu."""
         changed = False
         if key == "up":
@@ -247,9 +247,9 @@ class KeyboardController:
             changed = self.terminal_controller.apply_container_list_menu()
         elif key == "esc":
             changed = self.terminal_controller.close_container_list_menu()
-        return KeyAction.REDRAW if changed else KeyAction.NONE
+        return KeypressResult.REDRAW if changed else KeypressResult.NONE
 
-    def _handle_container_filter_keypress(self, key: str) -> KeyAction:
+    def _handle_container_filter_keypress(self, key: str) -> KeypressResult:
         """Handle filter input while blocking unrelated terminal shortcuts."""
         changed = False
         if key == "enter":
@@ -262,7 +262,7 @@ class KeyboardController:
             )
         elif len(key) == 1 and key.isprintable():
             changed = self.terminal_controller.add_character_to_container_filter(key)
-        return KeyAction.REDRAW if changed else KeyAction.NONE
+        return KeypressResult.REDRAW if changed else KeypressResult.NONE
 
     def _handle_search_keypress(
         self,
@@ -320,4 +320,4 @@ class KeyboardController:
         return False
 
 
-__all__ = ["KeyboardController", "KeyAction"]
+__all__ = ["KeyboardController", "KeypressResult"]

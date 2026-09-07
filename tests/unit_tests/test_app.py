@@ -14,7 +14,10 @@ from easy_docker_manager.app.background_notifier import BackgroundNotifier
 from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.app.runtime_factory import EDMRuntimeFactory
 from easy_docker_manager.docker.container_client import DockerContainerClient
-from easy_docker_manager.ui.keyboard_controller import KeyAction, KeyboardController
+from easy_docker_manager.ui.keyboard_controller import (
+    KeyboardController,
+    KeypressResult,
+)
 from easy_docker_manager.ui.terminal_controller import TerminalController
 from easy_docker_manager.ui.terminal_layout import TerminalLayoutView
 
@@ -80,7 +83,7 @@ def test_keyboard_render_action_redraws_and_checks_background_work(
     edm_app_setup,
 ) -> None:
     edm_app_setup.runtime.keyboard_controller.handle_keypress.return_value = (
-        KeyAction.REDRAW
+        KeypressResult.REDRAW
     )
     edm_app_setup.app._schedule_next_docker_data_refresh_check = Mock()
 
@@ -94,7 +97,7 @@ def test_keyboard_render_action_redraws_and_checks_background_work(
 
 def test_keyboard_no_action_does_not_redraw(edm_app_setup) -> None:
     edm_app_setup.runtime.keyboard_controller.handle_keypress.return_value = (
-        KeyAction.NONE
+        KeypressResult.NONE
     )
 
     edm_app_setup.app.handle_keyboard_input("unknown")
@@ -104,7 +107,7 @@ def test_keyboard_no_action_does_not_redraw(edm_app_setup) -> None:
 
 def test_keyboard_quit_action_exits_main_loop(edm_app_setup) -> None:
     edm_app_setup.runtime.keyboard_controller.handle_keypress.return_value = (
-        KeyAction.QUIT
+        KeypressResult.QUIT
     )
 
     with pytest.raises(urwid.ExitMainLoop):
