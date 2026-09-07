@@ -498,6 +498,9 @@ terminal and continues to start.
 
 ## Development Checks
 
+Use Python 3.10 or newer for the development tools. Installed EDM releases
+still support Python 3.9.
+
 Run the normal formatting, linting, type, and source-security checks:
 
 ```bash

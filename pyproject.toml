@@ -86,7 +86,8 @@ ignore = ["S101", "UP007", "UP045"]
 "tests/**/*.py" = ["S105", "S106", "S108"]
 
 [tool.mypy]
-python_version = "3.9"
+# Mypy 2.x starts at Python 3.10. CI still tests EDM itself on Python 3.9.
+python_version = "3.10"
 files = ["src/easy_docker_manager"]
 warn_return_any = true
 warn_unused_configs = true

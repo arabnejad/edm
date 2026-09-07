@@ -978,7 +978,8 @@ make check
 ```
 
 `make check` runs Black in check mode, Ruff, mypy, Bandit, and the unit tests.
-It supports Python 3.9 and does not need network access.
+It requires Python 3.10 or newer and does not need network access. EDM's Python
+3.9 runtime support is checked separately by CI.
 
 Other useful commands are:
 
