@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass, field
+from threading import Lock
 from typing import Any, Optional, Union
 
 from docker import DockerClient
@@ -42,6 +44,17 @@ from easy_docker_manager.docker.log_availability import (
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class _DockerConnectionState:
+    """Keep a context's client and rate samples together while requests finish."""
+
+    docker_client: Optional[DockerClient] = None
+    last_resource_stats_snapshot_by_container_id: dict[
+        str, ContainerResourceStatsSnapshot
+    ] = field(default_factory=dict)
+    connection_state_lock: Lock = field(default_factory=Lock)
+
+
 class DockerSDKContainerClient(DockerContainerClient):
     """Send EDM's container requests through the Docker Python SDK."""
 
@@ -51,29 +64,44 @@ class DockerSDKContainerClient(DockerContainerClient):
     ) -> None:
         """Save the client factory but do not connect until the first request."""
         self._create_docker_client = create_docker_client
-        self._docker_client: Optional[DockerClient] = None
-        self._docker_clients_retained_until_shutdown: list[DockerClient] = []
-        self._last_resource_stats_snapshot_by_container_id: dict[
-            str, ContainerResourceStatsSnapshot
-        ] = {}
+        self._active_docker_connection = _DockerConnectionState()
+        self._docker_connections_retained_until_shutdown: list[
+            _DockerConnectionState
+        ] = []
 
-    def _get_or_create_docker_client(self) -> DockerClient:
-        """Open the Docker connection on first use and reuse it afterward."""
-        if self._docker_client is None:
-            try:
-                self._docker_client = self._create_docker_client()
-            except DockerException:
-                logger.exception("Failed to connect to Docker")
-                raise
+    def _get_or_create_docker_client(
+        self,
+        docker_connection: Optional[_DockerConnectionState] = None,
+    ) -> DockerClient:
+        """Open this request's connection once, even when workers arrive together."""
+        # The UI is usable before the startup connection finishes. For example:
+        # 1. A worker starts connecting to server A, which is slow.
+        # 2. The user selects server B, which connects first and becomes active.
+        # 3. A finishes connecting after B is already selected.
+        # A's client must stay in A's state. Replacing the active client here
+        # would send later requests to A while the UI still shows B.
+        if docker_connection is None:
+            docker_connection = self._active_docker_connection
+        # Container listing and Help can both request the startup client.
+        # This context's lock prevents them from creating separate clients.
+        with docker_connection.connection_state_lock:
+            if docker_connection.docker_client is None:
+                try:
+                    docker_connection.docker_client = self._create_docker_client()
+                except DockerException:
+                    logger.exception("Failed to connect to Docker")
+                    raise
 
-        return self._docker_client
+            return docker_connection.docker_client
 
     def list_containers(self) -> list[ContainerSummary]:
         """Return all containers or raise ContainerListRefreshError."""
+        # A late list response from A must only remove old samples from A's
+        # history, even if the user has already switched to B.
+        docker_connection = self._active_docker_connection
         try:
-            docker_containers = self._get_or_create_docker_client().containers.list(
-                all=True
-            )
+            docker_client = self._get_or_create_docker_client(docker_connection)
+            docker_containers = docker_client.containers.list(all=True)
         except Exception as exc:
             logger.warning("Error fetching containers: %s", exc)
             raise ContainerListRefreshError(str(exc)) from exc
@@ -85,11 +113,12 @@ class DockerSDKContainerClient(DockerContainerClient):
             except Exception as exc:
                 logger.warning("Skipping container summary: %s", exc)
         self._remove_last_resource_stats_samples_for_non_running_containers(
+            docker_connection,
             {
                 container.container_id
                 for container in container_summaries
                 if container.is_running
-            }
+            },
         )
         return container_summaries
 
@@ -205,22 +234,31 @@ class DockerSDKContainerClient(DockerContainerClient):
         container_id: str,
     ) -> ContainerResourceStatsSnapshot:
         """Fetch current stats and calculate rates from the last saved sample."""
+        docker_connection = self._active_docker_connection
         try:
-            container = self._get_or_create_docker_client().containers.get(container_id)
+            docker_client = self._get_or_create_docker_client(docker_connection)
+            container = docker_client.containers.get(container_id)
             docker_stats_response = container.stats(stream=False)
             if not isinstance(docker_stats_response, dict):
                 raise TypeError(
                     "Docker returned resource statistics in an unknown format"
                 )
 
-            current_resource_stats_snapshot = build_container_resource_stats_snapshot(
-                docker_stats_response,
-                container.attrs,
-                self._last_resource_stats_snapshot_by_container_id.get(container_id),
-            )
-            self._last_resource_stats_snapshot_by_container_id[container_id] = (
-                current_resource_stats_snapshot
-            )
+            # If A's sample arrives after switching to B, compare it with A's
+            # previous sample and save it in A's history. Otherwise, the next
+            # request to B could calculate a rate using counters from A.
+            with docker_connection.connection_state_lock:
+                previous_snapshots = (
+                    docker_connection.last_resource_stats_snapshot_by_container_id
+                )
+                current_resource_stats_snapshot = (
+                    build_container_resource_stats_snapshot(
+                        docker_stats_response,
+                        container.attrs,
+                        previous_snapshots.get(container_id),
+                    )
+                )
+                previous_snapshots[container_id] = current_resource_stats_snapshot
             return current_resource_stats_snapshot
         except Exception as exc:
             logger.exception(
@@ -284,14 +322,16 @@ class DockerSDKContainerClient(DockerContainerClient):
         stays open so the request can finish, but DockerManager ignores the
         result. EDM closes the old client at shutdown after all workers finish.
         """
-        previous_docker_client = self._docker_client
-        self._docker_client = validated_docker_client
-        self._last_resource_stats_snapshot_by_container_id.clear()
-        if (
-            previous_docker_client is not None
-            and previous_docker_client is not validated_docker_client
-        ):
-            self._docker_clients_retained_until_shutdown.append(previous_docker_client)
+        # Only the UI thread switches contexts. Workers keep their old state,
+        # so switching never waits for a slow connection or Docker request.
+        # Keep the old state even if its client is still being created; that
+        # late-created client must also be closed when EDM shuts down.
+        self._docker_connections_retained_until_shutdown.append(
+            self._active_docker_connection
+        )
+        self._active_docker_connection = _DockerConnectionState(
+            docker_client=validated_docker_client
+        )
 
     def close(self) -> None:
         """Close the active client and any clients kept after context changes.
@@ -299,14 +339,19 @@ class DockerSDKContainerClient(DockerContainerClient):
         EDMApp calls this after its workers finish, so none of these clients
         are still handling a Docker request.
         """
-        docker_clients = [*self._docker_clients_retained_until_shutdown]
-        if self._docker_client is not None:
-            docker_clients.append(self._docker_client)
-        self._docker_clients_retained_until_shutdown.clear()
-        self._docker_client = None
-        self._last_resource_stats_snapshot_by_container_id.clear()
+        docker_connections = [
+            *self._docker_connections_retained_until_shutdown,
+            self._active_docker_connection,
+        ]
+        self._docker_connections_retained_until_shutdown.clear()
+        self._active_docker_connection = _DockerConnectionState()
 
-        for docker_client in docker_clients:
+        closed_client_ids: set[int] = set()
+        for docker_connection in docker_connections:
+            docker_client = docker_connection.docker_client
+            if docker_client is None or id(docker_client) in closed_client_ids:
+                continue
+            closed_client_ids.add(id(docker_client))
             try:
                 docker_client.close()
             except Exception as exc:
@@ -350,15 +395,19 @@ class DockerSDKContainerClient(DockerContainerClient):
 
     def _remove_last_resource_stats_samples_for_non_running_containers(
         self,
+        docker_connection: _DockerConnectionState,
         running_container_ids: set[str],
     ) -> None:
         """Remove saved rate samples for containers that are no longer running."""
-        non_running_container_ids = (
-            self._last_resource_stats_snapshot_by_container_id.keys()
-            - running_container_ids
-        )
-        for container_id in non_running_container_ids:
-            del self._last_resource_stats_snapshot_by_container_id[container_id]
+        with docker_connection.connection_state_lock:
+            previous_snapshots = (
+                docker_connection.last_resource_stats_snapshot_by_container_id
+            )
+            non_running_container_ids = (
+                previous_snapshots.keys() - running_container_ids
+            )
+            for container_id in non_running_container_ids:
+                del previous_snapshots[container_id]
 
 
 def _get_non_empty_text(value: Any) -> Optional[str]:
