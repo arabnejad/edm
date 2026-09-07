@@ -44,7 +44,7 @@ src/
       container_client.py         DockerContainerClient interface and EDM errors
       client_factory.py           Creates and validates Docker SDK clients
       docker_contexts.py          Reads Docker contexts and endpoints
-      container_mapper.py         Converts Docker objects to EDM data
+      container_mapper.py         Converts Docker list responses to EDM data
       error_mapping.py            Converts Docker SDK errors to EDM errors
       docker_sdk_container_client.py
                                   Sends requests through the active Docker context
@@ -492,7 +492,7 @@ the new list and reapplies the same visibility, sort, and filter choices.
 ### Docker Compose Grouping
 
 `container_mapper.py` reads the `com.docker.compose.project` and
-`com.docker.compose.service` labels during the normal container refresh. This
+`com.docker.compose.service` labels from Docker's container-list response. This
 does not need another Docker request.
 
 `ContainerList` automatically keeps containers from each project
@@ -682,6 +682,12 @@ For example, a container refresh submits
 `ContainerListRefresher._apply_container_list_refresh_result`.
 The first function runs in a worker. The second function runs later on the UI
 thread.
+
+`DockerSDKContainerClient.list_containers()` asks the Docker SDK for sparse
+container objects. Docker returns the ID, name, status, image, creation time,
+and labels in one list request. EDM only inspects a container when a detail tab
+needs information that is not part of that response.
+
 Tab export follows the same pattern with `TabExportWriter.export_text()` and
 the completion method in `TabExportController`.
 
@@ -871,7 +877,7 @@ environment keys, structured values, search matches, and errors.
 | Docker error classes | Describe missing containers, failed refreshes, failed requests, and unreadable logs |
 | `create_docker_client` | Creates a Docker SDK client for a local, SSH, or verified TLS context |
 | `create_validated_docker_client_for_context` | Creates and pings a client that EDM reuses after a successful context switch |
-| `to_container_summary` | Converts a Docker container object to `ContainerSummary` |
+| `to_container_summary` | Converts one Docker container-list item to `ContainerSummary` |
 | `ContainerTabTextLoader` | Loads and formats the full text for a requested detail tab |
 | `build_container_resource_stats_snapshot` | Converts Docker resource counters into one Stats sample |
 | `format_container_resource_stats_tab_text` | Builds the grouped text shown in the Stats tab |

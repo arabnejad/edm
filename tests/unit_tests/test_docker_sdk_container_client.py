@@ -81,6 +81,29 @@ def docker_container_factory():
     return create_container
 
 
+@pytest.fixture
+def docker_container_list_item_factory():
+    def create_container_list_item(
+        container_id="container-id",
+        name="web",
+        status="running",
+        image_name="example:latest",
+        labels=None,
+    ):
+        return SimpleNamespace(
+            attrs={
+                "Id": container_id,
+                "Names": [f"/{name}"],
+                "State": status,
+                "Image": image_name,
+                "Created": 1767268800,
+                "Labels": labels or {},
+            }
+        )
+
+    return create_container_list_item
+
+
 def test_client_is_created_lazily_and_reused(docker_client_factory) -> None:
     client = docker_client_factory()
     create_docker_client = Mock(return_value=client)
@@ -117,13 +140,13 @@ def test_switch_docker_connection_keeps_old_client_until_shutdown(
 
 def test_slow_startup_cannot_replace_a_newly_selected_docker_connection(
     docker_client_factory,
-    docker_container_factory,
+    docker_container_list_item_factory,
 ) -> None:
     startup_client = docker_client_factory()
-    startup_container = docker_container_factory(name="startup-container")
+    startup_container = docker_container_list_item_factory(name="startup-container")
     startup_client.containers.list.return_value = [startup_container]
     selected_client = docker_client_factory()
-    selected_container = docker_container_factory(name="selected-container")
+    selected_container = docker_container_list_item_factory(name="selected-container")
     selected_client.containers.list.return_value = [selected_container]
     startup_connection_started = Event()
     allow_startup_connection_to_finish = Event()
@@ -377,11 +400,11 @@ def test_docker_connection_error_becomes_refresh_error() -> None:
 
 def test_list_containers_requests_and_maps_running_and_stopped_containers(
     docker_client_factory,
-    docker_container_factory,
+    docker_container_list_item_factory,
 ) -> None:
-    first_container = docker_container_factory(id="one", name="one")
-    second_container = docker_container_factory(
-        id="two",
+    first_container = docker_container_list_item_factory(container_id="one", name="one")
+    second_container = docker_container_list_item_factory(
+        container_id="two",
         name="two",
         status="exited",
     )
@@ -393,7 +416,8 @@ def test_list_containers_requests_and_maps_running_and_stopped_containers(
 
     containers = docker_container_client.list_containers()
 
-    client.containers.list.assert_called_once_with(all=True)
+    client.containers.list.assert_called_once_with(all=True, sparse=True)
+    client.containers.get.assert_not_called()
     assert containers == [
         ContainerSummary(
             "one",
@@ -414,11 +438,13 @@ def test_list_containers_requests_and_maps_running_and_stopped_containers(
 
 def test_list_containers_removes_saved_stats_for_non_running_containers(
     docker_client_factory,
-    docker_container_factory,
+    docker_container_list_item_factory,
 ) -> None:
-    running_container = docker_container_factory(id="running", name="running")
-    stopped_container = docker_container_factory(
-        id="stopped",
+    running_container = docker_container_list_item_factory(
+        container_id="running", name="running"
+    )
+    stopped_container = docker_container_list_item_factory(
+        container_id="stopped",
         name="stopped",
         status="exited",
     )
@@ -443,10 +469,10 @@ def test_list_containers_removes_saved_stats_for_non_running_containers(
 def test_list_containers_skips_a_container_that_cannot_be_mapped(
     monkeypatch,
     docker_client_factory,
-    docker_container_factory,
+    docker_container_list_item_factory,
 ) -> None:
-    first_container = docker_container_factory(id="one")
-    second_container = docker_container_factory(id="two")
+    first_container = docker_container_list_item_factory(container_id="one")
+    second_container = docker_container_list_item_factory(container_id="two")
     client = docker_client_factory()
     client.containers.list.return_value = [first_container, second_container]
     docker_container_client = DockerSDKContainerClient(
