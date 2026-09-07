@@ -1,11 +1,22 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import Future
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from typing import Any, Optional
+from unittest.mock import Mock
 
 import pytest
 
+from easy_docker_manager.app.container_lifecycle_action_runner import (
+    ContainerLifecycleActionRunner,
+)
+from easy_docker_manager.app.container_list_refresh import ContainerListRefresher
+from easy_docker_manager.app.container_log_updates import ContainerLogUpdater
+from easy_docker_manager.app.docker_manager import DockerManager
+from easy_docker_manager.app.selected_tab_load import SelectedTabContentLoader
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_list import ContainerList
 from easy_docker_manager.core.containers import (
     ContainerResourceStatsSnapshot,
@@ -13,6 +24,106 @@ from easy_docker_manager.core.containers import (
 )
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.docker.container_client import DockerContainerClient
+from easy_docker_manager.tabs.tab_data_loader import ContainerTabTextLoader
+
+
+@dataclass
+class RecordedBackgroundSubmission:
+    """Store one worker request so a test can finish it later."""
+
+    fn: Callable[..., Any]
+    arguments: tuple[Any, ...]
+    completion_callback: Callable[[Future], bool]
+    future: Future
+
+
+class RecordingBackgroundExecutor:
+    """Record submitted work without starting worker threads."""
+
+    def __init__(self) -> None:
+        self.requests: list[RecordedBackgroundSubmission] = []
+
+    def submit(
+        self,
+        fn: Callable[..., Any],
+        *arguments: Any,
+        on_complete: Callable[[Future], bool],
+    ) -> Future:
+        future: Future = Future()
+        self.requests.append(
+            RecordedBackgroundSubmission(
+                fn=fn,
+                arguments=arguments,
+                completion_callback=on_complete,
+                future=future,
+            )
+        )
+        return future
+
+    def complete_submission(
+        self,
+        request_index: int = -1,
+        result: Any = None,
+        *,
+        exception: Optional[BaseException] = None,
+    ) -> bool:
+        request = self.requests[request_index]
+        if exception is not None:
+            request.future.set_exception(exception)
+        else:
+            request.future.set_result(result)
+        return request.completion_callback(request.future)
+
+
+@dataclass
+class DockerManagerTestSetup:
+    docker_manager: DockerManager
+    container_list_refresher: ContainerListRefresher
+    selected_tab_content_loader: SelectedTabContentLoader
+    container_log_updater: ContainerLogUpdater
+    container_lifecycle_action_runner: ContainerLifecycleActionRunner
+    state: TerminalSessionState
+    background_executor: RecordingBackgroundExecutor
+    tab_data_loader: Mock
+    docker_container_client: Mock
+
+
+@pytest.fixture
+def docker_manager_factory():
+    """Create a Docker manager whose background work is completed by the test."""
+
+    def create_docker_manager(
+        state: Optional[TerminalSessionState] = None,
+        app_config: Optional[AppConfig] = None,
+    ) -> DockerManagerTestSetup:
+        selected_state = state if state is not None else TerminalSessionState()
+        selected_config = app_config if app_config is not None else AppConfig()
+        background_executor = RecordingBackgroundExecutor()
+        tab_data_loader = Mock(spec=ContainerTabTextLoader)
+        docker_container_client = Mock(spec=DockerContainerClient)
+        docker_manager = DockerManager(
+            selected_state,
+            selected_config,
+            background_executor,  # type: ignore[arg-type]
+            tab_data_loader,
+            docker_container_client,
+        )
+        return DockerManagerTestSetup(
+            docker_manager=docker_manager,
+            container_list_refresher=docker_manager.container_list_refresher,
+            selected_tab_content_loader=docker_manager.selected_tab_content_loader,
+            container_log_updater=docker_manager.container_log_updater,
+            container_lifecycle_action_runner=(
+                docker_manager.container_lifecycle_action_runner
+            ),
+            state=selected_state,
+            background_executor=background_executor,
+            tab_data_loader=tab_data_loader,
+            docker_container_client=docker_container_client,
+        )
+
+    return create_docker_manager
 
 
 @pytest.fixture
