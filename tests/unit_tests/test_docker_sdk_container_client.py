@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import Mock, call
 
@@ -86,7 +88,7 @@ def test_client_is_created_lazily_and_reused(docker_client_factory) -> None:
         create_docker_client=create_docker_client
     )
 
-    assert docker_container_client._docker_client is None
+    create_docker_client.assert_not_called()
     assert docker_container_client._get_or_create_docker_client() is client
     assert docker_container_client._get_or_create_docker_client() is client
     create_docker_client.assert_called_once_with()
@@ -111,6 +113,257 @@ def test_switch_docker_connection_keeps_old_client_until_shutdown(
 
     first_client.close.assert_called_once_with()
     second_client.close.assert_called_once_with()
+
+
+def test_slow_startup_cannot_replace_a_newly_selected_docker_connection(
+    docker_client_factory,
+    docker_container_factory,
+) -> None:
+    startup_client = docker_client_factory()
+    startup_container = docker_container_factory(name="startup-container")
+    startup_client.containers.list.return_value = [startup_container]
+    selected_client = docker_client_factory()
+    selected_container = docker_container_factory(name="selected-container")
+    selected_client.containers.list.return_value = [selected_container]
+    startup_connection_started = Event()
+    allow_startup_connection_to_finish = Event()
+
+    def create_startup_client():
+        startup_connection_started.set()
+        assert allow_startup_connection_to_finish.wait(timeout=5)
+        return startup_client
+
+    docker_container_client = DockerSDKContainerClient(create_startup_client)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        startup_request = executor.submit(docker_container_client.list_containers)
+        try:
+            assert startup_connection_started.wait(timeout=5)
+            docker_container_client.switch_docker_connection(selected_client)
+            assert docker_container_client.list_containers()[0].name == (
+                "selected-container"
+            )
+            startup_client.close.assert_not_called()
+            selected_client.close.assert_not_called()
+        finally:
+            allow_startup_connection_to_finish.set()
+        assert startup_request.result(timeout=5)[0].name == "startup-container"
+
+    assert docker_container_client.list_containers()[0].name == "selected-container"
+    docker_container_client.close()
+    startup_client.close.assert_called_once_with()
+    selected_client.close.assert_called_once_with()
+
+
+def test_concurrent_startup_requests_share_one_docker_client(
+    docker_client_factory,
+) -> None:
+    client = docker_client_factory()
+    startup_connection_started = Event()
+    second_request_started = Event()
+    allow_startup_connection_to_finish = Event()
+
+    def create_startup_client():
+        startup_connection_started.set()
+        assert allow_startup_connection_to_finish.wait(timeout=5)
+        return client
+
+    create_docker_client = Mock(side_effect=create_startup_client)
+    docker_container_client = DockerSDKContainerClient(create_docker_client)
+
+    def read_daemon_from_second_request():
+        second_request_started.set()
+        return docker_container_client.get_docker_daemon_details()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_request = executor.submit(
+            docker_container_client.get_docker_daemon_details
+        )
+        try:
+            assert startup_connection_started.wait(timeout=5)
+            second_request = executor.submit(read_daemon_from_second_request)
+            assert second_request_started.wait(timeout=5)
+        finally:
+            allow_startup_connection_to_finish.set()
+        assert first_request.result(timeout=5) == second_request.result(timeout=5)
+
+    create_docker_client.assert_called_once_with()
+    docker_container_client.close()
+    client.close.assert_called_once_with()
+
+
+def test_failed_startup_does_not_change_a_newly_selected_docker_connection(
+    docker_client_factory,
+) -> None:
+    selected_client = docker_client_factory()
+    startup_connection_started = Event()
+    allow_startup_connection_to_finish = Event()
+
+    def create_startup_client():
+        startup_connection_started.set()
+        assert allow_startup_connection_to_finish.wait(timeout=5)
+        raise DockerException("startup context is offline")
+
+    docker_container_client = DockerSDKContainerClient(create_startup_client)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        startup_request = executor.submit(docker_container_client.list_containers)
+        try:
+            assert startup_connection_started.wait(timeout=5)
+            docker_container_client.switch_docker_connection(selected_client)
+        finally:
+            allow_startup_connection_to_finish.set()
+        with pytest.raises(
+            ContainerListRefreshError, match="startup context is offline"
+        ):
+            startup_request.result(timeout=5)
+
+    docker_container_client.get_docker_daemon_details()
+    selected_client.version.assert_called_once_with()
+    docker_container_client.close()
+    selected_client.close.assert_called_once_with()
+
+
+def test_switch_before_first_request_does_not_open_the_startup_connection(
+    docker_client_factory,
+) -> None:
+    selected_client = docker_client_factory()
+    create_startup_client = Mock()
+    docker_container_client = DockerSDKContainerClient(create_startup_client)
+
+    docker_container_client.switch_docker_connection(selected_client)
+    docker_container_client.get_docker_daemon_details()
+    docker_container_client.close()
+
+    create_startup_client.assert_not_called()
+    selected_client.version.assert_called_once_with()
+    selected_client.close.assert_called_once_with()
+
+
+def test_repeated_context_switches_close_each_client_only_once(
+    docker_client_factory,
+) -> None:
+    first_client = docker_client_factory()
+    second_client = docker_client_factory()
+    docker_container_client = DockerSDKContainerClient(lambda: first_client)
+    docker_container_client.get_docker_daemon_details()
+
+    docker_container_client.switch_docker_connection(second_client)
+    docker_container_client.switch_docker_connection(first_client)
+    docker_container_client.switch_docker_connection(first_client)
+    first_client.close.assert_not_called()
+    second_client.close.assert_not_called()
+
+    docker_container_client.close()
+    docker_container_client.close()
+
+    first_client.close.assert_called_once_with()
+    second_client.close.assert_called_once_with()
+
+
+def test_pending_stats_keep_the_previous_contexts_rate_history(
+    docker_client_factory,
+    docker_container_factory,
+) -> None:
+    previous_container = docker_container_factory()
+    previous_client = docker_client_factory(previous_container)
+    selected_container = docker_container_factory()
+    selected_client = docker_client_factory(selected_container)
+    previous_stats_started = Event()
+    allow_previous_stats_to_finish = Event()
+
+    def finish_previous_stats(**_options):
+        previous_stats_started.set()
+        assert allow_previous_stats_to_finish.wait(timeout=5)
+        return {
+            "read": "2026-01-01T14:32:18Z",
+            "networks": {"eth0": {"rx_bytes": 500}},
+        }
+
+    previous_container.stats.return_value = {
+        "read": "2026-01-01T14:32:16Z",
+        "networks": {"eth0": {"rx_bytes": 100}},
+    }
+    selected_container.stats.side_effect = [
+        {
+            "read": "2026-01-01T14:32:20Z",
+            "networks": {"eth0": {"rx_bytes": 10_000}},
+        },
+        {
+            "read": "2026-01-01T14:32:22Z",
+            "networks": {"eth0": {"rx_bytes": 12_000}},
+        },
+    ]
+    docker_container_client = DockerSDKContainerClient(lambda: previous_client)
+    docker_container_client.get_container_resource_stats("container-id")
+    previous_container.stats.side_effect = finish_previous_stats
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        previous_request = executor.submit(
+            docker_container_client.get_container_resource_stats, "container-id"
+        )
+        try:
+            assert previous_stats_started.wait(timeout=5)
+            docker_container_client.switch_docker_connection(selected_client)
+            first_selected_snapshot = (
+                docker_container_client.get_container_resource_stats("container-id")
+            )
+            assert first_selected_snapshot.network_receive_rate_bytes_per_second is None
+        finally:
+            allow_previous_stats_to_finish.set()
+        previous_snapshot = previous_request.result(timeout=5)
+
+    second_selected_snapshot = docker_container_client.get_container_resource_stats(
+        "container-id"
+    )
+    assert previous_snapshot.network_receive_rate_bytes_per_second == 200
+    assert second_selected_snapshot.network_receive_rate_bytes_per_second == 1000
+    docker_container_client.close()
+
+
+def test_pending_container_list_cannot_remove_the_selected_contexts_stats(
+    docker_client_factory,
+    docker_container_factory,
+) -> None:
+    previous_client = docker_client_factory()
+    selected_container = docker_container_factory()
+    selected_client = docker_client_factory(selected_container)
+    previous_list_started = Event()
+    allow_previous_list_to_finish = Event()
+
+    def finish_previous_list(**_options):
+        previous_list_started.set()
+        assert allow_previous_list_to_finish.wait(timeout=5)
+        return []
+
+    previous_client.containers.list.side_effect = finish_previous_list
+    selected_container.stats.side_effect = [
+        {
+            "read": "2026-01-01T14:32:20Z",
+            "networks": {"eth0": {"rx_bytes": 10_000}},
+        },
+        {
+            "read": "2026-01-01T14:32:22Z",
+            "networks": {"eth0": {"rx_bytes": 12_000}},
+        },
+    ]
+    docker_container_client = DockerSDKContainerClient(lambda: previous_client)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        previous_request = executor.submit(docker_container_client.list_containers)
+        try:
+            assert previous_list_started.wait(timeout=5)
+            docker_container_client.switch_docker_connection(selected_client)
+            docker_container_client.get_container_resource_stats("container-id")
+        finally:
+            allow_previous_list_to_finish.set()
+        assert previous_request.result(timeout=5) == []
+
+    selected_snapshot = docker_container_client.get_container_resource_stats(
+        "container-id"
+    )
+    assert selected_snapshot.network_receive_rate_bytes_per_second == 1000
+    docker_container_client.close()
 
 
 def test_docker_connection_error_becomes_refresh_error() -> None:
@@ -174,16 +427,17 @@ def test_list_containers_removes_saved_stats_for_non_running_containers(
     docker_container_client = DockerSDKContainerClient(
         create_docker_client=lambda: client
     )
-    docker_container_client._last_resource_stats_snapshot_by_container_id = {
+    connection_state = docker_container_client._active_docker_connection
+    connection_state.last_resource_stats_snapshot_by_container_id = {
         "running": Mock(),
         "stopped": Mock(),
     }
 
     docker_container_client.list_containers()
 
-    assert set(
-        docker_container_client._last_resource_stats_snapshot_by_container_id
-    ) == {"running"}
+    assert set(connection_state.last_resource_stats_snapshot_by_container_id) == {
+        "running"
+    }
 
 
 def test_list_containers_skips_a_container_that_cannot_be_mapped(
@@ -551,13 +805,15 @@ def test_close_releases_only_an_existing_client(docker_client_factory) -> None:
     client.close.assert_not_called()
 
     assert docker_container_client._get_or_create_docker_client() is client
-    docker_container_client._last_resource_stats_snapshot_by_container_id[
-        "container-id"
-    ] = Mock()
+    connection_state = docker_container_client._active_docker_connection
+    connection_state.last_resource_stats_snapshot_by_container_id["container-id"] = (
+        Mock()
+    )
     docker_container_client.close()
     client.close.assert_called_once_with()
-    assert docker_container_client._docker_client is None
-    assert docker_container_client._last_resource_stats_snapshot_by_container_id == {}
+    connection_state = docker_container_client._active_docker_connection
+    assert connection_state.docker_client is None
+    assert connection_state.last_resource_stats_snapshot_by_container_id == {}
 
 
 def test_docker_daemon_details_are_read_from_the_version_response(

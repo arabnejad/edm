@@ -405,9 +405,19 @@ certificates. EDM cannot show an SSH password prompt.
 
 If the check fails, the new client is closed and the current connection stays
 active. If it succeeds, EDM reuses the checked client instead of connecting a
-second time. Work already running for the old context is allowed to finish,
-but `DockerManager` ignores its results. The old clients are closed when EDM
-shuts down.
+second time.
+
+When you select another Docker context, EDM sends new requests to that context.
+Requests already running against the previous context can finish, but their
+results are not shown. The old connections are closed when EDM exits.
+
+For example, if EDM is still connecting to server A when you select server B,
+A finishing later will not switch EDM back to A.
+
+Each context keeps its own statistics, so counters from different servers are
+never mixed. A lock prevents background workers from creating duplicate startup
+connections or changing the saved statistics at the same time. Switching
+contexts does not wait for that lock.
 
 After switching, EDM clears the old containers, tab content, searches, errors,
 statistics samples, and log positions. It then loads the container summaries
