@@ -161,7 +161,7 @@ class DockerConnectionController:
         self._docker_context_validation_future = self.background_executor.submit(
             self._create_validated_docker_client_for_context,
             selected_context,
-            self.app_config.docker_request_timeout,
+            self.app_config.docker_request_timeout_seconds,
             on_complete=partial(
                 self._apply_docker_context_validation_result,
                 selected_context,

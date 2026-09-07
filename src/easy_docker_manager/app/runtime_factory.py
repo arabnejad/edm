@@ -85,7 +85,7 @@ class EDMRuntimeFactory:
                 create_docker_client=partial(
                     create_docker_client,
                     self.startup_docker_context,
-                    self.app_config.docker_request_timeout,
+                    self.app_config.docker_request_timeout_seconds,
                 ),
             )
         self.launch_directory = Path.cwd().resolve()

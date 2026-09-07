@@ -39,8 +39,51 @@ def test_load_keeps_valid_values_and_removes_unknown_keys(tmp_path: Path) -> Non
     assert loaded_config.container_list_refresh_interval_seconds == 5.0
     assert loaded_config.initial_log_tail_lines == 25
     assert loaded_config.colors_enabled is False
-    assert saved_config["tab_refresh_interval"] == 2.0
+    assert saved_config["detail_tab_refresh_interval_seconds"] == 2.0
     assert "removed_setting" not in saved_config
+
+
+def test_load_migrates_renamed_config_keys(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "tab_refresh_interval": 5,
+                "docker_request_timeout": 20,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded_config = AppConfigStore(config_path).load_and_sync()
+    saved_config = json.loads(config_path.read_text(encoding="utf-8"))
+
+    assert loaded_config.detail_tab_refresh_interval_seconds == 5.0
+    assert loaded_config.docker_request_timeout_seconds == 20.0
+    assert saved_config["detail_tab_refresh_interval_seconds"] == 5.0
+    assert saved_config["docker_request_timeout_seconds"] == 20.0
+    assert "tab_refresh_interval" not in saved_config
+    assert "docker_request_timeout" not in saved_config
+
+
+def test_current_config_keys_take_priority_over_old_names(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "tab_refresh_interval": 5,
+                "detail_tab_refresh_interval_seconds": 7,
+                "docker_request_timeout": 20,
+                "docker_request_timeout_seconds": 30,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded_config = AppConfigStore(config_path).load_and_sync()
+
+    assert loaded_config.detail_tab_refresh_interval_seconds == 7.0
+    assert loaded_config.docker_request_timeout_seconds == 30.0
 
 
 def test_invalid_values_use_defaults_and_are_rewritten(tmp_path: Path) -> None:

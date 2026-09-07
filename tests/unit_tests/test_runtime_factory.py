@@ -66,7 +66,7 @@ def test_runtime_factory_uses_supplied_config_and_data_source() -> None:
 
 
 def test_runtime_factory_builds_sdk_client_for_startup_context_and_timeout() -> None:
-    runtime_factory = EDMRuntimeFactory(AppConfig(docker_request_timeout=3.5))
+    runtime_factory = EDMRuntimeFactory(AppConfig(docker_request_timeout_seconds=3.5))
 
     assert isinstance(
         runtime_factory.docker_container_client,

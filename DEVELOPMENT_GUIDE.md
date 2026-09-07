@@ -291,13 +291,14 @@ EDM/
 On each startup, `AppConfigStore`:
 
 1. Reads `config.json` when it exists and contains a JSON object.
-2. Starts with the defaults in `AppConfig`.
-3. Keeps known values with valid types and valid ranges.
-4. Uses defaults for missing or invalid values.
-5. Rewrites the file, which removes settings unknown to this EDM version.
+2. Moves values from supported old setting names to their current names.
+3. Starts with the defaults in `AppConfig`.
+4. Keeps known values with valid types and valid ranges.
+5. Uses defaults for missing or invalid values.
+6. Rewrites the file, which removes settings unknown to this EDM version.
 
-This is enough for normal upgrades and downgrades. A renamed setting counts as
-a new setting unless `AppConfigStore` contains a specific migration for it.
+Most upgrades need no migration. Add one when a renamed setting should keep its
+saved value.
 
 `configure_logging()` runs before config loading so it can also report config
 errors. It writes EDM's own messages to a rotating `edm.log` file. Container
@@ -443,7 +444,7 @@ cache, and Urwid palette were already created from the startup config. The
 popup stays open and tells the user to restart EDM. `Esc` closes the popup and
 leaves the running application unchanged.
 
-The controller returns a `KeyAction`:
+The controller returns a `KeypressResult`:
 
 - `NONE`: nothing visible changed.
 - `REDRAW`: draw the screen again and check whether background work should start.
@@ -656,11 +657,11 @@ does not skip output. Docker can repeat lines where two requests meet;
 new lines are added to the cache.
 
 Env, Config, Stats, and Top reload while they are visible on a running
-container, using `tab_refresh_interval`. Hidden tabs and stopped containers are
-left alone. Logs has a separate polling path that asks only for newer lines.
-Stopped-container logs load once. Stats and Top do not make Docker requests for
-a stopped container; their message is added immediately without starting a
-worker.
+container, using `detail_tab_refresh_interval_seconds`. Hidden tabs and stopped
+containers are left alone. Logs has a separate polling path that asks only for
+newer lines. Stopped-container logs load once. Stats and Top do not make Docker
+requests for a stopped container; their message is added immediately without
+starting a worker.
 
 When a container-list refresh finds a status change, EDM clears that container's
 saved tab text and errors. The visible tab reloads, while other tabs wait until
@@ -817,100 +818,6 @@ structured values, and errors.
 Queries are stored by `ContainerTabKey`, so switching away and back restores
 the same search. Log regular expressions are limited to 200 characters.
 
-## Main Classes
-
-### App
-
-| Class or module | What it does |
-| --- | --- |
-| `easy_docker_manager.main` | Handles CLI options or configures logging, loads config, and starts `EDMApp` |
-| `EDMApp` | Starts the UI, receives input and task notifications, and closes resources |
-| `_KeyboardRoutingWidget` | Passes terminal keypresses to `EDMApp` |
-| `EDMRuntimeFactory` | Creates and connects the objects used by `EDMApp` |
-| `EDMRuntime` | Holds the objects that `EDMApp` uses directly |
-| `DockerManager` | Delegates Docker work and calculates the next overall refresh delay |
-| `ContainerListRefresher` | Refreshes all containers, preserves selection, and removes missing-container state |
-| `SelectedTabContentLoader` | Loads and periodically refreshes selected-tab content |
-| `ContainerLogUpdater` | Polls for new logs and updates cached log text |
-| `ContainerLifecycleActionRunner` | Runs one confirmed Stop or Restart request at a time |
-| `DockerConnectionController` | Checks a selected context and switches the active Docker connection |
-| `BackgroundExecutor` | Runs blocking functions and queues their completion callbacks |
-| `BackgroundNotifier` | Defines how finished work is reported to `EDMApp` |
-| `PipeBackgroundNotifier` | Provides immediate notification on Unix-like systems |
-| `PollingBackgroundNotifier` | Checks for notification every 0.2 seconds on Windows |
-
-### Config, Diagnostics, And Core
-
-| Class or module | What it does |
-| --- | --- |
-| `AppConfig` | Stores validated refresh, log, cache, timeout, worker, display, and application logging settings |
-| `AppConfigStore` | Loads, checks, saves, and rewrites `config.json` |
-| `SettingDefinition` | Describes one field shown in the settings popup |
-| `SettingsMenuState` | Stores the selected field and draft config while settings are open |
-| `ContainerSummary` | Stores the container and Compose fields used by the left panel |
-| `ContainerLifecycleAction` | Names the Stop and Restart operations supported by EDM |
-| `ContainerActionMenuState` | Stores the target and selected action while its popup is open |
-| `DockerContextDetails` | Stores one context name, endpoint, transport, and TLS checks |
-| `DockerConnectionMenuState` | Stores discovered contexts, selection, checks, and connection errors while its popup is open |
-| `ContainerList` | Stores all containers and applies visibility, grouping, sorting, and filtering |
-| `ContainerListViewMode` | Chooses between running-only and all-container views |
-| `ContainerSortField` | Names the available container sort fields |
-| `get_container_list_in_requested_order` | Returns a sorted copy of the latest Docker container list |
-| `ContainerProcessTable` | Stores process column names and rows from Docker top |
-| `ContainerResourceStatsSnapshot` | Stores one resource sample returned by Docker |
-| `TabName` | Names the five detail tabs |
-| `FocusArea` | Names the container and detail keyboard focus areas |
-| `TerminalSessionState` | Stores changing data for the current terminal session |
-| `DiagnosticsReport` | Stores application, file, connection, and Docker daemon details |
-| `ContainerTabKey` | Identifies one tab for one container |
-| `TabContentCache` | Keeps recently used tab text within count and byte limits |
-| `TabExportMenuState` | Stores the path and scope while the export popup is open |
-| `TabExportPhase` | Says whether the export menu is being edited, writing a file, or confirming replacement |
-| `TabExportRequest` | Carries one fixed text snapshot to the file writer |
-
-### Docker, Tabs, And Export
-
-| Class or module | What it does |
-| --- | --- |
-| `DockerContainerClient` | Defines the container data and daemon details EDM needs |
-| `DockerSDKContainerClient` | Reads that information through the active Docker SDK connection |
-| `DockerContextReader` | Reads context names and endpoints from Docker's local configuration |
-| `FailedDockerRequestType` | Identifies the Docker request that failed |
-| Docker error classes | Describe missing containers, failed refreshes, failed requests, and unreadable logs |
-| `create_docker_client` | Creates a Docker SDK client for a local, SSH, or verified TLS context |
-| `create_validated_docker_client_for_context` | Creates and pings a client that EDM reuses after a successful context switch |
-| `to_container_summary` | Converts one Docker container-list item to `ContainerSummary` |
-| `ContainerTabTextLoader` | Loads and formats the full text for a requested detail tab |
-| `build_container_resource_stats_snapshot` | Converts Docker resource counters into one Stats sample |
-| `format_container_resource_stats_tab_text` | Builds the grouped text shown in the Stats tab |
-| `TabTextFilter` | Chooses visible lines for the terminal and Current view exports |
-| `TabExportWriter` | Writes a prepared tab snapshot without silently replacing a file |
-
-### UI
-
-| Class or module | What it does |
-| --- | --- |
-| `KeyboardController` | Turns keypresses into state and navigation actions |
-| `KeyAction` | Tells `EDMApp` to do nothing, redraw, or quit |
-| `TerminalController` | Handles navigation, filtering, search, menu choices, and drawing |
-| `TabExportController` | Handles export choices, cached text snapshots, and file-write results |
-| `DiagnosticsController` | Opens diagnostics and applies the background Docker version result |
-| `SettingsController` | Edits and saves a validated config draft for the next EDM run |
-| `ContainerActionController` | Opens actions for the selected container and submits a confirmed choice |
-| `DockerConnectionController` | Opens context selection and applies a successful connection check |
-| `TerminalLayoutView` | Combines the panels, active popup, and shortcut footer |
-| `ContainerListPanel` | Displays the container list, header, footer, and border |
-| `SelectedContainerDetailsPanel` | Displays the selected container's tabs, rows, status, and border |
-| `ContainerListMenuState` | Holds visibility and sort choices being edited in the list menu |
-| `build_container_list_popup_menu` | Builds the list options popup over the main layout |
-| `build_container_action_popup_menu` | Builds the container action popup over the main layout |
-| `build_docker_connection_popup_menu` | Builds the Docker context popup over the main layout |
-| `build_tab_export_popup_menu` | Builds the export popup menu over the main layout |
-| `build_diagnostics_popup` | Builds the read-only diagnostics popup over the main layout |
-| `build_settings_popup_menu` | Builds the editable settings popup over the main layout |
-| `FocusableDetailLine` | Lets keyboard navigation select one line of detail text |
-| `DetailTabTextFormatter` | Adds tab colors and search highlights to visible lines |
-
 ## Adding A Detail Tab
 
 1. Add the new value to `TabName`.
@@ -928,9 +835,9 @@ the same search. Log regular expressions are limited to 200 characters.
 4. Run EDM once and inspect the rewritten `config.json`.
 5. Update the README configuration table.
 
-If a setting is renamed, the old key is removed and the new key receives its
-default. Add a migration in `AppConfigStore` only when the old value must be
-kept.
+If a setting is renamed, add its old and current names to the migration map in
+`AppConfigStore` when the saved value should be kept. Without that entry, the
+old key is removed and the new setting receives its default.
 
 ## Development Setup
 

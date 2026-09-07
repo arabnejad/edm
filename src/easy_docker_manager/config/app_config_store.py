@@ -16,15 +16,19 @@ from easy_docker_manager.core.config import AppConfig
 logger = logging.getLogger(__name__)
 
 CONFIG_FILE_NAME = "config.json"
+_LEGACY_CONFIG_KEY_RENAMES = {
+    "tab_refresh_interval": "detail_tab_refresh_interval_seconds",
+    "docker_request_timeout": "docker_request_timeout_seconds",
+}
 
 
 class AppConfigStore:
     """Load and save AppConfig in the operating system's user config directory.
 
     AppConfig defines the settings supported by the installed EDM version.
-    Loading keeps valid settings, adds missing defaults, removes unknown names,
-    and rewrites the file. This keeps config.json in sync after a normal upgrade
-    or downgrade without separate migration code.
+    Loading carries forward supported renamed settings, keeps valid current
+    settings, adds missing defaults, removes unknown names, and rewrites the
+    file.
     """
 
     def __init__(self, config_path: Optional[Path] = None) -> None:
@@ -91,6 +95,7 @@ class AppConfigStore:
 
     def _build_app_config(self, raw_config: dict[str, Any]) -> AppConfig:
         """Build AppConfig from known valid values and current defaults."""
+        raw_config = _migrate_renamed_config_keys(raw_config)
         defaults = asdict(AppConfig())
         normalized = defaults.copy()
 
@@ -117,6 +122,21 @@ class AppConfigStore:
                 normalized[key] = value
 
         return AppConfig(**normalized)
+
+
+def _migrate_renamed_config_keys(raw_config: dict[str, Any]) -> dict[str, Any]:
+    """Move values saved under old names to their current config keys.
+
+    The current key wins when a file contains both names. This lets someone
+    update a value by hand before EDM rewrites the file without having the old
+    value replace it.
+    """
+    updated_config = raw_config.copy()
+    for previous_key, current_key in _LEGACY_CONFIG_KEY_RENAMES.items():
+        if current_key not in updated_config and previous_key in updated_config:
+            updated_config[current_key] = updated_config[previous_key]
+        updated_config.pop(previous_key, None)
+    return updated_config
 
 
 def default_config_path() -> Path:

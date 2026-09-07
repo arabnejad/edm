@@ -149,7 +149,7 @@ class SelectedTabContentLoader:
             and container_tab_key.tab_name in self.PERIODICALLY_REFRESHED_TABS
         ):
             self._next_tab_refresh_at = (
-                time.monotonic() + self.app_config.tab_refresh_interval
+                time.monotonic() + self.app_config.detail_tab_refresh_interval_seconds
             )
         return True
 

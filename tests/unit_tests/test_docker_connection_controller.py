@@ -77,7 +77,7 @@ def _create_controller(
     create_validated_docker_client_for_context = Mock(spec=lambda: DockerClient)
     controller = DockerConnectionController(
         state,
-        AppConfig(docker_request_timeout=3.5),
+        AppConfig(docker_request_timeout_seconds=3.5),
         background_executor,
         docker_manager,
         context_reader,
