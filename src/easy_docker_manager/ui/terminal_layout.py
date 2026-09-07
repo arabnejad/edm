@@ -13,7 +13,7 @@ from easy_docker_manager.core.container_actions import ContainerActionMenuState
 from easy_docker_manager.core.container_sorting import ContainerListMenuState
 from easy_docker_manager.core.docker_connections import DockerConnectionMenuState
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
-from easy_docker_manager.diagnostics import get_installed_edm_version
+from easy_docker_manager.diagnostics import DiagnosticsReport, get_installed_edm_version
 from easy_docker_manager.tab_export.definitions import TabExportMenuState
 from easy_docker_manager.ui.container_action_popup import (
     build_container_action_popup_menu,
@@ -201,37 +201,35 @@ class TerminalLayoutView:
             format_detail_line,
         )
 
-        if state.diagnostics_popup_report is not None:
+        active_popup = state.active_popup
+        if isinstance(active_popup, DiagnosticsReport):
             self.layout.original_widget = build_diagnostics_popup(
-                state.diagnostics_popup_report,
+                active_popup,
                 self._main_layout,
             )
-        elif isinstance(state.settings_menu_state, SettingsMenuState):
+        elif isinstance(active_popup, SettingsMenuState):
             self.layout.original_widget = build_settings_popup_menu(
-                state.settings_menu_state,
+                active_popup,
                 self._main_layout,
             )
-        elif isinstance(state.container_action_menu_state, ContainerActionMenuState):
+        elif isinstance(active_popup, ContainerActionMenuState):
             self.layout.original_widget = build_container_action_popup_menu(
-                state.container_action_menu_state,
+                active_popup,
                 self._main_layout,
             )
-        elif isinstance(
-            state.docker_connection_menu_state,
-            DockerConnectionMenuState,
-        ):
+        elif isinstance(active_popup, DockerConnectionMenuState):
             self.layout.original_widget = build_docker_connection_popup_menu(
-                state.docker_connection_menu_state,
+                active_popup,
                 self._main_layout,
             )
-        elif isinstance(state.tab_export_menu_state, TabExportMenuState):
+        elif isinstance(active_popup, TabExportMenuState):
             self.layout.original_widget = build_tab_export_popup_menu(
-                state.tab_export_menu_state,
+                active_popup,
                 self._main_layout,
             )
-        elif isinstance(state.container_list_menu_state, ContainerListMenuState):
+        elif isinstance(active_popup, ContainerListMenuState):
             self.layout.original_widget = build_container_list_popup_menu(
-                state.container_list_menu_state,
+                active_popup,
                 self._main_layout,
             )
         else:

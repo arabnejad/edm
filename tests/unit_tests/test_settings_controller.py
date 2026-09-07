@@ -9,6 +9,7 @@ from unittest.mock import Mock
 from easy_docker_manager.config.app_config_store import AppConfigStore
 from easy_docker_manager.config.settings_definitions import (
     SETTINGS_FIELD_DEFINITIONS,
+    SettingsMenuState,
 )
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
@@ -40,19 +41,17 @@ def test_open_settings_menu_loads_saved_values(tmp_path: Path) -> None:
     )
 
     assert not controller.open_settings_menu()
-    assert state.settings_menu_state is not None
-    assert (
-        state.settings_menu_state.draft_config.container_list_refresh_interval_seconds
-        == 5.0
-    )
+    menu_state = state.active_popup
+    assert isinstance(menu_state, SettingsMenuState)
+    assert menu_state.draft_config.container_list_refresh_interval_seconds == 5.0
 
 
 def test_numeric_setting_is_edited_and_validated(tmp_path: Path) -> None:
     controller, state, _config_store = _open_settings_controller(
         tmp_path / "config.json"
     )
-    menu_state = state.settings_menu_state
-    assert menu_state is not None
+    menu_state = state.active_popup
+    assert isinstance(menu_state, SettingsMenuState)
 
     assert controller.handle_menu_keypress("enter")
     assert menu_state.editing_value_text == "2.0"
@@ -75,25 +74,25 @@ def test_escape_cancels_value_edit_before_closing_menu(tmp_path: Path) -> None:
     controller, state, _config_store = _open_settings_controller(
         tmp_path / "config.json"
     )
-    menu_state = state.settings_menu_state
-    assert menu_state is not None
+    menu_state = state.active_popup
+    assert isinstance(menu_state, SettingsMenuState)
 
     controller.handle_menu_keypress("enter")
     controller.handle_menu_keypress("9")
 
     assert controller.handle_menu_keypress("esc")
-    assert state.settings_menu_state is menu_state
+    assert state.active_popup is menu_state
     assert menu_state.editing_value_text is None
     assert controller.handle_menu_keypress("esc")
-    assert state.settings_menu_state is None
+    assert state.active_popup is None
 
 
 def test_boolean_and_choice_settings_change_with_arrow_keys(tmp_path: Path) -> None:
     controller, state, _config_store = _open_settings_controller(
         tmp_path / "config.json"
     )
-    menu_state = state.settings_menu_state
-    assert menu_state is not None
+    menu_state = state.active_popup
+    assert isinstance(menu_state, SettingsMenuState)
 
     menu_state.selected_setting_index = 9
     assert controller.handle_menu_keypress("right")
@@ -109,8 +108,8 @@ def test_boolean_and_choice_settings_change_with_arrow_keys(tmp_path: Path) -> N
 def test_save_writes_draft_and_reports_restart_requirement(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
     controller, state, _config_store = _open_settings_controller(config_path)
-    menu_state = state.settings_menu_state
-    assert menu_state is not None
+    menu_state = state.active_popup
+    assert isinstance(menu_state, SettingsMenuState)
     menu_state.selected_setting_index = 9
     controller.handle_menu_keypress("right")
 
@@ -130,8 +129,9 @@ def test_failed_save_keeps_menu_open_and_shows_error(tmp_path: Path) -> None:
     controller.open_settings_menu()
 
     assert controller.handle_menu_keypress("s")
-    assert state.settings_menu_state is not None
-    assert "Unable to save config.json" in state.settings_menu_state.error_message
+    menu_state = state.active_popup
+    assert isinstance(menu_state, SettingsMenuState)
+    assert "Unable to save config.json" in menu_state.error_message
 
 
 def test_defaults_replace_draft_but_are_not_saved_automatically(tmp_path: Path) -> None:
@@ -140,8 +140,8 @@ def test_defaults_replace_draft_but_are_not_saved_automatically(tmp_path: Path) 
         config_path,
         AppConfig(colors_enabled=False),
     )
-    menu_state = state.settings_menu_state
-    assert menu_state is not None
+    menu_state = state.active_popup
+    assert isinstance(menu_state, SettingsMenuState)
 
     assert controller.handle_menu_keypress("d")
     assert menu_state.draft_config == AppConfig()

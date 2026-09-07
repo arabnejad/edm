@@ -249,7 +249,7 @@ def test_container_list_menu_applies_visibility_sort_field_and_direction(
 
     controller = test_setup.terminal_controller
     assert controller.open_container_list_menu()
-    assert isinstance(state.container_list_menu_state, ContainerListMenuState)
+    assert isinstance(state.active_popup, ContainerListMenuState)
     assert controller.change_selected_container_list_menu_value(1)
     assert controller.move_container_list_menu_selection(1)
     assert controller.change_selected_container_list_menu_value(1)
@@ -260,7 +260,7 @@ def test_container_list_menu_applies_visibility_sort_field_and_direction(
     assert state.container_list_view_mode == ContainerListViewMode.ALL
     assert state.container_sort_field == ContainerSortField.NAME
     assert state.container_sort_descending
-    assert state.container_list_menu_state is None
+    assert state.active_popup is None
     docker_manager = test_setup.docker_manager
     docker_manager.rebuild_displayed_container_list.assert_called_once_with()
 
@@ -296,11 +296,9 @@ def test_docker_order_ignores_direction_in_the_container_list_menu(
     controller.open_container_list_menu()
     assert controller.move_container_list_menu_selection(1)
     assert controller.move_container_list_menu_selection(1)
-    assert state.container_list_menu_state is not None
-    assert (
-        state.container_list_menu_state.selected_field
-        == ContainerListMenuField.SORT_DIRECTION
-    )
+    menu_state = state.active_popup
+    assert isinstance(menu_state, ContainerListMenuState)
+    assert menu_state.selected_field == ContainerListMenuField.SORT_DIRECTION
     assert not controller.change_selected_container_list_menu_value(1)
     assert controller.apply_container_list_menu()
     assert not state.container_sort_descending
