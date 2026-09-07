@@ -13,10 +13,10 @@ from easy_docker_manager.tabs.tab_text_filter import compile_log_filter_regex
 MarkupSegment = Union[str, tuple[Hashable, str]]
 
 
-class DetailLineRenderer:
-    """Add search highlights and tab-specific colors to one line."""
+class DetailTabTextFormatter:
+    """Add colors and search highlights to detail-tab lines."""
 
-    def render_line(
+    def format_detail_line(
         self,
         line: str,
         tab: TabName,
@@ -128,29 +128,6 @@ class DetailLineRenderer:
         if tab != TabName.LOGS:
             return format_structured_text_line(line, tab)
         return format_log_line(line)
-
-
-class DetailTabTextFormatter:
-    """Add colors and search highlights to detail-tab lines.
-
-    TabTextFilter decides which lines are shown. TerminalController then uses
-    this class to color each line. Logs highlight regex matches. Env, Config,
-    Stats, and Top highlight matching search text.
-    """
-
-    def __init__(self) -> None:
-        self.line_renderer = DetailLineRenderer()
-
-    def format_detail_line(
-        self,
-        line: str,
-        tab: TabName,
-        query: str,
-        *,
-        is_error: bool = False,
-    ) -> Union[str, list[MarkupSegment]]:
-        """Format one line, using the error style when is_error is True."""
-        return self.line_renderer.render_line(line, tab, query, is_error=is_error)
 
 
 def regex_match_ranges(line: str, query: str) -> list[tuple[int, int]]:
@@ -289,7 +266,6 @@ def format_structured_tokens(line: str) -> list[MarkupSegment]:
 
 
 __all__ = [
-    "DetailLineRenderer",
     "DetailTabTextFormatter",
     "MarkupSegment",
     "append_markup_piece",

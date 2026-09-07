@@ -807,13 +807,12 @@ or loaded text.
 
 `DetailTabTextFormatter` then adds terminal colors and highlights matching
 text. Env, Config, Stats, and Top use case-insensitive plain-text highlighting.
-Logs highlights the regular expression matches that passed the filter.
+Logs highlights the regular expression matches that passed the filter. The
+formatter also colors timestamps, log levels, numbers, environment keys,
+structured values, and errors.
 
 Queries are stored by `ContainerTabKey`, so switching away and back restores
 the same search. Log regular expressions are limited to 200 characters.
-
-`DetailLineRenderer` adds colors for timestamps, log levels, numbers,
-environment keys, structured values, search matches, and errors.
 
 ## Main Classes
 
@@ -908,7 +907,6 @@ environment keys, structured values, search matches, and errors.
 | `build_settings_popup_menu` | Builds the editable settings popup over the main layout |
 | `FocusableDetailLine` | Lets keyboard navigation select one line of detail text |
 | `DetailTabTextFormatter` | Adds tab colors and search highlights to visible lines |
-| `DetailLineRenderer` | Adds tab colors, search highlights, and error colors |
 
 ## Adding A Detail Tab
 

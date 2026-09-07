@@ -68,19 +68,6 @@ def get_installed_edm_version() -> str:
     return _get_installed_distribution_version(EDM_DISTRIBUTION_NAME)
 
 
-def build_edm_title(edm_version: str) -> str:
-    """Add a short installed version to the application title.
-
-    Development builds can contain a local suffix such as +g123abc. The full
-    value remains in diagnostics, while the title leaves that suffix out so it
-    stays readable.
-    """
-    version_label = build_edm_version_label(edm_version)
-    if not version_label:
-        return "Easy Docker Manager"
-    return f"Easy Docker Manager ({version_label})"
-
-
 def build_edm_version_label(edm_version: str) -> str:
     """Return the short version shown with the application logo."""
     if edm_version == UNKNOWN_VERSION:
@@ -216,7 +203,6 @@ def _format_exception_message(error: BaseException) -> str:
 __all__ = [
     "DiagnosticsReport",
     "DockerConnectionStatus",
-    "build_edm_title",
     "build_edm_version_label",
     "create_initial_diagnostics_report",
     "format_diagnostics_report",
