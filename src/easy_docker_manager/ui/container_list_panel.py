@@ -286,24 +286,25 @@ class ContainerListPanel:
             )
             return urwid.AttrMap(
                 urwid.Text(
-                    f"> {container.name} ({container.status})",
+                    f"> {container.name} ({container.status_display_text})",
                     wrap="clip",
                 ),
                 selected_style,
             )
 
+        container_status_style = (
+            "container_status_running"
+            if container.is_running
+            else "container_status_not_running"
+        )
+        if container.health_status == "unhealthy":
+            container_status_style = "error"
+
         row_text: list[MarkupSegment] = [
             ("muted", "  "),
             ("container", container.name),
             ("muted", " ("),
-            (
-                (
-                    "container_status_running"
-                    if container.is_running
-                    else "container_status_not_running"
-                ),
-                container.status,
-            ),
+            (container_status_style, container.status_display_text),
             ("muted", ")"),
         ]
         return urwid.Text(row_text, wrap="clip")

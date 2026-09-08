@@ -195,6 +195,7 @@ class ContainerList:
                     container.name,
                     container.image_name,
                     container.status,
+                    container.status_display_text,
                     container.compose_project_name or "",
                     container.compose_service_name or "",
                 )

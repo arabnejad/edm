@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -9,6 +10,11 @@ from easy_docker_manager.core.containers import ContainerSummary
 
 DOCKER_COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
 DOCKER_COMPOSE_SERVICE_LABEL = "com.docker.compose.service"
+CONTAINER_HEALTH_STATUS_PATTERN = re.compile(
+    r"\((?:health:\s*)?(healthy|unhealthy|starting)\)",
+    re.IGNORECASE,
+)
+CONTAINER_EXIT_CODE_PATTERN = re.compile(r"^Exited\s+\((\d+)\)", re.IGNORECASE)
 
 
 def _format_container_creation_time(created_at_value: Any) -> str:
@@ -18,6 +24,32 @@ def _format_container_creation_time(created_at_value: Any) -> str:
             "%Y-%m-%dT%H:%M:%SZ"
         )
     return "" if created_at_value is None else str(created_at_value)
+
+
+def _get_container_health_status(
+    container_state: str,
+    docker_status_text: str,
+) -> str | None:
+    """Read the health result from Docker's running status text."""
+    if container_state.casefold() != "running":
+        return None
+    health_status_match = CONTAINER_HEALTH_STATUS_PATTERN.search(docker_status_text)
+    if health_status_match is None:
+        return None
+    return health_status_match.group(1).casefold()
+
+
+def _get_container_exit_code(
+    container_state: str,
+    docker_status_text: str,
+) -> int | None:
+    """Read the exit code from Docker's stopped status text."""
+    if container_state.casefold() != "exited":
+        return None
+    exit_code_match = CONTAINER_EXIT_CODE_PATTERN.search(docker_status_text)
+    if exit_code_match is None:
+        return None
+    return int(exit_code_match.group(1))
 
 
 def to_container_summary(
@@ -30,6 +62,9 @@ def to_container_summary(
         str(container_names[0]).lstrip("/") if container_names else container_id[:12]
     )
     status = str(docker_container_list_item.get("State") or "unknown")
+    # Sparse list results put health and exit details inside this display text.
+    # Reading it here avoids a separate inspect request for every container.
+    docker_status_text = str(docker_container_list_item.get("Status") or "")
     image_name = str(docker_container_list_item.get("Image") or "")
     created_at = _format_container_creation_time(
         docker_container_list_item.get("Created")
@@ -46,6 +81,8 @@ def to_container_summary(
         created_at=created_at,
         compose_project_name=compose_project_name,
         compose_service_name=compose_service_name,
+        health_status=_get_container_health_status(status, docker_status_text),
+        exit_code=_get_container_exit_code(status, docker_status_text),
     )
 
 

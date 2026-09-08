@@ -157,6 +157,8 @@ def container_summary_factory() -> Callable[..., ContainerSummary]:
         created_at: str = "2026-01-01T12:00:00Z",
         compose_project_name: Optional[str] = None,
         compose_service_name: Optional[str] = None,
+        health_status: Optional[str] = None,
+        exit_code: Optional[int] = None,
     ) -> ContainerSummary:
         return ContainerSummary(
             container_id=container_id,
@@ -166,6 +168,8 @@ def container_summary_factory() -> Callable[..., ContainerSummary]:
             created_at=created_at,
             compose_project_name=compose_project_name,
             compose_service_name=compose_service_name,
+            health_status=health_status,
+            exit_code=exit_code,
         )
 
     return create_container_summary

@@ -87,6 +87,7 @@ def docker_container_list_item_factory():
         container_id="container-id",
         name="web",
         status="running",
+        status_text=None,
         image_name="example:latest",
         labels=None,
     ):
@@ -95,6 +96,7 @@ def docker_container_list_item_factory():
                 "Id": container_id,
                 "Names": [f"/{name}"],
                 "State": status,
+                "Status": status_text,
                 "Image": image_name,
                 "Created": 1767268800,
                 "Labels": labels or {},
