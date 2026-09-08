@@ -6,6 +6,7 @@ import logging
 import time
 from collections.abc import Callable
 from concurrent.futures import Future
+from datetime import datetime
 from typing import Optional
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
@@ -150,7 +151,16 @@ class ContainerListRefresher:
             logger.warning("Container refresh failed: %s", exc)
             error_message = f"Container refresh failed: {exc}"
             self.state.container_list_refresh_error_message = error_message
-            self.state.status_message = error_message
+            last_successful_refresh = (
+                self.state.last_successful_container_list_refresh_at
+            )
+            if last_successful_refresh is None:
+                self.state.status_message = error_message
+            else:
+                last_refresh_time = last_successful_refresh.strftime("%H:%M:%S")
+                self.state.status_message = (
+                    f"{error_message} Last successful update: {last_refresh_time}."
+                )
             return True
         return self._apply_refreshed_container_list(containers)
 
@@ -167,6 +177,9 @@ class ContainerListRefresher:
             self.state.container_list_refresh_error_message is not None
         )
         self.state.container_list_refresh_error_message = None
+        self.state.last_successful_container_list_refresh_at = (
+            datetime.now().astimezone()
+        )
         status_changed_container_ids = container_list.replace_all_containers(containers)
         if status_changed_container_ids:
             # Every cached tab is a snapshot of one container state. For example,

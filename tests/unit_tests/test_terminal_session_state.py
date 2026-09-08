@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from easy_docker_manager.core.container_actions import (
     ContainerActionMenuState,
     ContainerLifecycleAction,
@@ -171,6 +173,12 @@ def test_context_change_clears_container_data_but_keeps_display_options(
         container_sort_descending=True,
         container_list_view_mode=ContainerListViewMode.ALL,
         active_focus_area=FocusArea.DETAIL,
+        last_successful_container_list_refresh_at=datetime(
+            2026,
+            1,
+            1,
+            tzinfo=timezone.utc,
+        ),
     )
     container_tab_key = ContainerTabKey("container-1", TabName.LOGS)
     state.tab_content_cache[container_tab_key] = "old logs"
@@ -191,3 +199,4 @@ def test_context_change_clears_container_data_but_keeps_display_options(
     assert state.container_sort_field == ContainerSortField.NAME
     assert state.container_sort_descending
     assert state.container_list_view_mode == ContainerListViewMode.ALL
+    assert state.last_successful_container_list_refresh_at is None

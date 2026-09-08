@@ -178,6 +178,12 @@ clears the old container data and loads containers from the selected
 context. If it fails, the current connection stays active and the popup shows
 the reason.
 
+If a later container-list refresh fails, EDM keeps the last successful list
+on screen and marks the context as `stale`. The status line shows when that
+list was last updated. EDM keeps retrying and changes the context back to
+`active` after the connection recovers. A context is shown as `unavailable`
+when its first refresh has not succeeded yet.
+
 Opening the popup does not connect to every saved server. EDM checks a remote
 connection only after you select it and press `Enter`. EDM cannot ask for or
 store an SSH password, so the connection must use a working key or `ssh-agent`.

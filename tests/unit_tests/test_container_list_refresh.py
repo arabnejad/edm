@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
 from easy_docker_manager.app import (
@@ -310,6 +312,7 @@ def test_unchanged_refresh_clears_explicit_error_state(
     )
     assert state.status_message == "1 running container"
     assert state.container_list_refresh_error_message is None
+    assert state.last_successful_container_list_refresh_at is not None
 
 
 def test_repeated_empty_refresh_does_not_redraw_twice(docker_manager_factory) -> None:
@@ -341,6 +344,31 @@ def test_refresh_failure_keeps_existing_containers_and_shows_error(
     assert (
         state.container_list_refresh_error_message
         == f"Container refresh failed: {error}"
+    )
+
+
+def test_refresh_failure_shows_when_the_container_list_was_last_updated(
+    docker_manager_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    state.last_successful_container_list_refresh_at = datetime(
+        2026,
+        1,
+        1,
+        14,
+        32,
+        18,
+        tzinfo=timezone.utc,
+    )
+    test_setup = docker_manager_factory(state)
+    test_setup.docker_manager.start_container_list_refresh(force=True)
+
+    assert test_setup.background_executor.complete_submission(
+        exception=ContainerListRefreshError("offline")
+    )
+    assert state.status_message == (
+        "Container refresh failed: offline Last successful update: 14:32:18."
     )
 
 
