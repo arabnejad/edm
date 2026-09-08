@@ -162,20 +162,20 @@ class ContainerListPanel:
     ) -> None:
         """Show the Docker context and whether its container list is current."""
         if state.container_list_refresh_error_message is None:
-            connection_status_style = "status_ok"
-            connection_status_text = "active"
+            container_data_status_style = "status_ok"
+            container_data_status_text = "active"
         elif state.last_successful_container_list_refresh_at is None:
-            connection_status_style = "error"
-            connection_status_text = "unavailable"
+            container_data_status_style = "error"
+            container_data_status_text = "unavailable"
         else:
-            connection_status_style = "accent"
-            connection_status_text = "stale"
+            container_data_status_style = "accent"
+            container_data_status_text = "stale"
 
         self.active_docker_context_text.set_text(
             [
                 ("accent", "* "),
                 ("host", state.active_docker_context.display_name),
-                (connection_status_style, f" ({connection_status_text})"),
+                (container_data_status_style, f" ({container_data_status_text})"),
             ]
         )
 
