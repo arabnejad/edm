@@ -165,6 +165,9 @@ class SmokeTestDockerContainerClient(DockerContainerClient):
             process_and_thread_limit=None,
         )
 
+    def start_container(self, container_id: str) -> None:
+        """Accept the request without changing the smoke-test container."""
+
     def stop_container(self, container_id: str) -> None:
         """Accept the request without changing the smoke-test container."""
 

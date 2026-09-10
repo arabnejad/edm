@@ -273,6 +273,19 @@ class DockerSDKContainerClient(DockerContainerClient):
                 exc,
             )
 
+    def start_container(self, container_id: str) -> None:
+        """Start the created or exited container identified by container_id."""
+        try:
+            container = self._get_or_create_docker_client().containers.get(container_id)
+            container.start()
+        except NotFound as exc:
+            raise ContainerNotFoundError(container_id) from exc
+        except Exception as exc:
+            logger.warning("Could not start container %s: %s", container_id, exc)
+            raise ContainerLifecycleActionError(
+                "start", container_id, str(exc)
+            ) from exc
+
     def stop_container(self, container_id: str) -> None:
         """Stop the running container identified by container_id."""
         try:

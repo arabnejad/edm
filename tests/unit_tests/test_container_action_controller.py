@@ -23,8 +23,8 @@ from easy_docker_manager.ui.container_action_controller import (
             "running",
             [ContainerLifecycleAction.RESTART, ContainerLifecycleAction.STOP],
         ),
-        ("created", []),
-        ("exited", []),
+        ("created", [ContainerLifecycleAction.START]),
+        ("exited", [ContainerLifecycleAction.START]),
         ("paused", []),
         ("restarting", []),
         ("dead", []),
@@ -57,6 +57,31 @@ def test_open_menu_uses_selected_running_container(
         ContainerLifecycleAction.RESTART,
         ContainerLifecycleAction.STOP,
     ]
+
+
+def test_open_menu_submits_start_for_an_exited_container(
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    state.container_list.displayed_containers[0].status = "exited"
+    docker_manager = Mock(spec=DockerManager)
+    docker_manager.is_container_lifecycle_action_in_progress = False
+    docker_manager.start_container_lifecycle_action.return_value = True
+    controller = ContainerActionController(state, docker_manager)
+
+    assert controller.open_container_action_menu()
+
+    menu_state = state.active_popup
+    assert isinstance(menu_state, ContainerActionMenuState)
+    assert menu_state.available_actions == [ContainerLifecycleAction.START]
+
+    assert controller.handle_menu_keypress("enter")
+    assert controller.handle_menu_keypress("enter")
+    docker_manager.start_container_lifecycle_action.assert_called_once_with(
+        ContainerLifecycleAction.START,
+        "container-1",
+        "web",
+    )
 
 
 def test_unsupported_container_status_shows_why_menu_did_not_open(

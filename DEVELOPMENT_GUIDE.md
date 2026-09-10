@@ -23,7 +23,7 @@ src/
       selected_tab_load.py        Loads the selected container tab
       container_log_updates.py    Polls and merges container logs
       container_lifecycle_action_runner.py
-                                  Runs a confirmed Stop or Restart request
+                                  Runs a confirmed Start, Stop, or Restart request
 
     config/
       app_config_store.py         Loads and rewrites config.json
@@ -463,7 +463,7 @@ The keys and visible behavior are documented in
 `TerminalSessionState.active_popup`. After confirmation, it passes the request
 to `DockerManager` and closes the popup.
 
-`ContainerLifecycleActionRunner` sends Stop or Restart to
+`ContainerLifecycleActionRunner` sends Start, Stop, or Restart to
 `BackgroundExecutor`. Only one lifecycle action can run at a time. After a
 successful request, it asks `ContainerListRefresher` to reload the list
 immediately. If an older list refresh is already running, that result is
@@ -625,7 +625,7 @@ Four smaller classes do the actual request tracking:
 | `ContainerListRefresher` | Container-list refreshes, selection preservation, and missing-container cleanup |
 | `SelectedTabContentLoader` | Initial tab loads, cached-tab reuse, and periodic live-tab refreshes |
 | `ContainerLogUpdater` | Incremental log polls, Docker since timestamps, overlap removal, and log limits |
-| `ContainerLifecycleActionRunner` | One confirmed Stop or Restart request and the list refresh that follows it |
+| `ContainerLifecycleActionRunner` | One confirmed Start, Stop, or Restart request and the list refresh that follows it |
 
 Initial logs are limited once by `ContainerTabTextLoader` while its Docker request runs
 in a worker thread. Incremental updates need two steps: each fetched batch is

@@ -66,6 +66,7 @@ def docker_container_factory():
             },
             "logs": Mock(return_value=b"hello\xff"),
             "stats": Mock(return_value={"read": "2026-01-01T14:32:18Z"}),
+            "start": Mock(),
             "stop": Mock(),
             "restart": Mock(),
             "top": Mock(
@@ -772,6 +773,7 @@ def test_container_resource_stats_failure_is_mapped(
 @pytest.mark.parametrize(
     ("client_method_name", "container_method_name"),
     [
+        ("start_container", "start"),
         ("stop_container", "stop"),
         ("restart_container", "restart"),
     ],

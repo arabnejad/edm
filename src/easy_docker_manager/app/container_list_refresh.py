@@ -86,9 +86,9 @@ class ContainerListRefresher:
     def request_immediate_container_list_refresh(self) -> None:
         """Refresh now, or as soon as the current refresh finishes.
 
-        Stop or Restart may finish while an older container-list request is
-        still running. That older result may no longer be correct, so EDM
-        discards it and asks Docker for the list again.
+        Start, Stop, or Restart may finish while an older container-list
+        request is still running. That older result may no longer be correct,
+        so EDM discards it and asks Docker for the list again.
         """
         self._next_refresh_at = 0.0
         if self._refresh_future is not None:

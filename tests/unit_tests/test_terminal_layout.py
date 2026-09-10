@@ -165,6 +165,24 @@ def test_container_action_popup_shows_actions_and_confirmation() -> None:
     assert "The container will stop." in rendered_text
 
 
+def test_container_action_popup_explains_start() -> None:
+    menu_state = ContainerActionMenuState(
+        container_id="container-1",
+        container_name="web",
+        available_actions=[ContainerLifecycleAction.START],
+        is_awaiting_confirmation=True,
+    )
+    state = TerminalSessionState(active_popup=menu_state)
+    view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
+
+    view.render(state, [], lambda line: line)
+
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert 'Start container "web"?' in rendered_text
+    assert "The container will start with its existing Docker" in rendered_text
+    assert "configuration." in rendered_text
+
+
 def test_docker_connection_popup_shows_contexts_and_selected_endpoint() -> None:
     local_context = DockerContextDetails(
         "default",

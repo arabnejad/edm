@@ -29,7 +29,7 @@ With EDM, you can view:
 - a readable summary of Docker inspection data
 - current CPU, memory, network, disk, and process statistics
 - the process list returned by Docker top
-- Stop and Restart actions for running containers
+- Start, Stop, and Restart container actions
 - live filtering, grouping, and sorting of the container list
 - a separate search query for each container tab
 - export of the active tab to a local text file
@@ -287,17 +287,19 @@ This command does not create or rewrite `config.json`.
 
 ## Container Actions
 
-Select a running container and press `a` or `A`. Choose **Restart** or **Stop**
-with `Up` and `Down`, then press `Enter`. EDM asks for confirmation before it
-sends the request to Docker. Press `Esc` to close the popup without making a
-change.
+Select a container and press `a` or `A`. Running containers offer **Restart**
+and **Stop**. Created and exited containers offer **Start** when **All
+containers** is selected. Use `Up` and `Down` to choose an action, then press
+`Enter`. EDM asks for confirmation before it sends the request to Docker.
+Press `Esc` to close the popup without making a change.
 
 The Docker request runs in the background. After it succeeds, EDM reloads the
 container list. A stopped container disappears while **Running only** is
 selected and remains visible while **All containers** is selected.
 
-Restart uses the existing container and its current Docker configuration. It
-does not reread a Compose file or recreate a Compose service.
+Start and Restart use the existing container and its current Docker
+configuration. They do not reread a Compose file or recreate a Compose
+service.
 
 ## Container Filtering
 
@@ -378,8 +380,8 @@ by Docker inside each project and among containers without a Compose project.
 
 Stopped containers keep their last logs, Env, and Config available. Logs load
 once and do not poll for updates. Stats and Top show `Container is not running.`
-without sending an unsupported request to Docker. Stop and Restart remain
-available only when the selected container is running.
+without sending an unsupported request to Docker. Created and exited
+containers can be started from the same Actions menu.
 
 The status beside each container also shows health information when Docker
 provides it, such as `running, healthy` or `running, unhealthy`. Stopped
