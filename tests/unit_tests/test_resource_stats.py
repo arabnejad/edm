@@ -208,6 +208,7 @@ def test_stats_formatter_builds_all_sections_without_packet_error_counters(
         "Runtime",
         "CPU",
         "Memory",
+        "Recent usage",
         "Network I/O",
         "Block I/O",
         "Processes",
@@ -222,6 +223,8 @@ def test_stats_formatter_builds_all_sections_without_packet_error_counters(
     assert "Usage           : 12.45%" in stats_tab_text
     assert "Memory" in stats_tab_text
     assert "Limit           : 2.00 GiB" in stats_tab_text
+    assert "CPU trend       : [                             █]" in stats_tab_text
+    assert "Memory trend    : [                             █]" in stats_tab_text
     assert "Receive rate    : 2.40 MiB/s" in stats_tab_text
     assert "Received packets: 742,183" in stats_tab_text
     assert "PIDs            : 24" in stats_tab_text
@@ -273,3 +276,22 @@ def test_stats_formatter_shows_clear_fallbacks_for_unavailable_values(
     assert "CPU limit       : No limit" in stats_tab_text
     assert "PID limit       : No limit" in stats_tab_text
     assert "Receive rate    : N/A" in stats_tab_text
+    assert "CPU trend       : [                             ·]" in stats_tab_text
+    assert "Memory trend    : [                             ·]" in stats_tab_text
+
+
+def test_stats_formatter_draws_recent_values_at_a_fixed_width(
+    container_resource_stats_snapshot_factory,
+) -> None:
+    resource_stats = container_resource_stats_snapshot_factory(
+        recent_cpu_usage_percentages=(0.0, 50.0, 100.0),
+        recent_memory_usage_percentages=(25.0, None, 50.0),
+    )
+
+    stats_tab_text = format_container_resource_stats_tab_text(
+        resource_stats,
+        refresh_interval_seconds=2.0,
+    )
+
+    assert "CPU trend       : [                           ▁▅█]" in stats_tab_text
+    assert "Memory trend    : [                           ▅·█]" in stats_tab_text

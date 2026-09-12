@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Optional
 
-from easy_docker_manager.core.containers import ContainerResourceStatsSnapshot
+from easy_docker_manager.core.containers import (
+    RESOURCE_STATS_TREND_SAMPLE_LIMIT,
+    ContainerResourceStatsSnapshot,
+)
+
+TREND_CHARACTERS = "▁▂▃▄▅▆▇█"
 
 
 def format_container_resource_stats_tab_text(
@@ -105,6 +110,24 @@ def format_container_resource_stats_tab_text(
         lines,
         "Swap",
         _format_byte_count(resource_stats_snapshot.memory_swap_bytes),
+    )
+
+    _add_section(lines, "Recent usage")
+    _add_field(
+        lines,
+        "CPU trend",
+        _format_percentage_trend(
+            resource_stats_snapshot.recent_cpu_usage_percentages
+            or (resource_stats_snapshot.cpu_usage_percent,)
+        ),
+    )
+    _add_field(
+        lines,
+        "Memory trend",
+        _format_percentage_trend(
+            resource_stats_snapshot.recent_memory_usage_percentages
+            or (resource_stats_snapshot.memory_usage_percent,)
+        ),
     )
 
     _add_section(lines, "Network I/O")
@@ -239,6 +262,35 @@ def _format_byte_rate(bytes_per_second: Optional[float]) -> str:
 def _format_percentage(value: Optional[float]) -> str:
     """Format a percentage, or show N/A when Docker did not report it."""
     return f"{value:.2f}%" if value is not None else "N/A"
+
+
+def _format_percentage_trend(
+    percentages: tuple[Optional[float], ...],
+) -> str:
+    """Draw the latest percentage samples as a fixed-width trend line."""
+    visible_percentages = percentages[-RESOURCE_STATS_TREND_SAMPLE_LIMIT:]
+    available_percentages = [
+        max(0.0, percentage)
+        for percentage in visible_percentages
+        if percentage is not None
+    ]
+    highest_percentage = max(available_percentages, default=0.0)
+
+    trend_characters = []
+    for percentage in visible_percentages:
+        if percentage is None:
+            trend_characters.append("·")
+            continue
+        if highest_percentage == 0:
+            trend_characters.append(TREND_CHARACTERS[0])
+            continue
+        level_index = round(
+            max(0.0, percentage) / highest_percentage * (len(TREND_CHARACTERS) - 1)
+        )
+        trend_characters.append(TREND_CHARACTERS[level_index])
+
+    left_padding = " " * (RESOURCE_STATS_TREND_SAMPLE_LIMIT - len(visible_percentages))
+    return f"[{left_padding}{''.join(trend_characters)}]"
 
 
 def _format_decimal(value: Optional[float]) -> str:

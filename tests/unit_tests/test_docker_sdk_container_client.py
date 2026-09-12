@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 from types import SimpleNamespace
@@ -9,6 +10,9 @@ import pytest
 from docker.errors import DockerException, NotFound
 
 from easy_docker_manager.core.containers import ContainerSummary
+from easy_docker_manager.docker import (
+    docker_sdk_container_client as docker_sdk_container_client_module,
+)
 from easy_docker_manager.docker.container_client import (
     ContainerLifecycleActionError,
     ContainerListRefreshError,
@@ -457,16 +461,14 @@ def test_list_containers_removes_saved_stats_for_non_running_containers(
         create_docker_client=lambda: client
     )
     connection_state = docker_container_client._active_docker_connection
-    connection_state.last_resource_stats_snapshot_by_container_id = {
-        "running": Mock(),
-        "stopped": Mock(),
+    connection_state.resource_stats_history_by_container_id = {
+        "running": deque([Mock()]),
+        "stopped": deque([Mock()]),
     }
 
     docker_container_client.list_containers()
 
-    assert set(connection_state.last_resource_stats_snapshot_by_container_id) == {
-        "running"
-    }
+    assert set(connection_state.resource_stats_history_by_container_id) == {"running"}
 
 
 def test_list_containers_skips_a_container_that_cannot_be_mapped(
@@ -752,6 +754,49 @@ def test_container_resource_stats_use_the_last_sample_for_transfer_rates(
     ]
 
 
+def test_container_resource_stats_keep_only_the_latest_thirty_trend_samples(
+    monkeypatch,
+    docker_client_factory,
+    docker_container_factory,
+    container_resource_stats_snapshot_factory,
+) -> None:
+    container = docker_container_factory()
+    container.stats.return_value = {"read": "2026-01-01T14:32:18Z"}
+    sample_number = 0
+
+    def build_stats_sample(*_arguments):
+        nonlocal sample_number
+        sample_number += 1
+        return container_resource_stats_snapshot_factory(
+            cpu_usage_percent=float(sample_number),
+            memory_usage_percent=float(sample_number * 2),
+        )
+
+    monkeypatch.setattr(
+        docker_sdk_container_client_module,
+        "build_container_resource_stats_snapshot",
+        build_stats_sample,
+    )
+    docker_container_client = DockerSDKContainerClient(
+        create_docker_client=lambda: docker_client_factory(container)
+    )
+
+    latest_snapshot = None
+    for _sample in range(32):
+        latest_snapshot = docker_container_client.get_container_resource_stats(
+            "container-id"
+        )
+
+    assert latest_snapshot is not None
+    assert latest_snapshot.recent_cpu_usage_percentages == tuple(
+        float(sample) for sample in range(3, 33)
+    )
+    assert latest_snapshot.recent_memory_usage_percentages == tuple(
+        float(sample * 2) for sample in range(3, 33)
+    )
+    assert container.stats.call_count == 32
+
+
 def test_container_resource_stats_failure_is_mapped(
     docker_client_factory,
     docker_container_factory,
@@ -836,14 +881,14 @@ def test_close_releases_only_an_existing_client(docker_client_factory) -> None:
 
     assert docker_container_client._get_or_create_docker_client() is client
     connection_state = docker_container_client._active_docker_connection
-    connection_state.last_resource_stats_snapshot_by_container_id["container-id"] = (
-        Mock()
+    connection_state.resource_stats_history_by_container_id["container-id"] = deque(
+        [Mock()]
     )
     docker_container_client.close()
     client.close.assert_called_once_with()
     connection_state = docker_container_client._active_docker_connection
     assert connection_state.docker_client is None
-    assert connection_state.last_resource_stats_snapshot_by_container_id == {}
+    assert connection_state.resource_stats_history_by_container_id == {}
 
 
 def test_docker_daemon_details_are_read_from_the_version_response(
