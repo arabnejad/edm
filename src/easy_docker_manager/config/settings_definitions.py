@@ -10,6 +10,7 @@ from easy_docker_manager.core.config import (
     APPLICATION_LOG_LEVEL_NAMES,
     AppConfig,
 )
+from easy_docker_manager.core.log_text import LOG_TIMESTAMP_MODE_NAMES
 
 
 class SettingInputType(str, Enum):
@@ -65,6 +66,13 @@ SETTINGS_FIELD_DEFINITIONS = (
         "Logs",
         "Maximum characters per line",
         SettingInputType.INTEGER,
+    ),
+    SettingDefinition(
+        "log_timestamp_mode",
+        "Logs",
+        "Timestamps",
+        SettingInputType.CHOICE,
+        choices=LOG_TIMESTAMP_MODE_NAMES,
     ),
     SettingDefinition(
         "tab_content_cache_max_entries",

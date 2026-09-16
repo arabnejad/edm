@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.containers import ContainerProcessTable
-from easy_docker_manager.core.log_text import apply_limits_to_log_content
+from easy_docker_manager.core.log_text import (
+    PreparedContainerLogBatch,
+    prepare_container_log_batch,
+)
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.docker.container_client import (
     ContainerLogsUnavailableError,
@@ -38,7 +41,7 @@ class ContainerTabTextLoader:
         self,
         container_id: str,
         tab_name: TabName,
-    ) -> str:
+    ) -> str | PreparedContainerLogBatch:
         """Load and format the text for one container tab."""
         if tab_name == TabName.LOGS:
             return self._load_initial_container_logs_tab_text(container_id)
@@ -52,14 +55,18 @@ class ContainerTabTextLoader:
             return self._load_container_top_tab_text(container_id)
         raise ValueError(f"Unsupported tab: {tab_name!r}")
 
-    def _load_initial_container_logs_tab_text(self, container_id: str) -> str:
+    def _load_initial_container_logs_tab_text(
+        self,
+        container_id: str,
+    ) -> PreparedContainerLogBatch:
         """Load and limit the text shown when the container's Logs tab opens."""
         content = self.docker_container_client.get_container_logs(
             container_id,
             self.app_config.initial_log_tail_lines,
         )
-        return apply_limits_to_log_content(
+        return prepare_container_log_batch(
             content,
+            self.app_config.log_timestamp_mode,
             max_lines=self.app_config.max_log_lines,
             max_line_chars=self.app_config.max_log_line_chars,
         )

@@ -6,6 +6,10 @@ import pytest
 
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.containers import ContainerProcessTable
+from easy_docker_manager.core.log_text import (
+    HIDDEN_LOG_TIMESTAMP_MODE,
+    PreparedContainerLogBatch,
+)
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.docker.container_client import (
     ContainerLogsUnavailableError,
@@ -39,8 +43,25 @@ def test_logs_are_loaded_with_the_configured_display_limits(
     result = tab_data_loader.load_tab_text("abc", TabName.LOGS)
 
     docker_container_client.get_container_logs.assert_called_once_with("abc", 2)
-    assert result.splitlines()[-1] == "new"
-    assert "old" not in result
+    assert isinstance(result, PreparedContainerLogBatch)
+    assert result.display_lines[-1] == "new"
+    assert "old" not in result.display_lines
+
+
+def test_initial_logs_apply_the_timestamp_mode_before_caching() -> None:
+    docker_container_client = Mock(spec=DockerContainerClient)
+    docker_container_client.get_container_logs.return_value = (
+        "2026-01-01T12:00:00.000000000Z server started"
+    )
+    loader = ContainerTabTextLoader(
+        docker_container_client,
+        AppConfig(log_timestamp_mode=HIDDEN_LOG_TIMESTAMP_MODE),
+    )
+
+    result = loader.load_tab_text("abc", TabName.LOGS)
+
+    assert isinstance(result, PreparedContainerLogBatch)
+    assert result.display_text == "server started"
 
 
 def test_environment_variables_are_sorted_and_all_values_are_shown(

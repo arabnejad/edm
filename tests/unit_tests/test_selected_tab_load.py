@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from unittest.mock import Mock
-
 import pytest
 
 from easy_docker_manager.app import selected_tab_load as selected_tab_load_module
 from easy_docker_manager.core.container_list import ContainerList
+from easy_docker_manager.core.log_text import (
+    DOCKER_UTC_LOG_TIMESTAMP_MODE,
+    prepare_container_log_batch,
+)
 from easy_docker_manager.core.tabs import (
     TabName,
 )
@@ -50,14 +52,20 @@ def test_tab_load_clears_old_error_and_records_initial_log_time(
     assert selected_tab_key not in state.tab_content_error_messages
     assert state.status_message == "Loading Logs..."
 
-    assert test_setup.background_executor.complete_submission(result="first logs")
+    prepared_logs = prepare_container_log_batch(
+        "first logs",
+        DOCKER_UTC_LOG_TIMESTAMP_MODE,
+        max_lines=100,
+        max_line_chars=1_000,
+    )
+    assert test_setup.background_executor.complete_submission(result=prepared_logs)
     assert state.tab_content_cache[selected_tab_key] == "first logs"
     assert test_setup.container_log_updater._log_cursor_by_container_id == {
         "container-1": 123
     }
 
 
-def test_initial_logs_are_cached_without_applying_worker_limits_again(
+def test_initial_logs_are_cached_from_the_prepared_worker_result(
     docker_manager_factory,
     session_state_factory,
 ) -> None:
@@ -65,18 +73,17 @@ def test_initial_logs_are_cached_without_applying_worker_limits_again(
     selected_tab_key = state.selected_container_tab_key
     assert selected_tab_key is not None
     test_setup = docker_manager_factory(state)
-    limit_log_content = Mock()
-    test_setup.container_log_updater.apply_configured_limits_to_log_content = (
-        limit_log_content
+    prepared_logs = prepare_container_log_batch(
+        "limited by worker",
+        DOCKER_UTC_LOG_TIMESTAMP_MODE,
+        max_lines=100,
+        max_line_chars=1_000,
     )
 
     test_setup.docker_manager.load_selected_tab_content_if_needed()
-    assert test_setup.background_executor.complete_submission(
-        result="limited by worker"
-    )
+    assert test_setup.background_executor.complete_submission(result=prepared_logs)
 
     assert state.tab_content_cache[selected_tab_key] == "limited by worker"
-    limit_log_content.assert_not_called()
 
 
 def test_running_old_tab_load_finishes_before_loading_new_selection(
