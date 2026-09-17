@@ -528,6 +528,11 @@ is still visible. Later refreshes use the same choices. `Docker order` restores
 Docker's order inside each Compose project and among containers that do not
 belong to a Compose project.
 
+`ContainerSummary.status` keeps Docker's short state because actions and
+sorting use it. The mapper reads health and exit details from the sparse list
+response as separate fields. `status_display_text` combines those fields for
+the container row without copying Docker's long status sentence into the UI.
+
 ### Tab Export
 
 The popup and its keyboard controls are documented in

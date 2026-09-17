@@ -306,6 +306,31 @@ def test_container_mapper_uses_short_id_when_name_is_missing() -> None:
     assert container_summary.compose_service_name is None
 
 
+@pytest.mark.parametrize(
+    ("docker_state", "docker_status_text", "expected_display_text"),
+    [
+        ("running", "Up 2 minutes (healthy)", "running, healthy"),
+        ("running", "Up 3 seconds (health: starting)", "running, starting"),
+        ("running", "Up 1 minute (unhealthy)", "running, unhealthy"),
+        ("exited", "Exited (137) 4 seconds ago", "exited 137"),
+        ("paused", "Up 1 minute (Paused)", "paused"),
+    ],
+)
+def test_container_mapper_builds_a_short_status_for_the_container_list(
+    docker_state: str,
+    docker_status_text: str,
+    expected_display_text: str,
+) -> None:
+    container_summary = to_container_summary(
+        {
+            "State": docker_state,
+            "Status": docker_status_text,
+        }
+    )
+
+    assert container_summary.status_display_text == expected_display_text
+
+
 def test_container_mapper_uses_unknown_when_no_name_exists() -> None:
     container_summary = to_container_summary({})
     assert container_summary.name == "unknown"

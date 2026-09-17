@@ -547,6 +547,47 @@ def test_stopped_container_status_uses_the_inactive_status_style(
     assert ("container_status_not_running", len("exited")) in row_attributes
 
 
+def test_container_rows_show_health_status_and_exit_code(
+    container_summary_factory,
+) -> None:
+    container_list = ContainerList(
+        [
+            container_summary_factory(
+                "running",
+                name="web",
+                health_status="unhealthy",
+            ),
+            container_summary_factory(
+                "stopped",
+                name="worker",
+                status="exited",
+                exit_code=137,
+            ),
+        ]
+    )
+    container_list.rebuild_displayed_containers(
+        ContainerListViewMode.ALL,
+        ContainerSortField.DOCKER_ORDER,
+        False,
+        "",
+    )
+    state = TerminalSessionState(
+        container_list=container_list,
+        container_list_view_mode=ContainerListViewMode.ALL,
+    )
+    view = TerminalLayoutView(AppConfig())
+
+    view.render(state, [], lambda line: line)
+
+    running_text, running_attributes = view.container_list_panel.container_rows[
+        0
+    ].get_text()
+    stopped_text = view.container_list_panel.container_rows[1].get_text()[0]
+    assert running_text == "  web (running, unhealthy)"
+    assert ("error", len("running, unhealthy")) in running_attributes
+    assert stopped_text == "  worker (exited 137)"
+
+
 def test_container_panel_explains_when_no_running_container_matches_filter(
     container_summary_factory,
 ) -> None:

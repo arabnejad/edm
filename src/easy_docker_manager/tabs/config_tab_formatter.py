@@ -72,6 +72,8 @@ def _add_state_section(
     _add_field(lines, "Restart Count", container.get("RestartCount"))
     _add_field(lines, "PID", state.get("Pid"))
     _add_field(lines, "Exit Code", state.get("ExitCode"))
+    _add_field(lines, "OOM Killed", state.get("OOMKilled"))
+    _add_field(lines, "Error", state.get("Error"))
 
 
 def _add_image_section(

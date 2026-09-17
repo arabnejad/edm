@@ -28,6 +28,8 @@ def complete_container_inspection_data() -> dict:
                 "FinishedAt": "0001-01-01T00:00:00Z",
                 "Pid": 42,
                 "ExitCode": 0,
+                "OOMKilled": False,
+                "Error": "",
             },
             "Config": {
                 "Image": "web:latest",
@@ -135,6 +137,8 @@ def test_formatted_config_contains_all_sections_and_readable_values(
     assert "/host -> /data (rw)" in formatted_config
     assert "Project       : demo" in formatted_config
     assert "owner         : team" in formatted_config
+    assert "OOM Killed    : false" in formatted_config
+    assert "Error         : <none>" in formatted_config
 
 
 def test_formatter_accepts_raw_container_inspection_data() -> None:

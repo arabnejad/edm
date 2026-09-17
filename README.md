@@ -381,6 +381,11 @@ once and do not poll for updates. Stats and Top show `Container is not running.`
 without sending an unsupported request to Docker. Stop and Restart remain
 available only when the selected container is running.
 
+The status beside each container also shows health information when Docker
+provides it, such as `running, healthy` or `running, unhealthy`. Stopped
+containers show their exit code, for example `exited 137`. The Config tab's
+State section includes Docker's OOM-killed flag and last error message.
+
 ## Exporting Tab Content
 
 Press `e` while the detail panel is active to export the selected container's

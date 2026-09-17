@@ -31,11 +31,22 @@ class ContainerSummary:
     created_at: str
     compose_project_name: Optional[str] = None
     compose_service_name: Optional[str] = None
+    health_status: Optional[str] = None
+    exit_code: Optional[int] = None
 
     @property
     def is_running(self) -> bool:
         """Return whether Docker reports this container as running."""
         return self.status.casefold() == "running"
+
+    @property
+    def status_display_text(self) -> str:
+        """Return the short status shown beside the container name."""
+        if self.health_status is not None:
+            return f"{self.status}, {self.health_status}"
+        if self.exit_code is not None:
+            return f"{self.status} {self.exit_code}"
+        return self.status
 
 
 @dataclass
