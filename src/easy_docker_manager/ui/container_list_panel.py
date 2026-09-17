@@ -160,12 +160,22 @@ class ContainerListPanel:
         self,
         state: TerminalSessionState,
     ) -> None:
-        """Show the Docker context used by the current container list."""
+        """Show the Docker context and whether its container list is current."""
+        if state.container_list_refresh_error_message is None:
+            container_data_status_style = "status_ok"
+            container_data_status_text = "active"
+        elif state.last_successful_container_list_refresh_at is None:
+            container_data_status_style = "error"
+            container_data_status_text = "unavailable"
+        else:
+            container_data_status_style = "accent"
+            container_data_status_text = "stale"
+
         self.active_docker_context_text.set_text(
             [
                 ("accent", "* "),
                 ("host", state.active_docker_context.display_name),
-                ("status_ok", " (active)"),
+                (container_data_status_style, f" ({container_data_status_text})"),
             ]
         )
 

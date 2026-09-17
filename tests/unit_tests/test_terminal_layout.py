@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import urwid
 
 from easy_docker_manager.config.settings_definitions import SettingsMenuState
@@ -294,6 +296,39 @@ def test_container_panel_shows_active_remote_context_name() -> None:
 
     rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
     assert "staging (active)" in rendered_text
+
+
+def test_container_panel_marks_previous_container_data_as_stale() -> None:
+    view = TerminalLayoutView(AppConfig())
+    state = TerminalSessionState(
+        container_list_refresh_error_message="Container refresh failed: offline",
+        last_successful_container_list_refresh_at=datetime(
+            2026,
+            1,
+            1,
+            14,
+            32,
+            18,
+            tzinfo=timezone.utc,
+        ),
+    )
+
+    view.render(state, [], lambda line: line)
+
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert "localhost (stale)" in rendered_text
+
+
+def test_container_panel_marks_failed_first_refresh_as_unavailable() -> None:
+    view = TerminalLayoutView(AppConfig())
+    state = TerminalSessionState(
+        container_list_refresh_error_message="Container refresh failed: offline"
+    )
+
+    view.render(state, [], lambda line: line)
+
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert "localhost (unavailable)" in rendered_text
 
 
 def test_render_shows_and_hides_container_list_menu() -> None:

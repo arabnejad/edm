@@ -13,6 +13,7 @@ their requests finish. The view classes read it when drawing the screen.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Optional, Union
 
@@ -112,6 +113,8 @@ class TerminalSessionState:
     status_message: str = "Loading containers..."
     # Most recent container-list refresh error, or None after success.
     container_list_refresh_error_message: Optional[str] = None
+    # Local time of the latest successful container-list refresh.
+    last_successful_container_list_refresh_at: Optional[datetime] = None
     # Whether printable keyboard input is editing the active search query.
     is_search_active: bool = False
     # Loaded tab text keyed by container and detail tab.
@@ -243,6 +246,7 @@ class TerminalSessionState:
         self.detail_selected_line_index = 0
         self.follow_log_tail = True
         self.container_list_refresh_error_message = None
+        self.last_successful_container_list_refresh_at = None
         self.tab_content_cache.clear()
         self.tab_search_queries.clear()
         self.unreadable_log_container_ids.clear()

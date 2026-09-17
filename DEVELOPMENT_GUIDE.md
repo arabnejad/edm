@@ -786,6 +786,7 @@ Important fields are:
 | `tab_search_queries` | Search query for each container tab |
 | `unreadable_log_container_ids` | Containers whose logging driver cannot be read |
 | `container_list_refresh_error_message` | Latest container-list refresh error, cleared after recovery |
+| `last_successful_container_list_refresh_at` | Local time of the latest successful container-list refresh |
 | `tab_content_error_messages` | Latest load, refresh, or log-poll error for each container tab |
 
 `ContainerTabKey` combines a container ID and `TabName`. It is used for cached
