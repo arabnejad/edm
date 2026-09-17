@@ -125,6 +125,8 @@ def test_container_resource_statistics_are_read_from_docker(
     assert first_snapshot.current_process_and_thread_count is not None
     assert first_snapshot.current_process_and_thread_count >= 1
     assert second_snapshot.collected_at >= first_snapshot.collected_at
+    assert len(second_snapshot.recent_cpu_usage_percentages) == 2
+    assert len(second_snapshot.recent_memory_usage_percentages) == 2
 
 
 def test_container_can_be_restarted_stopped_and_started(

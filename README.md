@@ -430,6 +430,13 @@ and block I/O rates need two samples, so the first sample shows `N/A` for those
 rates. Docker does not report every counter on every operating system or cgroup
 version; unavailable values also appear as `N/A`.
 
+The Stats tab keeps up to 30 CPU and memory samples and draws the newest sample
+on the right of each trend line. Each line is scaled against its highest saved
+value, so a short spike remains visible after the numeric value changes. EDM
+records these samples only while the selected Stats tab is refreshing. It
+clears them when the container stops or the Docker context changes, and never
+writes them to disk.
+
 Each container and tab keeps its own search query:
 
 - Logs treats the query as a case-insensitive regular expression and hides

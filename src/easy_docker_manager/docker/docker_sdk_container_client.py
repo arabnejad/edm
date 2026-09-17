@@ -9,8 +9,9 @@ into EDM errors for the rest of the application.
 from __future__ import annotations
 
 import logging
+from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from threading import Lock
 from typing import Any, Optional, Union
 
@@ -18,6 +19,7 @@ from docker import DockerClient
 from docker.errors import DockerException, NotFound
 
 from easy_docker_manager.core.containers import (
+    RESOURCE_STATS_TREND_SAMPLE_LIMIT,
     ContainerProcessTable,
     ContainerResourceStatsSnapshot,
     ContainerSummary,
@@ -46,11 +48,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class _DockerConnectionState:
-    """Keep a context's client and rate samples together while requests finish."""
+    """Keep a context's client and recent Stats samples together."""
 
     docker_client: Optional[DockerClient] = None
-    last_resource_stats_snapshot_by_container_id: dict[
-        str, ContainerResourceStatsSnapshot
+    resource_stats_history_by_container_id: dict[
+        str, deque[ContainerResourceStatsSnapshot]
     ] = field(default_factory=dict)
     connection_state_lock: Lock = field(default_factory=Lock)
 
@@ -114,7 +116,7 @@ class DockerSDKContainerClient(DockerContainerClient):
                 container_summaries.append(to_container_summary(container.attrs))
             except Exception as exc:
                 logger.warning("Skipping container summary: %s", exc)
-        self._remove_last_resource_stats_samples_for_non_running_containers(
+        self._remove_resource_stats_history_for_non_running_containers(
             docker_connection,
             {
                 container.container_id
@@ -250,18 +252,35 @@ class DockerSDKContainerClient(DockerContainerClient):
             # previous sample and save it in A's history. Otherwise, the next
             # request to B could calculate a rate using counters from A.
             with docker_connection.connection_state_lock:
-                previous_snapshots = (
-                    docker_connection.last_resource_stats_snapshot_by_container_id
+                container_stats_history = (
+                    docker_connection.resource_stats_history_by_container_id.setdefault(
+                        container_id,
+                        deque(maxlen=RESOURCE_STATS_TREND_SAMPLE_LIMIT),
+                    )
                 )
                 current_resource_stats_snapshot = (
                     build_container_resource_stats_snapshot(
                         docker_stats_response,
                         container.attrs,
-                        previous_snapshots.get(container_id),
+                        (
+                            container_stats_history[-1]
+                            if container_stats_history
+                            else None
+                        ),
                     )
                 )
-                previous_snapshots[container_id] = current_resource_stats_snapshot
-            return current_resource_stats_snapshot
+                container_stats_history.append(current_resource_stats_snapshot)
+                stats_snapshot_with_history = replace(
+                    current_resource_stats_snapshot,
+                    recent_cpu_usage_percentages=tuple(
+                        sample.cpu_usage_percent for sample in container_stats_history
+                    ),
+                    recent_memory_usage_percentages=tuple(
+                        sample.memory_usage_percent
+                        for sample in container_stats_history
+                    ),
+                )
+            return stats_snapshot_with_history
         except Exception as exc:
             logger.exception(
                 "Error fetching resource statistics for container %s",
@@ -408,21 +427,21 @@ class DockerSDKContainerClient(DockerContainerClient):
             )
             return {}
 
-    def _remove_last_resource_stats_samples_for_non_running_containers(
+    def _remove_resource_stats_history_for_non_running_containers(
         self,
         docker_connection: _DockerConnectionState,
         running_container_ids: set[str],
     ) -> None:
-        """Remove saved rate samples for containers that are no longer running."""
+        """Remove Stats history for containers that are no longer running."""
         with docker_connection.connection_state_lock:
-            previous_snapshots = (
-                docker_connection.last_resource_stats_snapshot_by_container_id
+            resource_stats_history = (
+                docker_connection.resource_stats_history_by_container_id
             )
             non_running_container_ids = (
-                previous_snapshots.keys() - running_container_ids
+                resource_stats_history.keys() - running_container_ids
             )
             for container_id in non_running_container_ids:
-                del previous_snapshots[container_id]
+                del resource_stats_history[container_id]
 
 
 def _get_non_empty_text(value: Any) -> Optional[str]:

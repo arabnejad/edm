@@ -7,6 +7,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
+RESOURCE_STATS_TREND_SAMPLE_LIMIT = 30
+
 
 class ContainerListViewMode(str, Enum):
     """Choose whether the container list includes stopped containers."""
@@ -63,7 +65,8 @@ class ContainerResourceStatsSnapshot:
 
     Docker does not return every field on every operating system or cgroup
     version. A missing field stays as None so the Stats tab can show N/A rather
-    than a misleading zero.
+    than a misleading zero. The recent percentage fields hold the samples used
+    for the CPU and memory trend lines.
     """
 
     collected_at: datetime
@@ -94,6 +97,8 @@ class ContainerResourceStatsSnapshot:
     block_write_rate_bytes_per_second: Optional[float]
     current_process_and_thread_count: Optional[int]
     process_and_thread_limit: Optional[int]
+    recent_cpu_usage_percentages: tuple[Optional[float], ...] = ()
+    recent_memory_usage_percentages: tuple[Optional[float], ...] = ()
 
 
 __all__ = [
@@ -101,4 +106,5 @@ __all__ = [
     "ContainerProcessTable",
     "ContainerResourceStatsSnapshot",
     "ContainerSummary",
+    "RESOURCE_STATS_TREND_SAMPLE_LIMIT",
 ]

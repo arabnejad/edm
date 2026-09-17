@@ -672,6 +672,13 @@ newer lines. Stopped-container logs load once. Stats and Top do not make Docker
 requests for a stopped container; their message is added immediately without
 starting a worker.
 
+The Docker connection keeps a deque of the latest 30 Stats samples for each
+container. A Stats request adds the same sample already used for rates, so the
+trend does not need another Docker request. The formatter draws CPU and memory
+percentages from that deque. Container-list refreshes remove history for
+stopped or missing containers, and a context switch starts with a new
+connection state and empty history.
+
 When a container-list refresh finds a status change, EDM clears that container's
 saved tab text and errors. The visible tab reloads, while other tabs wait until
 the user opens them. A container that has never been selected has no saved tab
