@@ -11,6 +11,7 @@ from typing import Optional
 from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.app.container_log_updates import ContainerLogUpdater
 from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.log_text import PreparedContainerLogBatch
 from easy_docker_manager.core.tabs import (
     CONTAINER_NOT_RUNNING_MESSAGE,
     ContainerTabKey,
@@ -58,7 +59,7 @@ class SelectedTabContentLoader:
         self.tab_data_loader = tab_data_loader
         self.container_log_updater = container_log_updater
 
-        self._tab_load_future: Optional[Future[str]] = None
+        self._tab_load_future: Optional[Future[str | PreparedContainerLogBatch]] = None
         self._next_tab_refresh_at = 0.0
 
     def refresh_if_needed(self, current_time: float) -> None:
@@ -212,7 +213,7 @@ class SelectedTabContentLoader:
         requested_tab_key: ContainerTabKey,
         initial_log_request_started_at: Optional[int],
         requested_container_status: str,
-        tab_load_future: Future[str],
+        tab_load_future: Future[str | PreparedContainerLogBatch],
     ) -> bool:
         """Store the finished tab load, then load the latest selection if needed."""
         if tab_load_future is not self._tab_load_future:
@@ -243,7 +244,7 @@ class SelectedTabContentLoader:
 
     def _store_tab_load_result(
         self,
-        tab_load_future: Future[str],
+        tab_load_future: Future[str | PreparedContainerLogBatch],
         requested_tab_key: ContainerTabKey,
         initial_log_request_started_at: Optional[int],
     ) -> bool:
@@ -251,7 +252,7 @@ class SelectedTabContentLoader:
         is_active_tab = requested_tab_key == self.state.selected_container_tab_key
 
         try:
-            content = tab_load_future.result()
+            loaded_tab_content = tab_load_future.result()
         except ContainerLogsUnavailableError as exc:
             logger.info("Initial logs are unavailable: %s", exc)
             self.container_log_updater.record_container_logs_as_unavailable(
@@ -290,6 +291,13 @@ class SelectedTabContentLoader:
             )
             return is_active_tab
 
+        if isinstance(loaded_tab_content, PreparedContainerLogBatch):
+            content = loaded_tab_content.display_text
+            source_line_fingerprints = loaded_tab_content.source_line_fingerprints
+        else:
+            content = loaded_tab_content
+            source_line_fingerprints = ()
+
         self.state.tab_content_error_messages.pop(requested_tab_key, None)
         self.state.tab_content_cache[requested_tab_key] = content
 
@@ -302,6 +310,7 @@ class SelectedTabContentLoader:
             self.container_log_updater.record_initial_log_load_success(
                 requested_tab_key.container_id,
                 initial_log_request_started_at,
+                source_line_fingerprints,
             )
         self.state.status_message = f"Loaded {self.state.active_detail_tab_name.value}"
         return True

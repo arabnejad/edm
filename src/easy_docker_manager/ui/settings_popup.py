@@ -49,7 +49,7 @@ def build_settings_popup_menu(
         align="center",
         width=82,
         valign="middle",
-        height=29 if menu_state.error_message or menu_state.status_message else 28,
+        height=30 if menu_state.error_message or menu_state.status_message else 29,
     )
 
 

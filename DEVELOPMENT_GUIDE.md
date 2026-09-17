@@ -438,9 +438,9 @@ The popup and its keyboard controls are documented in
 [Configuration](README.md#configuration).
 
 `SettingsController` works with a draft `AppConfig`. Numeric text is checked
-before it replaces a value in that draft. Boolean settings and the log level
-change directly because each choice is already valid. `d` replaces the draft
-with `AppConfig` defaults but does not save them.
+before it replaces a value in that draft. Boolean and choice settings change
+directly because each choice is already valid. `d` replaces the draft with
+`AppConfig` defaults but does not save them.
 
 Saving writes the draft through `AppConfigStore`. The running application does
 not switch to the new object because the Docker client, background executor,
@@ -633,6 +633,12 @@ limited in the worker, then the combined old and new log text is limited again
 before it is cached. The second step keeps the complete displayed history
 within the configured line and character limits.
 
+Docker still adds UTC timestamps to every log response. Before text enters the
+cache, `apply_log_timestamp_mode()` keeps those prefixes, converts them to the
+computer's local timezone, or removes them. It checks only the timestamp at the
+start of each line. Log cursors keep using the request start time, so changing
+the display does not change which logs Docker returns.
+
 A failed container-list refresh keeps the last successful list visible. Env,
 Config, and Top also keep their last successful text after a temporary refresh
 error because that snapshot can still be useful.
@@ -663,7 +669,10 @@ request uses that time as its `since_timestamp`, which asks for lines written
 from that point onward. A failed request keeps the old timestamp so a retry
 does not skip output. Docker can repeat lines where two requests meet;
 `count_repeated_lines_between_batches()` removes that repeated section before
-new lines are added to the cache.
+new lines are added to the cache. EDM compares fingerprints of the original
+Docker lines for this check. This matters in Hidden mode, where two lines with
+different timestamps can otherwise look identical after their timestamps are
+removed.
 
 Env, Config, Stats, and Top reload while they are visible on a running
 container, using `detail_tab_refresh_interval_seconds`. Hidden tabs and stopped

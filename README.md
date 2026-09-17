@@ -450,8 +450,7 @@ Each container and tab keeps its own search query:
 
 Press `p` or `P` to edit the saved settings without leaving EDM. Use `Up` and
 `Down` to select a field. Press `Enter` to edit a number, then press `Enter`
-again to accept it. `Left` and `Right` change Boolean values and the
-application log level.
+again to accept it. `Left` and `Right` change Boolean and choice values.
 
 Press `s` to save, `d` to load the default values into the form, or `Esc` to
 close the popup without saving. When a number is being edited, the first
@@ -483,6 +482,7 @@ cleaned configuration back to the file.
 | `initial_log_tail_lines` | `100` | Number of recent lines loaded when Logs first opens |
 | `max_log_lines` | `2000` | Maximum log lines kept for one container |
 | `max_log_line_chars` | `4000` | Maximum characters kept from one log line (minimum `32`) |
+| `log_timestamp_mode` | `"Docker UTC"` | Display Docker's UTC timestamp, local time, or no timestamp |
 | `tab_content_cache_max_entries` | `50` | Maximum number of cached container tabs |
 | `tab_content_cache_max_bytes` | `25000000` | Maximum UTF-8 size of all cached tab text |
 | `docker_request_timeout_seconds` | `10.0` | Docker SDK request timeout in seconds |
@@ -496,6 +496,12 @@ EDM keeps values saved under the former `tab_refresh_interval` and
 the current names shown above. If both names are present, the current name wins.
 
 `edm --no-color` disables colors for one run without changing `config.json`.
+
+Docker UTC keeps the timestamp returned by Docker. Local time converts that
+timestamp to the timezone of the computer running EDM and includes its UTC
+offset. Hidden removes the timestamp and the space after it. These modes only
+change a valid Docker timestamp at the start of a line. A timestamp written by
+the application later in the log message stays unchanged.
 
 ## Application Logs
 

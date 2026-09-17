@@ -11,8 +11,9 @@ from typing import Optional, Union
 from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.log_text import (
-    apply_limits_to_log_content,
+    PreparedContainerLogBatch,
     count_repeated_lines_between_batches,
+    prepare_container_log_batch,
 )
 from easy_docker_manager.core.tabs import ContainerTabKey, TabName
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
@@ -50,9 +51,12 @@ class ContainerLogUpdater:
         self.background_executor = background_executor
         self.docker_container_client = docker_container_client
 
-        self._log_poll_future: Optional[Future[str]] = None
+        self._log_poll_future: Optional[Future[PreparedContainerLogBatch]] = None
         self._next_log_poll_at = 0.0
         self._log_cursor_by_container_id: dict[str, int] = {}
+        self._source_log_line_fingerprints_by_container_id: dict[
+            str, tuple[bytes, ...]
+        ] = {}
 
     def poll_if_needed(
         self,
@@ -110,6 +114,7 @@ class ContainerLogUpdater:
         self._log_poll_future = None
         self._next_log_poll_at = 0.0
         self._log_cursor_by_container_id.clear()
+        self._source_log_line_fingerprints_by_container_id.clear()
         if previous_log_poll_future is not None:
             previous_log_poll_future.cancel()
 
@@ -117,9 +122,13 @@ class ContainerLogUpdater:
         self,
         container_id: str,
         request_started_at: int,
+        source_line_fingerprints: tuple[bytes, ...] = (),
     ) -> None:
         """Save where later log polls should begin after the first load succeeds."""
         self._log_cursor_by_container_id[container_id] = request_started_at
+        self._source_log_line_fingerprints_by_container_id[container_id] = (
+            source_line_fingerprints
+        )
         self._next_log_poll_at = 0.0
 
     def record_container_logs_as_unavailable(
@@ -158,6 +167,7 @@ class ContainerLogUpdater:
         """
         logs_cache_key = cache_key or ContainerTabKey(container_id, TabName.LOGS)
         self.state.tab_content_cache.remove_cached_tab_content(logs_cache_key)
+        self._source_log_line_fingerprints_by_container_id.pop(container_id, None)
         self.state.tab_content_error_messages[logs_cache_key] = message
         if update_status:
             self.state.status_message = message
@@ -166,11 +176,18 @@ class ContainerLogUpdater:
         self,
         running_container_ids: set[str],
     ) -> None:
-        """Remove saved Docker since timestamps for containers that stopped."""
+        """Remove incremental-log tracking for containers that stopped."""
         self._log_cursor_by_container_id = {
             container_id: since_timestamp
             for container_id, since_timestamp in (
                 self._log_cursor_by_container_id.items()
+            )
+            if container_id in running_container_ids
+        }
+        self._source_log_line_fingerprints_by_container_id = {
+            container_id: source_line_fingerprints
+            for container_id, source_line_fingerprints in (
+                self._source_log_line_fingerprints_by_container_id.items()
             )
             if container_id in running_container_ids
         }
@@ -179,14 +196,6 @@ class ContainerLogUpdater:
         """Return whether the selected container should receive log updates."""
         selected_container = self.state.selected_container_summary
         return selected_container is not None and selected_container.is_running
-
-    def apply_configured_limits_to_log_content(self, content: str) -> str:
-        """Apply EDM's line-count and line-length limits to log text."""
-        return apply_limits_to_log_content(
-            content,
-            max_lines=self.app_config.max_log_lines,
-            max_line_chars=self.app_config.max_log_line_chars,
-        )
 
     def _request_log_poll(self, container_id: str) -> None:
         """Submit the next incremental log request for one container."""
@@ -215,7 +224,7 @@ class ContainerLogUpdater:
         container_id: str,
         replace_existing: bool,
         request_started_at: int,
-        log_poll_future: Future[str],
+        log_poll_future: Future[PreparedContainerLogBatch],
     ) -> bool:
         """Store a finished log poll and return True when the screen should redraw."""
         if log_poll_future is not self._log_poll_future:
@@ -232,7 +241,7 @@ class ContainerLogUpdater:
             and self.state.active_detail_tab_name == TabName.LOGS
         )
         try:
-            content = log_poll_future.result()
+            prepared_log_batch = log_poll_future.result()
         except ContainerLogsUnavailableError as exc:
             logger.info("Logs are unavailable: %s", exc)
             self.record_container_logs_as_unavailable(
@@ -253,7 +262,7 @@ class ContainerLogUpdater:
 
         should_redraw = self._apply_log_content_to_cache(
             container_id,
-            content,
+            prepared_log_batch,
             replace_existing=replace_existing,
         )
         self._log_cursor_by_container_id[container_id] = request_started_at
@@ -269,28 +278,67 @@ class ContainerLogUpdater:
     def _apply_log_content_to_cache(
         self,
         container_id: str,
-        content: str,
+        prepared_log_batch: PreparedContainerLogBatch,
         *,
         replace_existing: bool,
     ) -> bool:
         """Combine a fetched log batch with cached logs, then limit and save it."""
         cache_key = ContainerTabKey(container_id, TabName.LOGS)
         cache_already_exists = cache_key in self.state.tab_content_cache
-        if not content and not replace_existing and cache_already_exists:
+        if (
+            not prepared_log_batch.display_lines
+            and not replace_existing
+            and cache_already_exists
+        ):
             return False
 
         existing_content = self.state.tab_content_cache.get(cache_key, "") or ""
-        updated_content = (
-            content
-            if replace_existing
-            else self._combine_existing_and_new_log_content(existing_content, content)
+        existing_source_line_fingerprints = (
+            self._source_log_line_fingerprints_by_container_id.get(container_id, ())
+        )
+        existing_display_lines = (
+            tuple(existing_content.split("\n"))
+            if existing_source_line_fingerprints
+            else tuple(existing_content.splitlines())
+        )
+        repeated_line_count = 0
+        if not replace_existing:
+            # Hidden mode can turn lines such as "12:00 ready" and "12:01 ready"
+            # into the same display text. Compare fingerprints from Docker's
+            # original lines so the second message is not dropped by mistake.
+            repeated_line_count = count_repeated_lines_between_batches(
+                existing_source_line_fingerprints,
+                prepared_log_batch.source_line_fingerprints,
+            )
+
+        if replace_existing:
+            updated_display_lines = prepared_log_batch.display_lines
+            updated_source_line_fingerprints = (
+                prepared_log_batch.source_line_fingerprints
+            )
+        else:
+            updated_display_lines = (
+                *existing_display_lines,
+                *prepared_log_batch.display_lines[repeated_line_count:],
+            )
+            updated_source_line_fingerprints = (
+                *existing_source_line_fingerprints,
+                *prepared_log_batch.source_line_fingerprints[repeated_line_count:],
+            )
+
+        max_log_lines = self.app_config.max_log_lines
+        updated_display_lines = updated_display_lines[-max_log_lines:]
+        updated_source_line_fingerprints = updated_source_line_fingerprints[
+            -max_log_lines:
+        ]
+        updated_content = "\n".join(updated_display_lines)
+        self._source_log_line_fingerprints_by_container_id[container_id] = tuple(
+            updated_source_line_fingerprints
         )
         if updated_content == existing_content and cache_already_exists:
             return False
 
-        self.state.tab_content_cache[cache_key] = (
-            self.apply_configured_limits_to_log_content(updated_content)
-        )
+        self.state.tab_content_cache[cache_key] = updated_content
         return (
             container_id == self.state.selected_container_id
             and self.state.active_detail_tab_name == TabName.LOGS
@@ -301,36 +349,19 @@ class ContainerLogUpdater:
         container_id: str,
         tail_lines: Union[int, str],
         since_timestamp: Optional[int],
-    ) -> str:
+    ) -> PreparedContainerLogBatch:
         """Fetch one log update in a worker and limit it before returning."""
         content = self.docker_container_client.get_container_logs(
             container_id,
             tail_lines,
             since_timestamp,
         )
-        return self.apply_configured_limits_to_log_content(content)
-
-    @staticmethod
-    def _combine_existing_and_new_log_content(
-        existing_content: str,
-        new_content: str,
-    ) -> str:
-        """Append a new log batch without repeating lines shared by both batches."""
-        if not existing_content:
-            return new_content
-        new_lines = new_content.splitlines()
-        if not new_lines:
-            return existing_content
-
-        existing_lines = existing_content.splitlines()
-        repeated_line_count = count_repeated_lines_between_batches(
-            existing_lines,
-            new_lines,
+        return prepare_container_log_batch(
+            content,
+            self.app_config.log_timestamp_mode,
+            max_lines=self.app_config.max_log_lines,
+            max_line_chars=self.app_config.max_log_line_chars,
         )
-        lines_to_append = new_lines[repeated_line_count:]
-        if not lines_to_append:
-            return existing_content
-        return "\n".join([*existing_lines, *lines_to_append])
 
 
 __all__ = ["ContainerLogUpdater"]

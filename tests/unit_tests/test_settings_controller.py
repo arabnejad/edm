@@ -12,6 +12,7 @@ from easy_docker_manager.config.settings_definitions import (
     SettingsMenuState,
 )
 from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.log_text import LOCAL_LOG_TIMESTAMP_MODE
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.ui.settings_controller import SettingsController
 
@@ -26,6 +27,14 @@ def _open_settings_controller(
     controller = SettingsController(state, config_store)
     assert controller.open_settings_menu()
     return controller, state, config_store
+
+
+def _get_setting_index(config_field_name: str) -> int:
+    return next(
+        index
+        for index, setting in enumerate(SETTINGS_FIELD_DEFINITIONS)
+        if setting.config_field_name == config_field_name
+    )
 
 
 def test_settings_menu_includes_every_app_config_field() -> None:
@@ -94,15 +103,19 @@ def test_boolean_and_choice_settings_change_with_arrow_keys(tmp_path: Path) -> N
     menu_state = state.active_popup
     assert isinstance(menu_state, SettingsMenuState)
 
-    menu_state.selected_setting_index = 9
+    menu_state.selected_setting_index = _get_setting_index("colors_enabled")
     assert controller.handle_menu_keypress("right")
     assert menu_state.draft_config.colors_enabled is False
 
-    menu_state.selected_setting_index = 10
+    menu_state.selected_setting_index = _get_setting_index("application_log_level")
     assert controller.handle_menu_keypress("right")
     assert menu_state.draft_config.application_log_level == "WARNING"
     assert controller.handle_menu_keypress("left")
     assert menu_state.draft_config.application_log_level == "INFO"
+
+    menu_state.selected_setting_index = _get_setting_index("log_timestamp_mode")
+    assert controller.handle_menu_keypress("right")
+    assert menu_state.draft_config.log_timestamp_mode == LOCAL_LOG_TIMESTAMP_MODE
 
 
 def test_save_writes_draft_and_reports_restart_requirement(tmp_path: Path) -> None:
@@ -110,7 +123,7 @@ def test_save_writes_draft_and_reports_restart_requirement(tmp_path: Path) -> No
     controller, state, _config_store = _open_settings_controller(config_path)
     menu_state = state.active_popup
     assert isinstance(menu_state, SettingsMenuState)
-    menu_state.selected_setting_index = 9
+    menu_state.selected_setting_index = _get_setting_index("colors_enabled")
     controller.handle_menu_keypress("right")
 
     assert controller.handle_menu_keypress("s")

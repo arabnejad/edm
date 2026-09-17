@@ -243,6 +243,7 @@ def test_render_shows_editable_settings_popup() -> None:
     rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
     assert "Settings" in rendered_text
     assert "Container list interval: 2.0 seconds" in rendered_text
+    assert "Timestamps: Docker UTC" in rendered_text
     assert "Application logging" in rendered_text
     assert "Log level: INFO" in rendered_text
     assert "s Save" in rendered_text

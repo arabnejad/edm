@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from datetime import timedelta, timezone
+
 import pytest
 
 from easy_docker_manager.core.log_text import (
+    DOCKER_UTC_LOG_TIMESTAMP_MODE,
+    HIDDEN_LOG_TIMESTAMP_MODE,
+    LOCAL_LOG_TIMESTAMP_MODE,
     apply_character_limit_to_log_line,
     apply_limits_to_log_content,
+    apply_log_timestamp_mode,
     count_repeated_lines_between_batches,
+    prepare_container_log_batch,
 )
 
 
@@ -17,6 +24,66 @@ def test_counting_repeated_lines_handles_full_and_missing_matches() -> None:
     assert count_repeated_lines_between_batches(["A", "B"], ["A", "B"]) == 2
     assert count_repeated_lines_between_batches(["A"], ["B"]) == 0
     assert count_repeated_lines_between_batches([], ["A"]) == 0
+
+
+def test_docker_utc_timestamp_mode_keeps_log_text_unchanged() -> None:
+    content = "2026-01-01T12:00:00.123456789Z server started"
+
+    assert apply_log_timestamp_mode(content, DOCKER_UTC_LOG_TIMESTAMP_MODE) == content
+
+
+def test_unknown_timestamp_mode_keeps_log_text_unchanged() -> None:
+    content = "2026-01-01T12:00:00.123456789Z server started"
+
+    assert apply_log_timestamp_mode(content, "Unknown") == content
+
+
+def test_hidden_timestamp_mode_removes_only_the_docker_prefix() -> None:
+    content = "2026-01-01T12:00:00.123456789Z " "application time 2026-01-01T11:59:59Z"
+
+    assert apply_log_timestamp_mode(content, HIDDEN_LOG_TIMESTAMP_MODE) == (
+        "application time 2026-01-01T11:59:59Z"
+    )
+
+
+def test_local_timestamp_mode_converts_time_and_keeps_nanoseconds() -> None:
+    content = "2026-01-01T12:00:00.123456789Z server started"
+
+    formatted_content = apply_log_timestamp_mode(
+        content,
+        LOCAL_LOG_TIMESTAMP_MODE,
+        timezone(timedelta(hours=-5, minutes=-30)),
+    )
+
+    assert formatted_content == ("2026-01-01T06:30:00.123456789-05:30 server started")
+
+
+def test_prepared_hidden_log_lines_keep_different_source_fingerprints() -> None:
+    prepared_batch = prepare_container_log_batch(
+        "2026-01-01T12:00:00Z ready\n2026-01-01T12:00:01Z ready",
+        HIDDEN_LOG_TIMESTAMP_MODE,
+        max_lines=10,
+        max_line_chars=100,
+    )
+
+    assert prepared_batch.display_text == "ready\nready"
+    assert len(set(prepared_batch.source_line_fingerprints)) == 2
+
+
+@pytest.mark.parametrize(
+    "timestamp_mode",
+    [HIDDEN_LOG_TIMESTAMP_MODE, LOCAL_LOG_TIMESTAMP_MODE],
+)
+def test_timestamp_mode_leaves_invalid_and_unprefixed_lines_unchanged(
+    timestamp_mode: str,
+) -> None:
+    content = (
+        "2026-02-30T12:00:00Z invalid date\n"
+        "2026-01-01T12:00:00.1234567890Z too precise\n"
+        "plain log line"
+    )
+
+    assert apply_log_timestamp_mode(content, timestamp_mode) == content
 
 
 def test_applying_log_content_limits_keeps_newest_lines_and_shortens_each_line() -> (

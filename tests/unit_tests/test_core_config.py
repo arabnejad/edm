@@ -6,7 +6,10 @@ import pytest
 
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.containers import ContainerProcessTable, ContainerSummary
-from easy_docker_manager.core.log_text import MIN_LOG_LINE_CHARS
+from easy_docker_manager.core.log_text import (
+    DOCKER_UTC_LOG_TIMESTAMP_MODE,
+    MIN_LOG_LINE_CHARS,
+)
 from easy_docker_manager.core.tabs import TabName
 
 
@@ -18,6 +21,7 @@ def test_app_config_uses_expected_defaults() -> None:
     assert config.initial_log_tail_lines == 100
     assert config.max_log_lines == 2000
     assert config.max_log_line_chars == 4000
+    assert config.log_timestamp_mode == DOCKER_UTC_LOG_TIMESTAMP_MODE
     assert config.tab_content_cache_max_entries == 50
     assert config.tab_content_cache_max_bytes == 25_000_000
     assert config.docker_request_timeout_seconds == 10.0
@@ -63,6 +67,11 @@ def test_app_config_requires_a_practical_log_line_limit() -> None:
 def test_app_config_rejects_unknown_application_log_level() -> None:
     with pytest.raises(ValueError, match="application_log_level must be one of"):
         AppConfig(application_log_level="TRACE")
+
+
+def test_app_config_rejects_unknown_log_timestamp_mode() -> None:
+    with pytest.raises(ValueError, match="log_timestamp_mode must be one of"):
+        AppConfig(log_timestamp_mode="Browser time")
 
 
 def test_container_models_store_summary_and_process_data() -> None:

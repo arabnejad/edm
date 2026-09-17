@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from easy_docker_manager.core.log_text import MIN_LOG_LINE_CHARS
+from easy_docker_manager.core.log_text import (
+    DOCKER_UTC_LOG_TIMESTAMP_MODE,
+    LOG_TIMESTAMP_MODE_NAMES,
+    MIN_LOG_LINE_CHARS,
+)
 
 APPLICATION_LOG_LEVEL_NAMES = (
     "DEBUG",
@@ -30,6 +34,7 @@ class AppConfig:
     initial_log_tail_lines: int = 100
     max_log_lines: int = 2000
     max_log_line_chars: int = 4000
+    log_timestamp_mode: str = DOCKER_UTC_LOG_TIMESTAMP_MODE
     tab_content_cache_max_entries: int = 50
     tab_content_cache_max_bytes: int = 25_000_000
     docker_request_timeout_seconds: float = 10.0
@@ -52,6 +57,9 @@ class AppConfig:
             raise ValueError(
                 f"max_log_line_chars must be at least {MIN_LOG_LINE_CHARS}"
             )
+        if self.log_timestamp_mode not in LOG_TIMESTAMP_MODE_NAMES:
+            supported_modes = ", ".join(LOG_TIMESTAMP_MODE_NAMES)
+            raise ValueError(f"log_timestamp_mode must be one of {supported_modes}")
         if self.tab_content_cache_max_entries <= 0:
             raise ValueError("tab_content_cache_max_entries must be positive")
         if self.tab_content_cache_max_bytes <= 0:
