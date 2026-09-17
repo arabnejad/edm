@@ -127,7 +127,7 @@ def test_container_resource_statistics_are_read_from_docker(
     assert second_snapshot.collected_at >= first_snapshot.collected_at
 
 
-def test_running_container_can_be_restarted_and_stopped(
+def test_container_can_be_restarted_stopped_and_started(
     docker_test_setup: DockerIntegrationTestContainer,
     local_docker_container_client: DockerSDKContainerClient,
 ) -> None:
@@ -140,5 +140,11 @@ def test_running_container_can_be_restarted_and_stopped(
         local_docker_container_client.stop_container(container.id)
         container.reload()
         assert container.status == "exited"
+
+        local_docker_container_client.start_container(container.id)
+        container.reload()
+        assert container.status == "running"
     finally:
-        container.start()
+        container.reload()
+        if container.status != "running":
+            container.start()

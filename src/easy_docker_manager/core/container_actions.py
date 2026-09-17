@@ -9,6 +9,7 @@ from enum import Enum
 class ContainerLifecycleAction(str, Enum):
     """Name an action that changes an existing container's state."""
 
+    START = "start"
     STOP = "stop"
     RESTART = "restart"
 
@@ -23,12 +24,14 @@ def get_available_actions_for_container_status(
 ) -> list[ContainerLifecycleAction]:
     """Return the actions EDM supports for the reported Docker status."""
     normalized_status = container_status.casefold()
-    if normalized_status != "running":
-        return []
-    return [
-        ContainerLifecycleAction.RESTART,
-        ContainerLifecycleAction.STOP,
-    ]
+    if normalized_status == "running":
+        return [
+            ContainerLifecycleAction.RESTART,
+            ContainerLifecycleAction.STOP,
+        ]
+    if normalized_status in {"created", "exited"}:
+        return [ContainerLifecycleAction.START]
+    return []
 
 
 @dataclass

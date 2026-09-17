@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class ContainerLifecycleActionRunner:
-    """Submit Stop or Restart and apply its result on the UI thread."""
+    """Submit Start, Stop, or Restart and apply its result on the UI thread."""
 
     def __init__(
         self,
@@ -68,6 +68,8 @@ class ContainerLifecycleActionRunner:
         action: ContainerLifecycleAction,
     ) -> Callable[[str], None]:
         """Return the explicit Docker client method for one supported action."""
+        if action == ContainerLifecycleAction.START:
+            return self.docker_container_client.start_container
         if action == ContainerLifecycleAction.STOP:
             return self.docker_container_client.stop_container
         if action == ContainerLifecycleAction.RESTART:
@@ -109,6 +111,8 @@ class ContainerLifecycleActionRunner:
     @staticmethod
     def _get_action_progress_word(action: ContainerLifecycleAction) -> str:
         """Return the verb used while an action is running."""
+        if action == ContainerLifecycleAction.START:
+            return "Starting"
         if action == ContainerLifecycleAction.STOP:
             return "Stopping"
         if action == ContainerLifecycleAction.RESTART:
@@ -118,6 +122,8 @@ class ContainerLifecycleActionRunner:
     @staticmethod
     def _get_completed_action_word(action: ContainerLifecycleAction) -> str:
         """Return the verb used after an action succeeds."""
+        if action == ContainerLifecycleAction.START:
+            return "started"
         if action == ContainerLifecycleAction.STOP:
             return "stopped"
         if action == ContainerLifecycleAction.RESTART:

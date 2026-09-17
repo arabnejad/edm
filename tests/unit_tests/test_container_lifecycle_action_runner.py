@@ -14,6 +14,12 @@ from easy_docker_manager.core.container_actions import ContainerLifecycleAction
     ),
     [
         (
+            ContainerLifecycleAction.START,
+            "start_container",
+            'Starting container "web"...',
+            'Container "web" started. Refreshing containers...',
+        ),
+        (
             ContainerLifecycleAction.STOP,
             "stop_container",
             'Stopping container "web"...',

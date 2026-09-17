@@ -75,7 +75,7 @@ class DockerRequestFailedError(DockerContainerClientError):
 
 
 class ContainerLifecycleActionError(DockerContainerClientError):
-    """Raised when Docker cannot stop or restart a container."""
+    """Raised when Docker cannot start, stop, or restart a container."""
 
     def __init__(self, action_name: str, container_id: str, reason: str) -> None:
         self.action_name = action_name
@@ -167,6 +167,10 @@ class DockerContainerClient(ABC):
         container_id: str,
     ) -> ContainerResourceStatsSnapshot:
         """Return one current resource-usage sample for a container."""
+
+    @abstractmethod
+    def start_container(self, container_id: str) -> None:
+        """Start a created or exited container."""
 
     @abstractmethod
     def stop_container(self, container_id: str) -> None:

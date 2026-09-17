@@ -153,7 +153,7 @@ class DockerManager:
 
     @property
     def is_container_lifecycle_action_in_progress(self) -> bool:
-        """Return whether Stop or Restart is currently running."""
+        """Return whether Start, Stop, or Restart is currently running."""
         return self.container_lifecycle_action_runner.is_action_in_progress
 
     def start_container_lifecycle_action(
