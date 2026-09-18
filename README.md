@@ -301,6 +301,19 @@ Start and Restart use the existing container and its current Docker
 configuration. They do not reread a Compose file or recreate a Compose
 service.
 
+Compose-managed containers also offer **Recreate Compose service** when Docker
+provides the project name, service name, working directory, and Compose file
+paths in its labels. This runs the equivalent of `docker compose up -d
+--no-deps --force-recreate` for that service through the selected Docker
+context. It replaces the container, so the ID may change and data kept only in
+the old container's writable layer may be lost.
+
+The Compose command runs on the computer where EDM is running. The working
+directory and Compose files named in the container labels must exist on that
+computer. This matters for remote Docker contexts because those labels often
+contain paths from the remote server. EDM reports the missing path instead of
+running an incomplete command.
+
 ## Container Filtering
 
 Press `f` while the container panel is active, then type part of a container

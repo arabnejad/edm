@@ -10,11 +10,20 @@ from easy_docker_manager.core.containers import ContainerSummary
 
 DOCKER_COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
 DOCKER_COMPOSE_SERVICE_LABEL = "com.docker.compose.service"
+DOCKER_COMPOSE_WORKING_DIRECTORY_LABEL = "com.docker.compose.project.working_dir"
+DOCKER_COMPOSE_CONFIG_FILES_LABEL = "com.docker.compose.project.config_files"
 CONTAINER_HEALTH_STATUS_PATTERN = re.compile(
     r"\((?:health:\s*)?(healthy|unhealthy|starting)\)",
     re.IGNORECASE,
 )
 CONTAINER_EXIT_CODE_PATTERN = re.compile(r"^Exited\s+\((\d+)\)", re.IGNORECASE)
+
+
+def _get_compose_config_file_paths(label_value: object) -> tuple[str, ...]:
+    """Split Compose's comma-separated configuration file label."""
+    if not isinstance(label_value, str):
+        return ()
+    return tuple(path.strip() for path in label_value.split(",") if path.strip())
 
 
 def _format_container_creation_time(created_at_value: Any) -> str:
@@ -72,6 +81,12 @@ def to_container_summary(
     container_labels = docker_container_list_item.get("Labels") or {}
     compose_project_name = container_labels.get(DOCKER_COMPOSE_PROJECT_LABEL) or None
     compose_service_name = container_labels.get(DOCKER_COMPOSE_SERVICE_LABEL) or None
+    compose_working_directory = (
+        container_labels.get(DOCKER_COMPOSE_WORKING_DIRECTORY_LABEL) or None
+    )
+    compose_config_file_paths = _get_compose_config_file_paths(
+        container_labels.get(DOCKER_COMPOSE_CONFIG_FILES_LABEL)
+    )
 
     return ContainerSummary(
         container_id=container_id,
@@ -83,6 +98,8 @@ def to_container_summary(
         compose_service_name=compose_service_name,
         health_status=_get_container_health_status(status, docker_status_text),
         exit_code=_get_container_exit_code(status, docker_status_text),
+        compose_working_directory=compose_working_directory,
+        compose_config_file_paths=compose_config_file_paths,
     )
 
 

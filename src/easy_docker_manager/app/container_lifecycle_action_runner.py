@@ -10,14 +10,18 @@ from typing import Optional
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.core.container_actions import ContainerLifecycleAction
+from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.docker.compose_service_recreator import (
+    DockerComposeServiceRecreator,
+)
 from easy_docker_manager.docker.container_client import DockerContainerClient
 
 logger = logging.getLogger(__name__)
 
 
 class ContainerLifecycleActionRunner:
-    """Submit Start, Stop, or Restart and apply its result on the UI thread."""
+    """Submit container or Compose actions and apply results on the UI thread."""
 
     def __init__(
         self,
@@ -25,11 +29,17 @@ class ContainerLifecycleActionRunner:
         background_executor: BackgroundExecutor,
         docker_container_client: DockerContainerClient,
         request_container_list_refresh: Callable[[], None],
+        docker_compose_service_recreator: Optional[
+            DockerComposeServiceRecreator
+        ] = None,
     ) -> None:
         self.state = state
         self.background_executor = background_executor
         self.docker_container_client = docker_container_client
         self._request_container_list_refresh = request_container_list_refresh
+        self.docker_compose_service_recreator = (
+            docker_compose_service_recreator or DockerComposeServiceRecreator()
+        )
         self._active_action_future: Optional[Future[None]] = None
 
     @property
@@ -40,25 +50,27 @@ class ContainerLifecycleActionRunner:
     def start_action(
         self,
         action: ContainerLifecycleAction,
-        container_id: str,
-        container_name: str,
+        container: ContainerSummary,
     ) -> bool:
         """Submit one action, returning False when another action is active."""
         if self._active_action_future is not None:
             return False
 
-        docker_request = self._get_docker_request_for_action(action)
-        self.state.status_message = (
-            f"{self._get_action_progress_word(action)} container "
-            f'"{container_name}"...'
+        docker_request, docker_request_arguments = self._get_docker_request_for_action(
+            action,
+            container,
+        )
+        self.state.status_message = self._get_action_progress_message(
+            action,
+            container.name,
         )
         self._active_action_future = self.background_executor.submit(
             docker_request,
-            container_id,
+            *docker_request_arguments,
             on_complete=partial(
                 self._apply_action_result,
                 action,
-                container_name,
+                container.name,
             ),
         )
         return True
@@ -66,14 +78,26 @@ class ContainerLifecycleActionRunner:
     def _get_docker_request_for_action(
         self,
         action: ContainerLifecycleAction,
-    ) -> Callable[[str], None]:
-        """Return the explicit Docker client method for one supported action."""
+        container: ContainerSummary,
+    ) -> tuple[Callable[..., None], tuple[object, ...]]:
+        """Return the worker function and arguments for one supported action."""
+        if action == ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE:
+            return (
+                self.docker_compose_service_recreator.recreate_service,
+                (container, self.state.active_docker_context),
+            )
         if action == ContainerLifecycleAction.START:
-            return self.docker_container_client.start_container
+            return self.docker_container_client.start_container, (
+                container.container_id,
+            )
         if action == ContainerLifecycleAction.STOP:
-            return self.docker_container_client.stop_container
+            return self.docker_container_client.stop_container, (
+                container.container_id,
+            )
         if action == ContainerLifecycleAction.RESTART:
-            return self.docker_container_client.restart_container
+            return self.docker_container_client.restart_container, (
+                container.container_id,
+            )
         raise ValueError(f"Unsupported container action: {action}")
 
     def _apply_action_result(
@@ -96,39 +120,68 @@ class ContainerLifecycleActionRunner:
                 container_name,
                 exc,
             )
-            self.state.status_message = (
-                f'Could not {action.value} container "{container_name}": {exc}'
+            self.state.status_message = self._get_action_error_message(
+                action,
+                container_name,
+                exc,
             )
             return True
 
-        self.state.status_message = (
-            f'Container "{container_name}" '
-            f"{self._get_completed_action_word(action)}. Refreshing containers..."
+        self.state.status_message = self._get_action_completed_message(
+            action,
+            container_name,
         )
         self._request_container_list_refresh()
         return True
 
     @staticmethod
-    def _get_action_progress_word(action: ContainerLifecycleAction) -> str:
-        """Return the verb used while an action is running."""
+    def _get_action_progress_message(
+        action: ContainerLifecycleAction,
+        container_name: str,
+    ) -> str:
+        """Return the status shown while one action is running."""
+        if action == ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE:
+            return f'Recreating Compose service for container "{container_name}"...'
         if action == ContainerLifecycleAction.START:
-            return "Starting"
+            return f'Starting container "{container_name}"...'
         if action == ContainerLifecycleAction.STOP:
-            return "Stopping"
+            return f'Stopping container "{container_name}"...'
         if action == ContainerLifecycleAction.RESTART:
-            return "Restarting"
+            return f'Restarting container "{container_name}"...'
         raise ValueError(f"Unsupported container action: {action}")
 
     @staticmethod
-    def _get_completed_action_word(action: ContainerLifecycleAction) -> str:
-        """Return the verb used after an action succeeds."""
+    def _get_action_completed_message(
+        action: ContainerLifecycleAction,
+        container_name: str,
+    ) -> str:
+        """Return the status shown after one action succeeds."""
+        if action == ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE:
+            return (
+                f'Compose service for container "{container_name}" recreated. '
+                "Refreshing containers..."
+            )
         if action == ContainerLifecycleAction.START:
-            return "started"
+            return f'Container "{container_name}" started. Refreshing containers...'
         if action == ContainerLifecycleAction.STOP:
-            return "stopped"
+            return f'Container "{container_name}" stopped. Refreshing containers...'
         if action == ContainerLifecycleAction.RESTART:
-            return "restarted"
+            return f'Container "{container_name}" restarted. Refreshing containers...'
         raise ValueError(f"Unsupported container action: {action}")
+
+    @staticmethod
+    def _get_action_error_message(
+        action: ContainerLifecycleAction,
+        container_name: str,
+        error: Exception,
+    ) -> str:
+        """Return the status shown after one action fails."""
+        if action == ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE:
+            return (
+                f'Could not recreate Compose service for container "{container_name}": '
+                f"{error}"
+            )
+        return f'Could not {action.value} container "{container_name}": {error}'
 
 
 __all__ = ["ContainerLifecycleActionRunner"]

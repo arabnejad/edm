@@ -183,6 +183,25 @@ def test_container_action_popup_explains_start() -> None:
     assert "configuration." in rendered_text
 
 
+def test_container_action_popup_warns_before_compose_recreation() -> None:
+    menu_state = ContainerActionMenuState(
+        container_id="container-1",
+        container_name="web",
+        available_actions=[ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE],
+        is_awaiting_confirmation=True,
+    )
+    state = TerminalSessionState(active_popup=menu_state)
+    view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
+
+    view.render(state, [], lambda line: line)
+
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert 'Recreate Compose service for "web"?' in rendered_text
+    assert "Its ID may" in rendered_text
+    assert "writable layer may be" in rendered_text
+    assert "lost." in rendered_text
+
+
 def test_docker_connection_popup_shows_contexts_and_selected_endpoint() -> None:
     local_context = DockerContextDetails(
         "default",

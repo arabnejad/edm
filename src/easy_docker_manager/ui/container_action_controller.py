@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.core.container_actions import (
     ContainerActionMenuState,
     get_available_actions_for_container_status,
 )
+from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 
 
@@ -35,7 +38,8 @@ class ContainerActionController:
             return True
 
         available_actions = get_available_actions_for_container_status(
-            selected_container.status
+            selected_container.status,
+            selected_container.can_recreate_compose_service,
         )
         if not available_actions:
             self.state.status_message = (
@@ -95,41 +99,40 @@ class ContainerActionController:
             return False
 
         selected_action = menu_state.selected_action
-        if not self._selected_action_is_still_available_for_target_container(
-            menu_state
-        ):
+        target_container = self._get_current_target_container(menu_state)
+        if target_container is None:
             self.state.active_popup = None
             self.state.status_message = (
                 "The container status changed. Open Actions to see its current options."
             )
             return True
 
-        container_id = menu_state.container_id
-        container_name = menu_state.container_name
         self.state.active_popup = None
         if self.docker_manager.start_container_lifecycle_action(
             selected_action,
-            container_id,
-            container_name,
+            target_container,
         ):
             return True
 
         self.state.status_message = "A container action is already running."
         return True
 
-    def _selected_action_is_still_available_for_target_container(
+    def _get_current_target_container(
         self,
         menu_state: ContainerActionMenuState,
-    ) -> bool:
-        """Check the latest loaded status before submitting the chosen action."""
+    ) -> Optional[ContainerSummary]:
+        """Return the target when its selected action is still available."""
         for container in self.state.container_list.displayed_containers:
             if container.container_id != menu_state.container_id:
                 continue
-            return (
-                menu_state.selected_action
-                in get_available_actions_for_container_status(container.status)
+            available_actions = get_available_actions_for_container_status(
+                container.status,
+                container.can_recreate_compose_service,
             )
-        return False
+            if menu_state.selected_action in available_actions:
+                return container
+            return None
+        return None
 
 
 __all__ = ["ContainerActionController"]

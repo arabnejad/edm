@@ -22,8 +22,9 @@ class ContainerSummary:
     """Container details displayed and sorted in the terminal UI.
 
     Docker supplies the id, name, status, image name, and creation time for
-    every listed container. Compose project and service names come from
-    labels, so they are None for containers started without Docker Compose.
+    every listed container. The Compose fields come from labels, so they are
+    empty for containers started without Docker Compose. The working directory
+    and file paths are used only by the Recreate Compose service action.
     """
 
     container_id: str
@@ -35,6 +36,8 @@ class ContainerSummary:
     compose_service_name: Optional[str] = None
     health_status: Optional[str] = None
     exit_code: Optional[int] = None
+    compose_working_directory: Optional[str] = None
+    compose_config_file_paths: tuple[str, ...] = ()
 
     @property
     def is_running(self) -> bool:
@@ -49,6 +52,16 @@ class ContainerSummary:
         if self.exit_code is not None:
             return f"{self.status} {self.exit_code}"
         return self.status
+
+    @property
+    def can_recreate_compose_service(self) -> bool:
+        """Return whether Docker supplied the labels needed for recreation."""
+        return bool(
+            self.compose_project_name
+            and self.compose_service_name
+            and self.compose_working_directory
+            and self.compose_config_file_paths
+        )
 
 
 @dataclass

@@ -169,6 +169,7 @@ class ContainerListRefresher:
         containers: list[ContainerSummary],
     ) -> bool:
         """Store a refreshed list without losing its sort or selected container."""
+        previously_selected_container = self.state.selected_container_summary
         previously_selected_container_id = self.state.selected_container_id
         container_list = self.state.container_list
         previous_displayed_containers = list(container_list.displayed_containers)
@@ -226,6 +227,13 @@ class ContainerListRefresher:
             previously_selected_container_id
         )
         if self.state.selected_container_index is None:
+            self.state.selected_container_index = (
+                self._find_replacement_compose_service_index(
+                    previously_selected_container,
+                    displayed_containers,
+                )
+            )
+        if self.state.selected_container_index is None:
             self.state.selected_container_index = 0
 
         self.state.status_message = self._get_container_count_message()
@@ -240,6 +248,28 @@ class ContainerListRefresher:
         if selected_container_changed or selected_container_status_changed:
             self._prepare_selected_container_details(selected_container_status_changed)
         return True
+
+    @staticmethod
+    def _find_replacement_compose_service_index(
+        previous_container: Optional[ContainerSummary],
+        displayed_containers: list[ContainerSummary],
+    ) -> Optional[int]:
+        """Find a replacement container from the same Compose service."""
+        if (
+            previous_container is None
+            or previous_container.compose_project_name is None
+            or previous_container.compose_service_name is None
+        ):
+            return None
+        for index, container in enumerate(displayed_containers):
+            if (
+                container.compose_project_name
+                == previous_container.compose_project_name
+                and container.compose_service_name
+                == previous_container.compose_service_name
+            ):
+                return index
+        return None
 
     def _get_empty_container_list_message(self) -> str:
         """Return the empty-list message for the current view and filter."""

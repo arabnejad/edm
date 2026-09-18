@@ -39,18 +39,18 @@ def test_container_lifecycle_action_runs_once_and_refreshes_after_success(
     progress_message: str,
     completed_message: str,
     docker_manager_factory,
+    container_summary_factory,
 ) -> None:
     test_setup = docker_manager_factory()
+    selected_container = container_summary_factory()
 
     assert test_setup.docker_manager.start_container_lifecycle_action(
         action,
-        "container-1",
-        "web",
+        selected_container,
     )
     assert not test_setup.docker_manager.start_container_lifecycle_action(
         ContainerLifecycleAction.STOP,
-        "container-1",
-        "web",
+        selected_container,
     )
     assert test_setup.docker_manager.is_container_lifecycle_action_in_progress
     action_request = test_setup.background_executor.requests[0]
@@ -70,12 +70,12 @@ def test_container_lifecycle_action_runs_once_and_refreshes_after_success(
 
 def test_failed_container_lifecycle_action_shows_error_without_refreshing(
     docker_manager_factory,
+    container_summary_factory,
 ) -> None:
     test_setup = docker_manager_factory()
     test_setup.docker_manager.start_container_lifecycle_action(
         ContainerLifecycleAction.STOP,
-        "container-1",
-        "worker",
+        container_summary_factory(name="worker"),
     )
 
     assert test_setup.background_executor.complete_submission(
@@ -87,15 +87,76 @@ def test_failed_container_lifecycle_action_shows_error_without_refreshing(
     assert len(test_setup.background_executor.requests) == 1
 
 
+def test_compose_recreate_uses_container_metadata_and_active_context(
+    docker_manager_factory,
+    container_summary_factory,
+) -> None:
+    test_setup = docker_manager_factory()
+    container = container_summary_factory(
+        compose_project_name="example",
+        compose_service_name="web",
+        compose_working_directory="/workspace/example",
+        compose_config_file_paths=("/workspace/example/compose.yaml",),
+    )
+
+    assert test_setup.docker_manager.start_container_lifecycle_action(
+        ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE,
+        container,
+    )
+
+    action_request = test_setup.background_executor.requests[0]
+    assert action_request.fn == (
+        test_setup.container_lifecycle_action_runner.docker_compose_service_recreator.recreate_service
+    )
+    assert action_request.arguments == (
+        container,
+        test_setup.state.active_docker_context,
+    )
+    assert test_setup.state.status_message == (
+        'Recreating Compose service for container "web"...'
+    )
+
+    assert test_setup.background_executor.complete_submission(result=None)
+    assert test_setup.state.status_message == (
+        'Compose service for container "web" recreated. Refreshing containers...'
+    )
+
+
+def test_failed_compose_recreate_shows_the_command_error(
+    docker_manager_factory,
+    container_summary_factory,
+) -> None:
+    test_setup = docker_manager_factory()
+    container = container_summary_factory(
+        compose_project_name="example",
+        compose_service_name="web",
+        compose_working_directory="/workspace/example",
+        compose_config_file_paths=("/workspace/example/compose.yaml",),
+    )
+    test_setup.docker_manager.start_container_lifecycle_action(
+        ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE,
+        container,
+    )
+
+    assert test_setup.background_executor.complete_submission(
+        exception=RuntimeError("compose file is invalid")
+    )
+    assert test_setup.state.status_message == (
+        'Could not recreate Compose service for container "web": '
+        "compose file is invalid"
+    )
+    assert len(test_setup.background_executor.requests) == 1
+
+
 def test_action_completion_reloads_after_an_older_refresh_finishes(
     docker_manager_factory,
+    container_summary_factory,
 ) -> None:
     test_setup = docker_manager_factory()
     test_setup.docker_manager.start_container_list_refresh(force=True)
     test_setup.docker_manager.start_container_lifecycle_action(
         ContainerLifecycleAction.STOP,
-        "container-1",
-        "web",
+        container_summary_factory(),
     )
 
     assert test_setup.background_executor.complete_submission(1, result=None)

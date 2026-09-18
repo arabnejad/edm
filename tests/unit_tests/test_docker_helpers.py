@@ -272,6 +272,10 @@ def test_container_mapper_reads_docker_list_response_fields() -> None:
         "Labels": {
             "com.docker.compose.project": "example",
             "com.docker.compose.service": "web",
+            "com.docker.compose.project.working_dir": "/srv/example",
+            "com.docker.compose.project.config_files": (
+                "/srv/example/compose.yaml,/srv/example/compose.dev.yaml"
+            ),
         },
     }
 
@@ -284,6 +288,12 @@ def test_container_mapper_reads_docker_list_response_fields() -> None:
     assert container_summary.created_at == "2026-01-01T12:00:00Z"
     assert container_summary.compose_project_name == "example"
     assert container_summary.compose_service_name == "web"
+    assert container_summary.compose_working_directory == "/srv/example"
+    assert container_summary.compose_config_file_paths == (
+        "/srv/example/compose.yaml",
+        "/srv/example/compose.dev.yaml",
+    )
+    assert container_summary.can_recreate_compose_service
 
 
 def test_container_mapper_uses_short_id_when_name_is_missing() -> None:
@@ -304,6 +314,7 @@ def test_container_mapper_uses_short_id_when_name_is_missing() -> None:
     assert container_summary.created_at == "2026-01-01T12:00:00Z"
     assert container_summary.compose_project_name is None
     assert container_summary.compose_service_name is None
+    assert not container_summary.can_recreate_compose_service
 
 
 @pytest.mark.parametrize(

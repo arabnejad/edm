@@ -10,6 +10,7 @@ from easy_docker_manager.core.container_actions import (
     ContainerLifecycleAction,
     get_available_actions_for_container_status,
 )
+from easy_docker_manager.core.container_list import ContainerList
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.ui.container_action_controller import (
     ContainerActionController,
@@ -39,6 +40,39 @@ def test_available_actions_follow_container_status(
     )
 
 
+@pytest.mark.parametrize(
+    ("container_status", "expected_actions"),
+    [
+        (
+            "running",
+            [
+                ContainerLifecycleAction.RESTART,
+                ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE,
+                ContainerLifecycleAction.STOP,
+            ],
+        ),
+        (
+            "exited",
+            [
+                ContainerLifecycleAction.START,
+                ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE,
+            ],
+        ),
+    ],
+)
+def test_compose_recreate_is_added_to_supported_container_actions(
+    container_status: str,
+    expected_actions: list[ContainerLifecycleAction],
+) -> None:
+    assert (
+        get_available_actions_for_container_status(
+            container_status,
+            can_recreate_compose_service=True,
+        )
+        == expected_actions
+    )
+
+
 def test_open_menu_uses_selected_running_container(
     session_state_factory,
 ) -> None:
@@ -55,6 +89,34 @@ def test_open_menu_uses_selected_running_container(
     assert menu_state.container_name == "web"
     assert menu_state.available_actions == [
         ContainerLifecycleAction.RESTART,
+        ContainerLifecycleAction.STOP,
+    ]
+
+
+def test_open_menu_includes_recreate_when_compose_labels_are_complete(
+    container_summary_factory,
+) -> None:
+    compose_container = container_summary_factory(
+        compose_project_name="example",
+        compose_service_name="web",
+        compose_working_directory="/workspace/example",
+        compose_config_file_paths=("/workspace/example/compose.yaml",),
+    )
+    state = TerminalSessionState(
+        container_list=ContainerList([compose_container]),
+        selected_container_index=0,
+    )
+    docker_manager = Mock(spec=DockerManager)
+    docker_manager.is_container_lifecycle_action_in_progress = False
+    controller = ContainerActionController(state, docker_manager)
+
+    assert controller.open_container_action_menu()
+
+    menu_state = state.active_popup
+    assert isinstance(menu_state, ContainerActionMenuState)
+    assert menu_state.available_actions == [
+        ContainerLifecycleAction.RESTART,
+        ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE,
         ContainerLifecycleAction.STOP,
     ]
 
@@ -79,8 +141,7 @@ def test_open_menu_submits_start_for_an_exited_container(
     assert controller.handle_menu_keypress("enter")
     docker_manager.start_container_lifecycle_action.assert_called_once_with(
         ContainerLifecycleAction.START,
-        "container-1",
-        "web",
+        state.container_list.displayed_containers[0],
     )
 
 
@@ -119,8 +180,7 @@ def test_enter_confirms_then_submits_selected_action(session_state_factory) -> N
     assert state.active_popup is None
     docker_manager.start_container_lifecycle_action.assert_called_once_with(
         ContainerLifecycleAction.STOP,
-        "container-1",
-        "web",
+        state.container_list.displayed_containers[0],
     )
 
 
