@@ -23,7 +23,7 @@ src/
       selected_tab_load.py        Loads the selected container tab
       container_log_updates.py    Polls and merges container logs
       container_lifecycle_action_runner.py
-                                  Runs a confirmed Start, Stop, or Restart request
+                                  Runs a confirmed container or Compose action
 
     config/
       app_config_store.py         Loads and rewrites config.json
@@ -43,6 +43,9 @@ src/
     docker/
       container_client.py         DockerContainerClient interface and EDM errors
       client_factory.py           Creates and validates Docker SDK clients
+      compose_service_recreator.py
+                                  Runs one Docker Compose service recreation
+      docker_cli.py               Selects the Docker CLI context used by commands
       docker_contexts.py          Reads Docker contexts and endpoints
       container_mapper.py         Converts Docker list responses to EDM data
       error_mapping.py            Converts Docker SDK errors to EDM errors
@@ -469,6 +472,15 @@ successful request, it asks `ContainerListRefresher` to reload the list
 immediately. If an older list refresh is already running, that result is
 discarded and a new refresh starts after it finishes.
 
+Compose recreation uses the same action runner, but
+`DockerComposeServiceRecreator` runs the Docker CLI because Docker Compose does
+not have a Python SDK. It checks the working directory and every Compose file
+before running `docker compose up`. `docker_cli.py` adds the context shared by
+CLI actions. Named contexts use `--context`; a `DOCKER_HOST` connection keeps
+using the current environment.
+When the replacement has a new container ID, `ContainerListRefresher` selects
+the first container with the same Compose project and service labels.
+
 Stopping hides the container when the list uses **Running only**. It remains
 visible when **All containers** is selected. Restarting uses the existing
 Docker container and does not recreate a Compose service.
@@ -625,7 +637,7 @@ Four smaller classes do the actual request tracking:
 | `ContainerListRefresher` | Container-list refreshes, selection preservation, and missing-container cleanup |
 | `SelectedTabContentLoader` | Initial tab loads, cached-tab reuse, and periodic live-tab refreshes |
 | `ContainerLogUpdater` | Incremental log polls, Docker since timestamps, overlap removal, and log limits |
-| `ContainerLifecycleActionRunner` | One confirmed Start, Stop, or Restart request and the list refresh that follows it |
+| `ContainerLifecycleActionRunner` | One confirmed container or Compose action and the list refresh that follows it |
 
 Initial logs are limited once by `ContainerTabTextLoader` while its Docker request runs
 in a worker thread. Incremental updates need two steps: each fetched batch is

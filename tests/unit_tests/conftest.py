@@ -159,6 +159,8 @@ def container_summary_factory() -> Callable[..., ContainerSummary]:
         compose_service_name: Optional[str] = None,
         health_status: Optional[str] = None,
         exit_code: Optional[int] = None,
+        compose_working_directory: Optional[str] = None,
+        compose_config_file_paths: tuple[str, ...] = (),
     ) -> ContainerSummary:
         return ContainerSummary(
             container_id=container_id,
@@ -170,6 +172,8 @@ def container_summary_factory() -> Callable[..., ContainerSummary]:
             compose_service_name=compose_service_name,
             health_status=health_status,
             exit_code=exit_code,
+            compose_working_directory=compose_working_directory,
+            compose_config_file_paths=compose_config_file_paths,
         )
 
     return create_container_summary

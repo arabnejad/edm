@@ -439,6 +439,34 @@ def test_compose_grouping_keeps_the_same_container_selected(
     assert state.selected_container_id == "standalone"
 
 
+def test_refresh_selects_replacement_from_the_same_compose_service(
+    docker_manager_factory,
+    container_summary_factory,
+) -> None:
+    previous_container = container_summary_factory(
+        "old-id",
+        name="example-web-1",
+        compose_project_name="example",
+        compose_service_name="web",
+    )
+    state = TerminalSessionState(
+        container_list=ContainerList([previous_container]),
+        selected_container_index=0,
+    )
+    test_setup = docker_manager_factory(state)
+    test_setup.docker_manager.start_container_list_refresh(force=True)
+    replacement_container = container_summary_factory(
+        "new-id",
+        name="example-web-1",
+        compose_project_name="example",
+        compose_service_name="web",
+    )
+
+    test_setup.background_executor.complete_submission(result=[replacement_container])
+
+    assert state.selected_container_id == "new-id"
+
+
 def test_container_filter_keeps_matching_containers_in_the_selected_sort_order(
     docker_manager_factory,
     container_summary_factory,

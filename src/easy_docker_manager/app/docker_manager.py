@@ -20,6 +20,7 @@ from easy_docker_manager.app.container_log_updates import ContainerLogUpdater
 from easy_docker_manager.app.selected_tab_load import SelectedTabContentLoader
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_actions import ContainerLifecycleAction
+from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.tabs.tab_data_loader import ContainerTabTextLoader
@@ -32,8 +33,8 @@ class DockerManager:
     the same object after the user changes a container, tab, or sort order.
     ContainerListRefresher handles the container list,
     SelectedTabContentLoader handles full tab loads, and ContainerLogUpdater
-    handles later log polls, and ContainerLifecycleActionRunner handles Stop
-    and Restart.
+    handles later log polls, and ContainerLifecycleActionRunner handles
+    container actions.
     """
 
     MINIMUM_REQUEST_CHECK_DELAY = 0.05
@@ -159,14 +160,12 @@ class DockerManager:
     def start_container_lifecycle_action(
         self,
         action: ContainerLifecycleAction,
-        container_id: str,
-        container_name: str,
+        container: ContainerSummary,
     ) -> bool:
         """Ask the lifecycle runner to submit one container action."""
         return self.container_lifecycle_action_runner.start_action(
             action,
-            container_id,
-            container_name,
+            container,
         )
 
     def _is_initial_log_content_load_in_progress(self) -> bool:

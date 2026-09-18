@@ -7,31 +7,51 @@ from enum import Enum
 
 
 class ContainerLifecycleAction(str, Enum):
-    """Name an action that changes an existing container's state."""
+    """Name an action available for the selected container."""
 
     START = "start"
     STOP = "stop"
     RESTART = "restart"
+    RECREATE_COMPOSE_SERVICE = "recreate Compose service"
 
     @property
     def display_name(self) -> str:
         """Return the action name shown in the container action menu."""
-        return self.value.capitalize()
+        return {
+            ContainerLifecycleAction.START: "Start",
+            ContainerLifecycleAction.STOP: "Stop",
+            ContainerLifecycleAction.RESTART: "Restart",
+            ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE: (
+                "Recreate Compose service"
+            ),
+        }[self]
 
 
 def get_available_actions_for_container_status(
     container_status: str,
+    can_recreate_compose_service: bool = False,
 ) -> list[ContainerLifecycleAction]:
     """Return the actions EDM supports for the reported Docker status."""
     normalized_status = container_status.casefold()
     if normalized_status == "running":
-        return [
+        available_actions = [
             ContainerLifecycleAction.RESTART,
             ContainerLifecycleAction.STOP,
         ]
-    if normalized_status in {"created", "exited"}:
-        return [ContainerLifecycleAction.START]
-    return []
+    elif normalized_status in {"created", "exited"}:
+        available_actions = [ContainerLifecycleAction.START]
+    else:
+        return []
+
+    if can_recreate_compose_service:
+        if normalized_status == "running":
+            available_actions.insert(
+                1,
+                ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE,
+            )
+        else:
+            available_actions.append(ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE)
+    return available_actions
 
 
 @dataclass
