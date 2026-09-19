@@ -144,7 +144,7 @@ class DockerConnectionController:
                 selected_context.unsupported_reason
             )
             return True
-        if self.docker_manager.is_container_lifecycle_action_in_progress:
+        if self.docker_manager.is_container_action_in_progress:
             menu_state.connection_error_messages[selected_context.context_name] = (
                 "Wait for the current container action to finish before changing "
                 "Docker context."

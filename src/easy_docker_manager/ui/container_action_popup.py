@@ -1,12 +1,12 @@
-"""Build the available lifecycle actions for one container."""
+"""Build the available actions for one container."""
 
 from __future__ import annotations
 
 import urwid
 
 from easy_docker_manager.core.container_actions import (
+    ContainerAction,
     ContainerActionMenuState,
-    ContainerLifecycleAction,
 )
 
 
@@ -15,7 +15,7 @@ def build_container_action_popup_menu(
     background_widget: urwid.Widget,
 ) -> urwid.Overlay:
     """Place the container action menu above the main terminal layout."""
-    if menu_state.is_awaiting_confirmation:
+    if menu_state.is_showing_action_details:
         content = _build_confirmation_content(menu_state)
         popup_height = 10
     else:
@@ -97,30 +97,33 @@ def _build_confirmation_content(
     )
 
 
-def _get_action_menu_label(action: ContainerLifecycleAction) -> str:
+def _get_action_menu_label(action: ContainerAction) -> str:
     """Return one action as it appears in the selection list."""
-    if action == ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE:
+    if action in {
+        ContainerAction.OPEN_SHELL,
+        ContainerAction.RECREATE_COMPOSE_SERVICE,
+    }:
         return action.display_name
     return f"{action.display_name} container"
 
 
 def _get_confirmation_question_end(
-    action: ContainerLifecycleAction,
+    action: ContainerAction,
     container_name: str,
 ) -> str:
     """Return the part of the confirmation question after the action name."""
-    if action == ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE:
+    if action == ContainerAction.RECREATE_COMPOSE_SERVICE:
         return f' for "{container_name}"?'
     return f' container "{container_name}"?'
 
 
-def _get_action_explanation(action: ContainerLifecycleAction) -> str:
+def _get_action_explanation(action: ContainerAction) -> str:
     """Return the short explanation shown before one action runs."""
-    if action == ContainerLifecycleAction.START:
+    if action == ContainerAction.START:
         return "The container will start with its existing Docker configuration."
-    if action == ContainerLifecycleAction.STOP:
+    if action == ContainerAction.STOP:
         return "The container will stop."
-    if action == ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE:
+    if action == ContainerAction.RECREATE_COMPOSE_SERVICE:
         return (
             "Compose will replace this service container. Its ID may change, and "
             "data kept only in its writable layer may be lost."

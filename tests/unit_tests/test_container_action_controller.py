@@ -6,8 +6,8 @@ import pytest
 
 from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.core.container_actions import (
+    ContainerAction,
     ContainerActionMenuState,
-    ContainerLifecycleAction,
     get_available_actions_for_container_status,
 )
 from easy_docker_manager.core.container_list import ContainerList
@@ -22,10 +22,14 @@ from easy_docker_manager.ui.container_action_controller import (
     [
         (
             "running",
-            [ContainerLifecycleAction.RESTART, ContainerLifecycleAction.STOP],
+            [
+                ContainerAction.RESTART,
+                ContainerAction.OPEN_SHELL,
+                ContainerAction.STOP,
+            ],
         ),
-        ("created", [ContainerLifecycleAction.START]),
-        ("exited", [ContainerLifecycleAction.START]),
+        ("created", [ContainerAction.START]),
+        ("exited", [ContainerAction.START]),
         ("paused", []),
         ("restarting", []),
         ("dead", []),
@@ -33,7 +37,7 @@ from easy_docker_manager.ui.container_action_controller import (
 )
 def test_available_actions_follow_container_status(
     container_status: str,
-    expected_actions: list[ContainerLifecycleAction],
+    expected_actions: list[ContainerAction],
 ) -> None:
     assert get_available_actions_for_container_status(container_status) == (
         expected_actions
@@ -46,23 +50,24 @@ def test_available_actions_follow_container_status(
         (
             "running",
             [
-                ContainerLifecycleAction.RESTART,
-                ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE,
-                ContainerLifecycleAction.STOP,
+                ContainerAction.RESTART,
+                ContainerAction.OPEN_SHELL,
+                ContainerAction.RECREATE_COMPOSE_SERVICE,
+                ContainerAction.STOP,
             ],
         ),
         (
             "exited",
             [
-                ContainerLifecycleAction.START,
-                ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE,
+                ContainerAction.START,
+                ContainerAction.RECREATE_COMPOSE_SERVICE,
             ],
         ),
     ],
 )
 def test_compose_recreate_is_added_to_supported_container_actions(
     container_status: str,
-    expected_actions: list[ContainerLifecycleAction],
+    expected_actions: list[ContainerAction],
 ) -> None:
     assert (
         get_available_actions_for_container_status(
@@ -78,8 +83,8 @@ def test_open_menu_uses_selected_running_container(
 ) -> None:
     state = session_state_factory()
     docker_manager = Mock(spec=DockerManager)
-    docker_manager.is_container_lifecycle_action_in_progress = False
-    controller = ContainerActionController(state, docker_manager)
+    docker_manager.is_container_action_in_progress = False
+    controller = ContainerActionController(state, docker_manager, Mock())
 
     assert controller.open_container_action_menu()
 
@@ -88,8 +93,9 @@ def test_open_menu_uses_selected_running_container(
     assert menu_state.container_id == "container-1"
     assert menu_state.container_name == "web"
     assert menu_state.available_actions == [
-        ContainerLifecycleAction.RESTART,
-        ContainerLifecycleAction.STOP,
+        ContainerAction.RESTART,
+        ContainerAction.OPEN_SHELL,
+        ContainerAction.STOP,
     ]
 
 
@@ -107,17 +113,18 @@ def test_open_menu_includes_recreate_when_compose_labels_are_complete(
         selected_container_index=0,
     )
     docker_manager = Mock(spec=DockerManager)
-    docker_manager.is_container_lifecycle_action_in_progress = False
-    controller = ContainerActionController(state, docker_manager)
+    docker_manager.is_container_action_in_progress = False
+    controller = ContainerActionController(state, docker_manager, Mock())
 
     assert controller.open_container_action_menu()
 
     menu_state = state.active_popup
     assert isinstance(menu_state, ContainerActionMenuState)
     assert menu_state.available_actions == [
-        ContainerLifecycleAction.RESTART,
-        ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE,
-        ContainerLifecycleAction.STOP,
+        ContainerAction.RESTART,
+        ContainerAction.OPEN_SHELL,
+        ContainerAction.RECREATE_COMPOSE_SERVICE,
+        ContainerAction.STOP,
     ]
 
 
@@ -127,20 +134,20 @@ def test_open_menu_submits_start_for_an_exited_container(
     state = session_state_factory()
     state.container_list.displayed_containers[0].status = "exited"
     docker_manager = Mock(spec=DockerManager)
-    docker_manager.is_container_lifecycle_action_in_progress = False
-    docker_manager.start_container_lifecycle_action.return_value = True
-    controller = ContainerActionController(state, docker_manager)
+    docker_manager.is_container_action_in_progress = False
+    docker_manager.start_container_action.return_value = True
+    controller = ContainerActionController(state, docker_manager, Mock())
 
     assert controller.open_container_action_menu()
 
     menu_state = state.active_popup
     assert isinstance(menu_state, ContainerActionMenuState)
-    assert menu_state.available_actions == [ContainerLifecycleAction.START]
+    assert menu_state.available_actions == [ContainerAction.START]
 
     assert controller.handle_menu_keypress("enter")
     assert controller.handle_menu_keypress("enter")
-    docker_manager.start_container_lifecycle_action.assert_called_once_with(
-        ContainerLifecycleAction.START,
+    docker_manager.start_container_action.assert_called_once_with(
+        ContainerAction.START,
         state.container_list.displayed_containers[0],
     )
 
@@ -151,8 +158,8 @@ def test_unsupported_container_status_shows_why_menu_did_not_open(
     state = session_state_factory()
     state.container_list.displayed_containers[0].status = "paused"
     docker_manager = Mock(spec=DockerManager)
-    docker_manager.is_container_lifecycle_action_in_progress = False
-    controller = ContainerActionController(state, docker_manager)
+    docker_manager.is_container_action_in_progress = False
+    controller = ContainerActionController(state, docker_manager, Mock())
 
     assert controller.open_container_action_menu()
 
@@ -165,36 +172,81 @@ def test_unsupported_container_status_shows_why_menu_did_not_open(
 def test_enter_confirms_then_submits_selected_action(session_state_factory) -> None:
     state = session_state_factory()
     docker_manager = Mock(spec=DockerManager)
-    docker_manager.is_container_lifecycle_action_in_progress = False
-    docker_manager.start_container_lifecycle_action.return_value = True
-    controller = ContainerActionController(state, docker_manager)
+    docker_manager.is_container_action_in_progress = False
+    docker_manager.start_container_action.return_value = True
+    controller = ContainerActionController(state, docker_manager, Mock())
     controller.open_container_action_menu()
 
+    assert controller.handle_menu_keypress("down")
     assert controller.handle_menu_keypress("down")
     assert controller.handle_menu_keypress("enter")
     menu_state = state.active_popup
     assert isinstance(menu_state, ContainerActionMenuState)
-    assert menu_state.is_awaiting_confirmation
+    assert menu_state.is_showing_action_details
     assert controller.handle_menu_keypress("enter")
 
     assert state.active_popup is None
-    docker_manager.start_container_lifecycle_action.assert_called_once_with(
-        ContainerLifecycleAction.STOP,
+    docker_manager.start_container_action.assert_called_once_with(
+        ContainerAction.STOP,
         state.container_list.displayed_containers[0],
     )
+
+
+def test_open_shell_requests_a_workspace_without_confirmation(
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    docker_manager = Mock(spec=DockerManager)
+    docker_manager.is_container_action_in_progress = False
+    request_container_shell = Mock(return_value=None)
+    controller = ContainerActionController(
+        state,
+        docker_manager,
+        request_container_shell,
+    )
+    controller.open_container_action_menu()
+    controller.handle_menu_keypress("down")
+    assert controller.handle_menu_keypress("enter")
+
+    selected_container = state.container_list.displayed_containers[0]
+    request_container_shell.assert_called_once_with(selected_container)
+    docker_manager.refresh_after_interactive_shell.assert_not_called()
+    assert state.active_popup is None
+    assert state.status_message == "Loading containers..."
+
+
+def test_shell_launch_error_is_shown_after_the_popup_closes(
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    docker_manager = Mock(spec=DockerManager)
+    docker_manager.is_container_action_in_progress = False
+    request_container_shell = Mock(return_value="Docker Exec exited with status 1.")
+    controller = ContainerActionController(
+        state,
+        docker_manager,
+        request_container_shell,
+    )
+    controller.open_container_action_menu()
+    controller.handle_menu_keypress("down")
+    assert controller.handle_menu_keypress("enter")
+
+    assert state.active_popup is None
+    assert state.status_message == "Docker Exec exited with status 1."
+    docker_manager.refresh_after_interactive_shell.assert_not_called()
 
 
 def test_escape_closes_confirmation_without_submitting(session_state_factory) -> None:
     state = session_state_factory()
     docker_manager = Mock(spec=DockerManager)
-    docker_manager.is_container_lifecycle_action_in_progress = False
-    controller = ContainerActionController(state, docker_manager)
+    docker_manager.is_container_action_in_progress = False
+    controller = ContainerActionController(state, docker_manager, Mock())
     controller.open_container_action_menu()
     controller.handle_menu_keypress("enter")
 
     assert controller.handle_menu_keypress("esc")
     assert state.active_popup is None
-    docker_manager.start_container_lifecycle_action.assert_not_called()
+    docker_manager.start_container_action.assert_not_called()
 
 
 def test_action_menu_does_not_open_while_another_action_runs(
@@ -202,8 +254,8 @@ def test_action_menu_does_not_open_while_another_action_runs(
 ) -> None:
     state = session_state_factory()
     docker_manager = Mock(spec=DockerManager)
-    docker_manager.is_container_lifecycle_action_in_progress = True
-    controller = ContainerActionController(state, docker_manager)
+    docker_manager.is_container_action_in_progress = True
+    controller = ContainerActionController(state, docker_manager, Mock())
 
     assert controller.open_container_action_menu()
     assert state.active_popup is None
@@ -213,8 +265,8 @@ def test_action_menu_does_not_open_while_another_action_runs(
 def test_action_menu_requires_a_selected_container() -> None:
     state = TerminalSessionState()
     docker_manager = Mock(spec=DockerManager)
-    docker_manager.is_container_lifecycle_action_in_progress = False
-    controller = ContainerActionController(state, docker_manager)
+    docker_manager.is_container_action_in_progress = False
+    controller = ContainerActionController(state, docker_manager, Mock())
 
     assert controller.open_container_action_menu()
     assert state.active_popup is None
@@ -226,8 +278,8 @@ def test_open_menu_and_unrelated_keys_do_not_change_an_open_menu(
 ) -> None:
     state = session_state_factory()
     docker_manager = Mock(spec=DockerManager)
-    docker_manager.is_container_lifecycle_action_in_progress = False
-    controller = ContainerActionController(state, docker_manager)
+    docker_manager.is_container_action_in_progress = False
+    controller = ContainerActionController(state, docker_manager, Mock())
 
     assert controller.open_container_action_menu()
     assert not controller.open_container_action_menu()
@@ -240,9 +292,9 @@ def test_failed_submission_closes_menu_and_reports_active_action(
 ) -> None:
     state = session_state_factory()
     docker_manager = Mock(spec=DockerManager)
-    docker_manager.is_container_lifecycle_action_in_progress = False
-    docker_manager.start_container_lifecycle_action.return_value = False
-    controller = ContainerActionController(state, docker_manager)
+    docker_manager.is_container_action_in_progress = False
+    docker_manager.start_container_action.return_value = False
+    controller = ContainerActionController(state, docker_manager, Mock())
     controller.open_container_action_menu()
     controller.handle_menu_keypress("enter")
 
@@ -256,8 +308,8 @@ def test_confirmation_rejects_an_action_after_container_status_changes(
 ) -> None:
     state = session_state_factory()
     docker_manager = Mock(spec=DockerManager)
-    docker_manager.is_container_lifecycle_action_in_progress = False
-    controller = ContainerActionController(state, docker_manager)
+    docker_manager.is_container_action_in_progress = False
+    controller = ContainerActionController(state, docker_manager, Mock())
     controller.open_container_action_menu()
     controller.handle_menu_keypress("enter")
     state.container_list.displayed_containers[0].status = "exited"
@@ -268,4 +320,4 @@ def test_confirmation_rejects_an_action_after_container_status_changes(
     assert state.status_message == (
         "The container status changed. Open Actions to see its current options."
     )
-    docker_manager.start_container_lifecycle_action.assert_not_called()
+    docker_manager.start_container_action.assert_not_called()

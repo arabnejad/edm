@@ -17,6 +17,7 @@ from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.config.app_config_store import AppConfigStore
 from easy_docker_manager.core.config import AppConfig
+from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.core.tab_content_cache import TabContentCache
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.diagnostics import get_installed_edm_version
@@ -96,6 +97,7 @@ class EDMRuntimeFactory:
     def create_runtime(
         self,
         notify_background_task_ready: Callable[[], None],
+        request_container_shell: Callable[[ContainerSummary], Optional[str]],
     ) -> EDMRuntime:
         """Create and connect all objects used by one EDMApp instance."""
         state = TerminalSessionState(
@@ -147,7 +149,11 @@ class EDMRuntimeFactory:
             self.docker_container_client,
         )
         settings_controller = SettingsController(state, self.app_config_store)
-        container_action_controller = ContainerActionController(state, docker_manager)
+        container_action_controller = ContainerActionController(
+            state,
+            docker_manager,
+            request_container_shell,
+        )
         docker_connection_controller = DockerConnectionController(
             state,
             self.app_config,

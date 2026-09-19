@@ -70,7 +70,7 @@ def _create_controller(
 ]:
     background_executor = Mock(spec=BackgroundExecutor)
     docker_manager = Mock(spec=DockerManager)
-    docker_manager.is_container_lifecycle_action_in_progress = False
+    docker_manager.is_container_action_in_progress = False
     context_reader = Mock(spec=DockerContextReader)
     context_reader.list_configured_docker_contexts.return_value = contexts
     docker_sdk_container_client = Mock(spec=DockerSDKContainerClient)
@@ -222,7 +222,7 @@ def test_context_change_waits_for_running_container_action() -> None:
         state,
         [local_context, remote_context],
     )
-    docker_manager.is_container_lifecycle_action_in_progress = True
+    docker_manager.is_container_action_in_progress = True
     controller.open_docker_connection_menu()
     controller.handle_menu_keypress("down")
 

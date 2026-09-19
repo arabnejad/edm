@@ -9,8 +9,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from easy_docker_manager.app.container_lifecycle_action_runner import (
-    ContainerLifecycleActionRunner,
+from easy_docker_manager.app.container_action_runner import (
+    ContainerActionRunner,
 )
 from easy_docker_manager.app.container_list_refresh import ContainerListRefresher
 from easy_docker_manager.app.container_log_updates import ContainerLogUpdater
@@ -82,7 +82,7 @@ class DockerManagerTestSetup:
     container_list_refresher: ContainerListRefresher
     selected_tab_content_loader: SelectedTabContentLoader
     container_log_updater: ContainerLogUpdater
-    container_lifecycle_action_runner: ContainerLifecycleActionRunner
+    container_action_runner: ContainerActionRunner
     state: TerminalSessionState
     background_executor: RecordingBackgroundExecutor
     tab_data_loader: Mock
@@ -114,9 +114,7 @@ def docker_manager_factory():
             container_list_refresher=docker_manager.container_list_refresher,
             selected_tab_content_loader=docker_manager.selected_tab_content_loader,
             container_log_updater=docker_manager.container_log_updater,
-            container_lifecycle_action_runner=(
-                docker_manager.container_lifecycle_action_runner
-            ),
+            container_action_runner=(docker_manager.container_action_runner),
             state=selected_state,
             background_executor=background_executor,
             tab_data_loader=tab_data_loader,

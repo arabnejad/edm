@@ -10,8 +10,8 @@ from __future__ import annotations
 import time
 
 from easy_docker_manager.app.background_executor import BackgroundExecutor
-from easy_docker_manager.app.container_lifecycle_action_runner import (
-    ContainerLifecycleActionRunner,
+from easy_docker_manager.app.container_action_runner import (
+    ContainerActionRunner,
 )
 from easy_docker_manager.app.container_list_refresh import (
     ContainerListRefresher,
@@ -19,7 +19,7 @@ from easy_docker_manager.app.container_list_refresh import (
 from easy_docker_manager.app.container_log_updates import ContainerLogUpdater
 from easy_docker_manager.app.selected_tab_load import SelectedTabContentLoader
 from easy_docker_manager.core.config import AppConfig
-from easy_docker_manager.core.container_actions import ContainerLifecycleAction
+from easy_docker_manager.core.container_actions import ContainerAction
 from easy_docker_manager.core.containers import ContainerSummary
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
 from easy_docker_manager.docker.container_client import DockerContainerClient
@@ -33,7 +33,7 @@ class DockerManager:
     the same object after the user changes a container, tab, or sort order.
     ContainerListRefresher handles the container list,
     SelectedTabContentLoader handles full tab loads, and ContainerLogUpdater
-    handles later log polls, and ContainerLifecycleActionRunner handles
+    handles later log polls, and ContainerActionRunner handles
     container actions.
     """
 
@@ -75,7 +75,7 @@ class DockerManager:
             self.prepare_selected_container_details,
             self.container_log_updater.remove_log_cursors_for_non_running_containers,
         )
-        self.container_lifecycle_action_runner = ContainerLifecycleActionRunner(
+        self.container_action_runner = ContainerActionRunner(
             state,
             background_executor,
             docker_container_client,
@@ -142,6 +142,16 @@ class DockerManager:
         self.container_log_updater.reset_after_selection_change()
         self.selected_tab_content_loader.prepare_active_detail_tab()
 
+    def refresh_after_interactive_shell(self, container_id: str) -> None:
+        """Reload the container list and selected tab after a shell closes."""
+        self.state.clear_loaded_details_for_containers({container_id})
+        # A Logs request may have started before the shell opened. Ignore that
+        # result so it cannot replace the fresh logs requested below.
+        self.selected_tab_content_loader.discard_active_tab_load()
+        self.container_log_updater.reset_after_interactive_shell(container_id)
+        self.prepare_selected_container_details(force_reload=True)
+        self.container_list_refresher.request_immediate_container_list_refresh()
+
     def rebuild_displayed_container_list(self) -> None:
         """Rebuild the grouped list after its sort or filter changes."""
         self.container_list_refresher.rebuild_displayed_container_list()
@@ -149,21 +159,21 @@ class DockerManager:
     def reset_after_docker_context_change(self) -> None:
         """Reset Docker work that belongs to the previous context."""
         self.container_list_refresher.reset_after_docker_context_change()
-        self.selected_tab_content_loader.reset_after_docker_context_change()
+        self.selected_tab_content_loader.discard_active_tab_load()
         self.container_log_updater.reset_after_docker_context_change()
 
     @property
-    def is_container_lifecycle_action_in_progress(self) -> bool:
-        """Return whether Start, Stop, or Restart is currently running."""
-        return self.container_lifecycle_action_runner.is_action_in_progress
+    def is_container_action_in_progress(self) -> bool:
+        """Return whether a background container action is running."""
+        return self.container_action_runner.is_action_in_progress
 
-    def start_container_lifecycle_action(
+    def start_container_action(
         self,
-        action: ContainerLifecycleAction,
+        action: ContainerAction,
         container: ContainerSummary,
     ) -> bool:
-        """Ask the lifecycle runner to submit one container action."""
-        return self.container_lifecycle_action_runner.start_action(
+        """Ask the action runner to submit one background action."""
+        return self.container_action_runner.start_action(
             action,
             container,
         )

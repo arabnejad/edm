@@ -287,11 +287,12 @@ This command does not create or rewrite `config.json`.
 
 ## Container Actions
 
-Select a container and press `a` or `A`. Running containers offer **Restart**
-and **Stop**. Created and exited containers offer **Start** when **All
-containers** is selected. Use `Up` and `Down` to choose an action, then press
-`Enter`. EDM asks for confirmation before it sends the request to Docker.
-Press `Esc` to close the popup without making a change.
+Select a container and press `a` or `A`. Running containers offer **Restart**,
+**Open shell**, and **Stop**. Created and exited containers offer **Start**
+when **All containers** is selected. Use `Up` and `Down` to choose an action,
+then press `Enter`. EDM either shows a confirmation or, for **Open shell**, a
+full-screen shell workspace. Press `Esc` to close the popup without making a
+change.
 
 The Docker request runs in the background. After it succeeds, EDM reloads the
 container list. A stopped container disappears while **Running only** is
@@ -313,6 +314,21 @@ directory and Compose files named in the container labels must exist on that
 computer. This matters for remote Docker contexts because those labels often
 contain paths from the remote server. EDM reports the missing path instead of
 running an incomplete command.
+
+**Open shell** checks for `/bin/bash` first and uses `/bin/sh` when Bash is not
+available. The shell opens inside EDM and uses the full window. Type `exit` to
+leave the shell, or press `Ctrl+D` at an empty prompt. EDM returns to the
+container view when the shell exits. Commands run there can change the
+container.
+
+The shell uses Docker Exec, so the container does not need an SSH server. EDM
+passes a named Docker context to the Docker CLI. Connections configured through
+`DOCKER_HOST` keep using that environment instead. If the Docker CLI or both
+supported shells are unavailable, EDM shows the error in the container view.
+
+On Windows, EDM uses the current terminal for the shell and restores the app
+after the command exits. The full-screen shell workspace is used on systems
+where Urwid can open a PTY.
 
 ## Container Filtering
 

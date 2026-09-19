@@ -7,8 +7,8 @@ import urwid
 from easy_docker_manager.config.settings_definitions import SettingsMenuState
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_actions import (
+    ContainerAction,
     ContainerActionMenuState,
-    ContainerLifecycleAction,
 )
 from easy_docker_manager.core.container_list import ContainerList
 from easy_docker_manager.core.container_sorting import (
@@ -138,8 +138,8 @@ def test_container_action_popup_shows_actions_and_confirmation() -> None:
         container_id="container-1",
         container_name="web",
         available_actions=[
-            ContainerLifecycleAction.RESTART,
-            ContainerLifecycleAction.STOP,
+            ContainerAction.RESTART,
+            ContainerAction.STOP,
         ],
     )
     state = TerminalSessionState(active_popup=menu_state)
@@ -152,7 +152,7 @@ def test_container_action_popup_shows_actions_and_confirmation() -> None:
     assert "> Restart container" in rendered_text
     assert "Stop container" in rendered_text
 
-    menu_state.is_awaiting_confirmation = True
+    menu_state.is_showing_action_details = True
     view.render(state, [], lambda line: line)
     rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
     assert 'Restart container "web"?' in rendered_text
@@ -169,8 +169,8 @@ def test_container_action_popup_explains_start() -> None:
     menu_state = ContainerActionMenuState(
         container_id="container-1",
         container_name="web",
-        available_actions=[ContainerLifecycleAction.START],
-        is_awaiting_confirmation=True,
+        available_actions=[ContainerAction.START],
+        is_showing_action_details=True,
     )
     state = TerminalSessionState(active_popup=menu_state)
     view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
@@ -183,12 +183,52 @@ def test_container_action_popup_explains_start() -> None:
     assert "configuration." in rendered_text
 
 
+def test_container_action_popup_lists_open_shell_without_an_input_field() -> None:
+    menu_state = ContainerActionMenuState(
+        container_id="container-1",
+        container_name="web",
+        available_actions=[ContainerAction.OPEN_SHELL],
+    )
+    state = TerminalSessionState(active_popup=menu_state)
+    view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
+
+    view.render(state, [], lambda line: line)
+
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert "> Open shell" in rendered_text
+    assert "Shell:" not in rendered_text
+
+
+def test_container_shell_workspace_uses_the_full_layout() -> None:
+    view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
+
+    view.show_container_shell(urwid.SolidFill(" "), "web", "/bin/bash")
+
+    rendered_canvas = view.layout.render((120, 30))
+    rendered_lines = [line.decode() for line in rendered_canvas.text]
+    rendered_text = "\n".join(rendered_lines)
+    assert "Container shell: web (/bin/bash)" in rendered_text
+    assert "Type exit or press Ctrl+D at an empty prompt to return to EDM" in (
+        rendered_text
+    )
+    assert rendered_lines[-2] == "─" * 120
+
+    view.render(TerminalSessionState(), [], lambda line: line)
+    assert (
+        "Container shell: web"
+        in b"\n".join(view.layout.render((120, 30)).text).decode()
+    )
+
+    view.show_main_workspace()
+    assert view.layout.original_widget is view._main_layout
+
+
 def test_container_action_popup_warns_before_compose_recreation() -> None:
     menu_state = ContainerActionMenuState(
         container_id="container-1",
         container_name="web",
-        available_actions=[ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE],
-        is_awaiting_confirmation=True,
+        available_actions=[ContainerAction.RECREATE_COMPOSE_SERVICE],
+        is_showing_action_details=True,
     )
     state = TerminalSessionState(active_popup=menu_state)
     view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")

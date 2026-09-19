@@ -110,13 +110,15 @@ class ContainerLogUpdater:
 
     def reset_after_docker_context_change(self) -> None:
         """Ignore an unfinished poll and clear log positions from the old context."""
-        previous_log_poll_future = self._log_poll_future
-        self._log_poll_future = None
-        self._next_log_poll_at = 0.0
+        self._discard_active_log_poll()
         self._log_cursor_by_container_id.clear()
         self._source_log_line_fingerprints_by_container_id.clear()
-        if previous_log_poll_future is not None:
-            previous_log_poll_future.cancel()
+
+    def reset_after_interactive_shell(self, container_id: str) -> None:
+        """Forget log work started before an interactive shell opened."""
+        self._discard_active_log_poll()
+        self._log_cursor_by_container_id.pop(container_id, None)
+        self._source_log_line_fingerprints_by_container_id.pop(container_id, None)
 
     def record_initial_log_load_success(
         self,
@@ -191,6 +193,14 @@ class ContainerLogUpdater:
             )
             if container_id in running_container_ids
         }
+
+    def _discard_active_log_poll(self) -> None:
+        """Detach the current poll and allow another one to start."""
+        previous_log_poll_future = self._log_poll_future
+        self._log_poll_future = None
+        self._next_log_poll_at = 0.0
+        if previous_log_poll_future is not None:
+            previous_log_poll_future.cancel()
 
     def _selected_container_is_running(self) -> bool:
         """Return whether the selected container should receive log updates."""

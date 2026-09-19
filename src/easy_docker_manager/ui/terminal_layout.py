@@ -79,6 +79,7 @@ class TerminalLayoutView:
             footer=urwid.AttrMap(self.shortcut_footer_text, "footer"),
         )
         self.layout = urwid.WidgetPlaceholder(self._main_layout)
+        self._is_showing_container_shell = False
 
     def build_urwid_style_palette(self) -> list[tuple[str, str, str]]:
         """Return the color styles passed to Urwid when EDM starts.
@@ -194,6 +195,9 @@ class TerminalLayoutView:
         format_detail_line: Callable[[str], Union[str, list[MarkupSegment]]],
     ) -> None:
         """Update both panels and show the active popup, if there is one."""
+        if self._is_showing_container_shell:
+            return
+
         self.container_list_panel.render(state)
         self.selected_container_details_panel.render(
             state,
@@ -234,6 +238,54 @@ class TerminalLayoutView:
             )
         else:
             self.layout.original_widget = self._main_layout
+
+    def show_container_shell(
+        self,
+        terminal_widget: urwid.Widget,
+        container_name: str,
+        shell_executable: str,
+    ) -> None:
+        """Replace the container panels with one full-screen shell workspace."""
+        header = urwid.Pile(
+            [
+                urwid.Text(
+                    [
+                        ("title", "Container shell: "),
+                        ("value", container_name),
+                        ("muted", f" ({shell_executable})"),
+                    ],
+                    wrap="clip",
+                ),
+                urwid.AttrMap(urwid.Divider("─"), "title_border"),
+            ]
+        )
+        footer_text = urwid.Text(
+            [
+                ("footer", "Type "),
+                ("value", "exit"),
+                ("footer", " or press"),
+                ("shortcut_key", " Ctrl+D "),
+                ("footer", "at an empty prompt to return to EDM"),
+            ],
+            wrap="clip",
+        )
+        footer = urwid.Pile(
+            [
+                urwid.AttrMap(urwid.Divider("─"), "title_border"),
+                urwid.AttrMap(footer_text, "footer"),
+            ]
+        )
+        self.layout.original_widget = urwid.Frame(
+            terminal_widget,
+            header=header,
+            footer=footer,
+        )
+        self._is_showing_container_shell = True
+
+    def show_main_workspace(self) -> None:
+        """Return to the container panels after the shell closes."""
+        self._is_showing_container_shell = False
+        self.layout.original_widget = self._main_layout
 
     def focus_detail_line(self, line_index: int) -> None:
         """Keep the requested detail line visible in the right panel."""
