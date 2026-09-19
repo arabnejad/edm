@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from easy_docker_manager.core.container_actions import (
+    ContainerAction,
     ContainerActionMenuState,
-    ContainerLifecycleAction,
 )
 from easy_docker_manager.core.container_list import ContainerList
 from easy_docker_manager.core.container_sorting import ContainerSortField
@@ -124,7 +124,7 @@ def test_missing_container_closes_its_action_menu() -> None:
         active_popup=ContainerActionMenuState(
             container_id="stopped",
             container_name="stopped",
-            available_actions=[ContainerLifecycleAction.RESTART],
+            available_actions=[ContainerAction.RESTART],
         )
     )
 

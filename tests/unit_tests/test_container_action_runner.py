@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from easy_docker_manager.core.container_actions import ContainerLifecycleAction
+from easy_docker_manager.core.container_actions import ContainerAction
 
 
 @pytest.mark.parametrize(
@@ -14,27 +14,27 @@ from easy_docker_manager.core.container_actions import ContainerLifecycleAction
     ),
     [
         (
-            ContainerLifecycleAction.START,
+            ContainerAction.START,
             "start_container",
             'Starting container "web"...',
             'Container "web" started. Refreshing containers...',
         ),
         (
-            ContainerLifecycleAction.STOP,
+            ContainerAction.STOP,
             "stop_container",
             'Stopping container "web"...',
             'Container "web" stopped. Refreshing containers...',
         ),
         (
-            ContainerLifecycleAction.RESTART,
+            ContainerAction.RESTART,
             "restart_container",
             'Restarting container "web"...',
             'Container "web" restarted. Refreshing containers...',
         ),
     ],
 )
-def test_container_lifecycle_action_runs_once_and_refreshes_after_success(
-    action: ContainerLifecycleAction,
+def test_container_action_runs_once_and_refreshes_after_success(
+    action: ContainerAction,
     docker_client_method_name: str,
     progress_message: str,
     completed_message: str,
@@ -44,15 +44,15 @@ def test_container_lifecycle_action_runs_once_and_refreshes_after_success(
     test_setup = docker_manager_factory()
     selected_container = container_summary_factory()
 
-    assert test_setup.docker_manager.start_container_lifecycle_action(
+    assert test_setup.docker_manager.start_container_action(
         action,
         selected_container,
     )
-    assert not test_setup.docker_manager.start_container_lifecycle_action(
-        ContainerLifecycleAction.STOP,
+    assert not test_setup.docker_manager.start_container_action(
+        ContainerAction.STOP,
         selected_container,
     )
-    assert test_setup.docker_manager.is_container_lifecycle_action_in_progress
+    assert test_setup.docker_manager.is_container_action_in_progress
     action_request = test_setup.background_executor.requests[0]
     assert action_request.fn == getattr(
         test_setup.docker_container_client,
@@ -62,19 +62,19 @@ def test_container_lifecycle_action_runs_once_and_refreshes_after_success(
     assert test_setup.state.status_message == progress_message
 
     assert test_setup.background_executor.complete_submission(result=None)
-    assert not test_setup.docker_manager.is_container_lifecycle_action_in_progress
+    assert not test_setup.docker_manager.is_container_action_in_progress
     assert test_setup.state.status_message == completed_message
     refresh_request = test_setup.background_executor.requests[1]
     assert refresh_request.fn == (test_setup.docker_container_client.list_containers)
 
 
-def test_failed_container_lifecycle_action_shows_error_without_refreshing(
+def test_failed_container_action_shows_error_without_refreshing(
     docker_manager_factory,
     container_summary_factory,
 ) -> None:
     test_setup = docker_manager_factory()
-    test_setup.docker_manager.start_container_lifecycle_action(
-        ContainerLifecycleAction.STOP,
+    test_setup.docker_manager.start_container_action(
+        ContainerAction.STOP,
         container_summary_factory(name="worker"),
     )
 
@@ -99,14 +99,14 @@ def test_compose_recreate_uses_container_metadata_and_active_context(
         compose_config_file_paths=("/workspace/example/compose.yaml",),
     )
 
-    assert test_setup.docker_manager.start_container_lifecycle_action(
-        ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE,
+    assert test_setup.docker_manager.start_container_action(
+        ContainerAction.RECREATE_COMPOSE_SERVICE,
         container,
     )
 
     action_request = test_setup.background_executor.requests[0]
     assert action_request.fn == (
-        test_setup.container_lifecycle_action_runner.docker_compose_service_recreator.recreate_service
+        test_setup.container_action_runner.docker_compose_service_recreator.recreate_service
     )
     assert action_request.arguments == (
         container,
@@ -133,8 +133,8 @@ def test_failed_compose_recreate_shows_the_command_error(
         compose_working_directory="/workspace/example",
         compose_config_file_paths=("/workspace/example/compose.yaml",),
     )
-    test_setup.docker_manager.start_container_lifecycle_action(
-        ContainerLifecycleAction.RECREATE_COMPOSE_SERVICE,
+    test_setup.docker_manager.start_container_action(
+        ContainerAction.RECREATE_COMPOSE_SERVICE,
         container,
     )
 
@@ -154,8 +154,8 @@ def test_action_completion_reloads_after_an_older_refresh_finishes(
 ) -> None:
     test_setup = docker_manager_factory()
     test_setup.docker_manager.start_container_list_refresh(force=True)
-    test_setup.docker_manager.start_container_lifecycle_action(
-        ContainerLifecycleAction.STOP,
+    test_setup.docker_manager.start_container_action(
+        ContainerAction.STOP,
         container_summary_factory(),
     )
 

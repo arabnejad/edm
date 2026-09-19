@@ -8,8 +8,8 @@ import pytest
 from easy_docker_manager.config.settings_definitions import SettingsMenuState
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_actions import (
+    ContainerAction,
     ContainerActionMenuState,
-    ContainerLifecycleAction,
 )
 from easy_docker_manager.core.container_sorting import (
     ContainerListMenuField,
@@ -167,7 +167,7 @@ def test_action_menu_delegates_keys_to_its_controller(
         active_popup=ContainerActionMenuState(
             container_id="container-1",
             container_name="web",
-            available_actions=[ContainerLifecycleAction.RESTART],
+            available_actions=[ContainerAction.RESTART],
         )
     )
     test_setup = keyboard_controller_factory(state)

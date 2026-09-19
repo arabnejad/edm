@@ -1,11 +1,13 @@
-"""Handle the container action menu and submit confirmed actions."""
+"""Handle the container action menu and run the selected action."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Optional
 
 from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.core.container_actions import (
+    ContainerAction,
     ContainerActionMenuState,
     get_available_actions_for_container_status,
 )
@@ -20,15 +22,17 @@ class ContainerActionController:
         self,
         state: TerminalSessionState,
         docker_manager: DockerManager,
+        request_container_shell: Callable[[ContainerSummary], Optional[str]],
     ) -> None:
         self.state = state
         self.docker_manager = docker_manager
+        self._request_container_shell = request_container_shell
 
     def open_container_action_menu(self) -> bool:
         """Open the actions supported by the selected container's status."""
         if self.state.active_popup is not None:
             return False
-        if self.docker_manager.is_container_lifecycle_action_in_progress:
+        if self.docker_manager.is_container_action_in_progress:
             self.state.status_message = "A container action is already running."
             return True
 
@@ -63,16 +67,37 @@ class ContainerActionController:
         if key == "esc":
             self.state.active_popup = None
             return True
-        if menu_state.is_awaiting_confirmation:
+        if menu_state.is_showing_action_details:
             return self._handle_confirmation_keypress(key, menu_state)
         if key == "up":
             return self._move_selected_action(-1)
         if key == "down":
             return self._move_selected_action(1)
         if key == "enter":
-            menu_state.is_awaiting_confirmation = True
+            if menu_state.selected_action == ContainerAction.OPEN_SHELL:
+                return self._open_shell_for_target_container(menu_state)
+            menu_state.is_showing_action_details = True
             return True
         return False
+
+    def _open_shell_for_target_container(
+        self,
+        menu_state: ContainerActionMenuState,
+    ) -> bool:
+        """Close the popup and ask EDMApp to open a shell workspace."""
+        target_container = self._get_current_target_container(menu_state)
+        if target_container is None:
+            self.state.active_popup = None
+            self.state.status_message = (
+                "The container status changed. Open Actions to see its current options."
+            )
+            return True
+
+        self.state.active_popup = None
+        error_message = self._request_container_shell(target_container)
+        if error_message:
+            self.state.status_message = error_message
+        return True
 
     def _move_selected_action(self, selection_offset: int) -> bool:
         """Move the highlight without passing the first or last action."""
@@ -108,7 +133,7 @@ class ContainerActionController:
             return True
 
         self.state.active_popup = None
-        if self.docker_manager.start_container_lifecycle_action(
+        if self.docker_manager.start_container_action(
             selected_action,
             target_container,
         ):

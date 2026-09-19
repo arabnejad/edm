@@ -21,12 +21,13 @@ def test_runtime_factory_uses_supplied_config_and_data_source() -> None:
     )
     docker_container_client = Mock(spec=DockerContainerClient)
     notify_background_work_ready = Mock()
+    request_container_shell = Mock()
     app_config_store = Mock(spec=AppConfigStore)
     runtime = EDMRuntimeFactory(
         config,
         docker_container_client,
         app_config_store,
-    ).create_runtime(notify_background_work_ready)
+    ).create_runtime(notify_background_work_ready, request_container_shell)
 
     try:
         assert runtime.docker_container_client is docker_container_client
@@ -61,6 +62,10 @@ def test_runtime_factory_uses_supplied_config_and_data_source() -> None:
         )
         assert container_action_controller.state is state
         assert container_action_controller.docker_manager is docker_manager
+        assert (
+            container_action_controller._request_container_shell
+            is request_container_shell
+        )
     finally:
         runtime.background_executor.shutdown()
 

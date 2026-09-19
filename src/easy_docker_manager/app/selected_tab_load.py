@@ -187,8 +187,8 @@ class SelectedTabContentLoader:
             )
         self.load_selected_tab_content_if_needed(force=False)
 
-    def reset_after_docker_context_change(self) -> None:
-        """Ignore an unfinished tab load and reset the tab refresh time."""
+    def discard_active_tab_load(self) -> None:
+        """Detach the current tab load so its result will be ignored."""
         previous_tab_load_future = self._tab_load_future
         self._tab_load_future = None
         self._next_tab_refresh_at = 0.0

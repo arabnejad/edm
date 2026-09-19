@@ -56,6 +56,68 @@ def test_context_change_discards_all_active_docker_work(
     assert test_setup.container_log_updater._log_cursor_by_container_id == {}
 
 
+def test_shell_return_discards_old_tab_request_and_reloads_docker_data(
+    docker_manager_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    selected_tab_key = state.selected_container_tab_key
+    assert selected_tab_key is not None
+    test_setup = docker_manager_factory(state)
+    test_setup.docker_manager.load_selected_tab_content_if_needed()
+    old_tab_request = test_setup.background_executor.requests[0]
+    old_tab_request.future.set_running_or_notify_cancel()
+
+    test_setup.docker_manager.refresh_after_interactive_shell("container-1")
+
+    assert len(test_setup.background_executor.requests) == 3
+    new_tab_request = test_setup.background_executor.requests[1]
+    container_list_request = test_setup.background_executor.requests[2]
+    assert new_tab_request.arguments == ("container-1", TabName.LOGS)
+    assert container_list_request.fn == (
+        test_setup.docker_container_client.list_containers
+    )
+
+    old_tab_request.future.set_result("logs loaded before the shell closed")
+    assert not old_tab_request.completion_callback(old_tab_request.future)
+    assert test_setup.background_executor.complete_submission(1, result="new logs")
+    assert state.tab_content_cache[selected_tab_key] == "new logs"
+
+
+def test_shell_return_discards_log_poll_started_before_shell_opened(
+    monkeypatch,
+    docker_manager_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    selected_tab_key = state.selected_container_tab_key
+    assert selected_tab_key is not None
+    state.tab_content_cache[selected_tab_key] = "logs before shell"
+    test_setup = docker_manager_factory(state)
+    test_setup.container_list_refresher._next_refresh_at = 100.0
+    monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
+    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
+
+    test_setup.docker_manager.refresh_docker_data_if_needed()
+    old_log_poll = test_setup.background_executor.requests[0]
+    old_log_poll.future.set_running_or_notify_cancel()
+
+    test_setup.docker_manager.refresh_after_interactive_shell("container-1")
+
+    assert len(test_setup.background_executor.requests) == 3
+    new_tab_request = test_setup.background_executor.requests[1]
+    container_list_request = test_setup.background_executor.requests[2]
+    assert new_tab_request.arguments == ("container-1", TabName.LOGS)
+    assert container_list_request.fn == (
+        test_setup.docker_container_client.list_containers
+    )
+
+    old_log_poll.future.set_result("logs fetched before shell closed")
+    assert not old_log_poll.completion_callback(old_log_poll.future)
+    assert test_setup.background_executor.complete_submission(1, result="fresh logs")
+    assert state.tab_content_cache[selected_tab_key] == "fresh logs"
+
+
 @pytest.mark.parametrize(
     "tab_name",
     [TabName.ENV, TabName.CONFIG, TabName.STATS, TabName.TOP],

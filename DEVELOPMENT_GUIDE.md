@@ -22,7 +22,7 @@ src/
                                   Refreshes the list and preserves its selection
       selected_tab_load.py        Loads the selected container tab
       container_log_updates.py    Polls and merges container logs
-      container_lifecycle_action_runner.py
+      container_action_runner.py
                                   Runs a confirmed container or Compose action
 
     config/
@@ -43,6 +43,7 @@ src/
     docker/
       container_client.py         DockerContainerClient interface and EDM errors
       client_factory.py           Creates and validates Docker SDK clients
+      container_shell_launcher.py Runs an interactive Docker Exec command
       compose_service_recreator.py
                                   Runs one Docker Compose service recreation
       docker_cli.py               Selects the Docker CLI context used by commands
@@ -118,7 +119,7 @@ flowchart TD
     ContainerRefresh[ContainerListRefresher]
     TabLoad[SelectedTabContentLoader]
     LogUpdates[ContainerLogUpdater]
-    Lifecycle[ContainerLifecycleActionRunner]
+    ActionRunner[ContainerActionRunner]
     Executor[BackgroundExecutor]
     Notifier[BackgroundNotifier]
     Loader[ContainerTabTextLoader]
@@ -163,15 +164,15 @@ flowchart TD
     DockerManager --> ContainerRefresh
     DockerManager --> TabLoad
     DockerManager --> LogUpdates
-    DockerManager --> Lifecycle
+    DockerManager --> ActionRunner
     ContainerRefresh --> State
     ContainerRefresh --> Executor
     TabLoad --> State
     TabLoad --> Executor
     LogUpdates --> State
     LogUpdates --> Executor
-    Lifecycle --> State
-    Lifecycle --> Executor
+    ActionRunner --> State
+    ActionRunner --> Executor
     Executor --> Loader --> Client
     Executor --> Client
     Executor --> Exporter --> File
@@ -184,7 +185,7 @@ flowchart TD
     classDef thirdParty fill:#fff8c5,stroke:#9a6700,color:#1f2328
     classDef external fill:#f6f8fa,stroke:#57606a,color:#1f2328
 
-    class App,Keyboard,UI,ExportController,SettingsController,ActionController,ConnectionController,State,DockerManager,ContainerRefresh,TabLoad,LogUpdates,Lifecycle,Executor,Notifier,Loader,ContextReader,Client,Filter,Formatter,Exporter,View edm
+    class App,Keyboard,UI,ExportController,SettingsController,ActionController,ConnectionController,State,DockerManager,ContainerRefresh,TabLoad,LogUpdates,ActionRunner,Executor,Notifier,Loader,ContextReader,Client,Filter,Formatter,Exporter,View edm
     class DockerSDK,Urwid thirdParty
     class User,Docker,Terminal,File external
 ```
@@ -207,10 +208,10 @@ The main responsibilities are:
 - `TabTextFilter` applies the same line-visibility rules to the terminal and
   Current view exports.
 - `DockerManager` gives the rest of EDM one place to request Docker data. It
-  passes container-list, tab-load, log-poll, and lifecycle work to the matching
+  passes container-list, tab-load, log-poll, and action work to the matching
   class.
 - `ContainerListRefresher`, `SelectedTabContentLoader`,
-  `ContainerLogUpdater`, and `ContainerLifecycleActionRunner` track their own
+  `ContainerLogUpdater`, and `ContainerActionRunner` track their own
   background work and apply its result to the session state.
 - `BackgroundExecutor` runs Docker requests and file writes outside the UI
   thread.
@@ -361,10 +362,11 @@ While the settings popup is open, `KeyboardController` passes every key to that
 controller. This prevents normal shortcuts from running while a value is being
 edited.
 
-`a` or `A` asks `ContainerActionController` to open Restart and Stop for the
-selected running container. While the popup is open, normal shortcuts are
-ignored. The first `Enter` shows the confirmation screen. The second submits
-the action. `Esc` closes the popup without changing the container.
+`a` or `A` asks `ContainerActionController` to show the actions available for
+the selected container. While the popup is open, normal shortcuts are ignored.
+`Enter` continues to confirmation. Open Shell starts its shell check straight
+away because EDM chooses the shell itself. `Esc` closes the popup without
+changing the container.
 
 `c` or `C` opens the connection popup. EDM reads the context list from Docker's
 local configuration but does not connect to any of them yet. `Up` and `Down`
@@ -466,11 +468,11 @@ The keys and visible behavior are documented in
 `TerminalSessionState.active_popup`. After confirmation, it passes the request
 to `DockerManager` and closes the popup.
 
-`ContainerLifecycleActionRunner` sends Start, Stop, or Restart to
-`BackgroundExecutor`. Only one lifecycle action can run at a time. After a
-successful request, it asks `ContainerListRefresher` to reload the list
-immediately. If an older list refresh is already running, that result is
-discarded and a new refresh starts after it finishes.
+`ContainerActionRunner` sends Start, Stop, Restart, or Compose recreation to
+`BackgroundExecutor`. Only one background action can run at a time. After a
+successful request, it asks `ContainerListRefresher` to reload the list. If an
+older list refresh is already running, that result is discarded and a new
+refresh starts after it finishes.
 
 Compose recreation uses the same action runner, but
 `DockerComposeServiceRecreator` runs the Docker CLI because Docker Compose does
@@ -480,6 +482,21 @@ CLI actions. Named contexts use `--context`; a `DOCKER_HOST` connection keeps
 using the current environment.
 When the replacement has a new container ID, `ContainerListRefresher` selects
 the first container with the same Compose project and service labels.
+
+Open Shell is different from the other actions because it needs a PTY. A worker
+checks `/bin/bash` and then `/bin/sh`, so a slow Docker connection does not
+freeze the interface. `EDMApp` gives the selected command to `urwid.Terminal`
+and replaces the normal panels with a shell workspace. The shell owns the
+keyboard until its process exits. Typing `exit` or pressing `Ctrl+D` at an
+empty prompt ends the shell and returns to the container view.
+
+`ContainerShellLauncher` uses `docker_cli.py`, so shell commands follow the
+same context rules as Compose recreation. After the shell closes,
+`DockerManager` clears the selected container's cached details, ignores tab and
+log requests started before the shell, and loads fresh container data. This
+keeps a Logs result from before the shell from replacing the new one. Windows
+keeps the earlier terminal handoff because Urwid's PTY widget is not available
+there.
 
 Stopping hides the container when the list uses **Running only**. It remains
 visible when **All containers** is selected. Restarting uses the existing
@@ -584,7 +601,7 @@ These objects split the background work:
 - `DockerManager` asks the matching Docker data class to start work and
   reports how long EDM should wait before checking again.
 - `ContainerListRefresher`, `SelectedTabContentLoader`,
-  `ContainerLogUpdater`, and `ContainerLifecycleActionRunner` handle their
+  `ContainerLogUpdater`, and `ContainerActionRunner` handle their
   Docker requests from start to finish.
 - `TabExportController` prepares a user-requested export and handles its result.
 - `BackgroundExecutor` runs the blocking function in a worker thread. It does
@@ -637,7 +654,7 @@ Four smaller classes do the actual request tracking:
 | `ContainerListRefresher` | Container-list refreshes, selection preservation, and missing-container cleanup |
 | `SelectedTabContentLoader` | Initial tab loads, cached-tab reuse, and periodic live-tab refreshes |
 | `ContainerLogUpdater` | Incremental log polls, Docker since timestamps, overlap removal, and log limits |
-| `ContainerLifecycleActionRunner` | One confirmed container or Compose action and the list refresh that follows it |
+| `ContainerActionRunner` | One confirmed container or Compose action and the list refresh that follows it |
 
 Initial logs are limited once by `ContainerTabTextLoader` while its Docker request runs
 in a worker thread. Incremental updates need two steps: each fetched batch is
