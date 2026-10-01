@@ -88,7 +88,9 @@ class EDMApp:
         self.container_shell_launcher = (
             container_shell_launcher or ContainerShellLauncher()
         )
-        self._container_terminal_factory = container_terminal_factory or urwid.Terminal
+        # Urwid does not provide its PTY terminal widget on Windows. Keep the
+        # factory unresolved until a non-Windows shell actually needs it.
+        self._container_terminal_factory = container_terminal_factory
         self._shell_detection_future: Optional[Future[str]] = None
         self._active_shell_terminal: Optional[urwid.Terminal] = None
         self._active_shell_container: Optional[ContainerSummary] = None
@@ -306,7 +308,8 @@ class EDMApp:
                 shell_executable,
                 docker_context,
             )
-            terminal = self._container_terminal_factory(
+            terminal_factory = self._container_terminal_factory or urwid.Terminal
+            terminal = terminal_factory(
                 command,
                 main_loop=self.urwid_main_loop,
                 escape_sequence=_DISABLED_SHELL_ESCAPE_SEQUENCE,

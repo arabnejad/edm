@@ -321,6 +321,9 @@ def test_background_notifier_matches_the_operating_system() -> None:
 def test_application_completes_basic_startup_and_shutdown(monkeypatch) -> None:
     docker_container_client = SmokeTestDockerContainerClient()
     monkeypatch.setattr(app_module.urwid, "MainLoop", NonBlockingSmokeTestMainLoop)
+    # Windows Urwid does not export Terminal. EDM should still start because
+    # Windows uses the external-terminal shell fallback.
+    monkeypatch.delattr(app_module.urwid, "Terminal", raising=False)
     app = app_module.EDMApp(
         app_config=AppConfig(),
         docker_container_client=docker_container_client,
