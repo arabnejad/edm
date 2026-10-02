@@ -126,12 +126,6 @@ class SelectedTabContentLoader:
             self._tab_load_future = None
 
         self.state.tab_content_error_messages.pop(container_tab_key, None)
-        initial_log_request_started_at = (
-            int(time.time())
-            if container_tab_key.tab_name == TabName.LOGS
-            and selected_container.is_running
-            else None
-        )
         requested_container_status = selected_container.status
         self._tab_load_future = self.background_executor.submit(
             self.tab_data_loader.load_tab_text,
@@ -140,7 +134,6 @@ class SelectedTabContentLoader:
             on_complete=partial(
                 self._apply_tab_content_load_result,
                 container_tab_key,
-                initial_log_request_started_at,
                 requested_container_status,
             ),
         )
@@ -211,7 +204,6 @@ class SelectedTabContentLoader:
     def _apply_tab_content_load_result(
         self,
         requested_tab_key: ContainerTabKey,
-        initial_log_request_started_at: Optional[int],
         requested_container_status: str,
         tab_load_future: Future[str | PreparedContainerLogBatch],
     ) -> bool:
@@ -234,7 +226,6 @@ class SelectedTabContentLoader:
         should_redraw = self._store_tab_load_result(
             tab_load_future,
             requested_tab_key,
-            initial_log_request_started_at,
         )
         if selection_changed_while_loading:
             should_redraw = (
@@ -246,7 +237,6 @@ class SelectedTabContentLoader:
         self,
         tab_load_future: Future[str | PreparedContainerLogBatch],
         requested_tab_key: ContainerTabKey,
-        initial_log_request_started_at: Optional[int],
     ) -> bool:
         """Save loaded text or an error under the tab that started the request."""
         is_active_tab = requested_tab_key == self.state.selected_container_tab_key
@@ -293,10 +283,8 @@ class SelectedTabContentLoader:
 
         if isinstance(loaded_tab_content, PreparedContainerLogBatch):
             content = loaded_tab_content.display_text
-            source_line_fingerprints = loaded_tab_content.source_line_fingerprints
         else:
             content = loaded_tab_content
-            source_line_fingerprints = ()
 
         self.state.tab_content_error_messages.pop(requested_tab_key, None)
         self.state.tab_content_cache[requested_tab_key] = content
@@ -305,12 +293,12 @@ class SelectedTabContentLoader:
             return False
         if (
             requested_tab_key.tab_name == TabName.LOGS
-            and initial_log_request_started_at is not None
+            and self._selected_container_is_running()
+            and isinstance(loaded_tab_content, PreparedContainerLogBatch)
         ):
             self.container_log_updater.record_initial_log_load_success(
                 requested_tab_key.container_id,
-                initial_log_request_started_at,
-                source_line_fingerprints,
+                loaded_tab_content,
             )
         self.state.status_message = f"Loaded {self.state.active_detail_tab_name.value}"
         return True

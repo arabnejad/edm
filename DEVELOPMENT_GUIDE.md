@@ -693,10 +693,11 @@ loads the selected tab again. For example, a Stats request started while a
 container was running cannot restore that CPU sample after the container stops.
 An incremental log result is also ignored if its container is no longer running.
 
-Each successful log request saves the time at which it started. The next Docker
-request uses that time as its `since_timestamp`, which asks for lines written
-from that point onward. A failed request keeps the old timestamp so a retry
-does not skip output. Docker can repeat lines where two requests meet;
+Each successful log request saves the newest timestamp in Docker's returned
+log lines. The next request starts one second before it, which includes lines
+sharing the same timestamp. This uses the server's log times even when EDM's
+computer has a different clock. Empty or failed requests keep the old cursor.
+Docker can repeat lines where two requests meet;
 `count_repeated_lines_between_batches()` removes that repeated section before
 new lines are added to the cache. EDM compares fingerprints of the original
 Docker lines for this check. This matters in Hidden mode, where two lines with

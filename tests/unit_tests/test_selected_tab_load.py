@@ -36,7 +36,9 @@ def test_tab_load_requires_selection_and_reuses_cached_text(
     assert cached_setup.background_executor.requests == []
 
 
-def test_tab_load_clears_old_error_and_records_initial_log_time(
+@pytest.mark.parametrize("local_time", [50.0, 500.0])
+def test_tab_load_clears_old_error_and_records_docker_log_time(
+    local_time: float,
     monkeypatch,
     docker_manager_factory,
     session_state_factory,
@@ -46,22 +48,22 @@ def test_tab_load_clears_old_error_and_records_initial_log_time(
     assert selected_tab_key is not None
     state.tab_content_error_messages[selected_tab_key] = "old"
     test_setup = docker_manager_factory(state)
-    monkeypatch.setattr(selected_tab_load_module.time, "time", lambda: 123.9)
+    monkeypatch.setattr(selected_tab_load_module.time, "time", lambda: local_time)
 
     assert test_setup.docker_manager.load_selected_tab_content_if_needed()
     assert selected_tab_key not in state.tab_content_error_messages
     assert state.status_message == "Loading Logs..."
 
     prepared_logs = prepare_container_log_batch(
-        "first logs",
+        "1970-01-01T00:02:30.123456789Z first logs",
         DOCKER_UTC_LOG_TIMESTAMP_MODE,
         max_lines=100,
         max_line_chars=1_000,
     )
     assert test_setup.background_executor.complete_submission(result=prepared_logs)
-    assert state.tab_content_cache[selected_tab_key] == "first logs"
+    assert state.tab_content_cache[selected_tab_key] == prepared_logs.display_text
     assert test_setup.container_log_updater._log_cursor_by_container_id == {
-        "container-1": 123
+        "container-1": 150
     }
 
 
@@ -84,6 +86,7 @@ def test_initial_logs_are_cached_from_the_prepared_worker_result(
     assert test_setup.background_executor.complete_submission(result=prepared_logs)
 
     assert state.tab_content_cache[selected_tab_key] == "limited by worker"
+    assert test_setup.container_log_updater._log_cursor_by_container_id == {}
 
 
 def test_running_old_tab_load_finishes_before_loading_new_selection(

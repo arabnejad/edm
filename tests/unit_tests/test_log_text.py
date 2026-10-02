@@ -72,6 +72,40 @@ def test_prepared_hidden_log_lines_keep_different_source_fingerprints() -> None:
 
 @pytest.mark.parametrize(
     "timestamp_mode",
+    [
+        DOCKER_UTC_LOG_TIMESTAMP_MODE,
+        HIDDEN_LOG_TIMESTAMP_MODE,
+        LOCAL_LOG_TIMESTAMP_MODE,
+    ],
+)
+def test_prepared_logs_keep_the_newest_timestamp_before_display_limits(
+    timestamp_mode: str,
+) -> None:
+    batch = prepare_container_log_batch(
+        "1970-01-01T00:02:40.123456789Z newest\n" "1970-01-01T00:02:30Z older",
+        timestamp_mode,
+        max_lines=1,
+        max_line_chars=32,
+    )
+
+    assert batch.latest_timestamp == 160
+    assert len(batch.display_lines) == 1
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["", "plain line", "2026-02-30T12:00:00Z invalid date"],
+)
+def test_prepared_logs_without_valid_timestamps_have_no_cursor(text: str) -> None:
+    batch = prepare_container_log_batch(
+        text, DOCKER_UTC_LOG_TIMESTAMP_MODE, max_lines=10, max_line_chars=100
+    )
+
+    assert batch.latest_timestamp is None
+
+
+@pytest.mark.parametrize(
+    "timestamp_mode",
     [HIDDEN_LOG_TIMESTAMP_MODE, LOCAL_LOG_TIMESTAMP_MODE],
 )
 def test_timestamp_mode_leaves_invalid_and_unprefixed_lines_unchanged(

@@ -27,10 +27,11 @@ DOCKER_TIMESTAMPED_LOG_LINE = re.compile(
 
 @dataclass(frozen=True)
 class PreparedContainerLogBatch:
-    """Keep display lines matched to the Docker lines they came from."""
+    """Keep display lines, original line identities, and Docker log time together."""
 
     display_lines: tuple[str, ...]
     source_line_fingerprints: tuple[bytes, ...]
+    latest_timestamp: Optional[int] = None
 
     @property
     def display_text(self) -> str:
@@ -48,6 +49,7 @@ def prepare_container_log_batch(
 ) -> PreparedContainerLogBatch:
     """Prepare bounded display lines while keeping their original identities."""
     source_lines = log_text.splitlines()
+    latest_timestamp = _latest_docker_log_timestamp(source_lines)
     if len(source_lines) > max_lines:
         source_lines = source_lines[-max_lines:]
 
@@ -63,7 +65,26 @@ def prepare_container_log_batch(
         source_line_fingerprints=tuple(
             sha256(source_line.encode("utf-8")).digest() for source_line in source_lines
         ),
+        latest_timestamp=latest_timestamp,
     )
+
+
+def _latest_docker_log_timestamp(source_lines: Sequence[str]) -> Optional[int]:
+    """Find the newest Docker timestamp before display formatting or trimming."""
+    latest_timestamp = None
+    for line in source_lines:
+        match = DOCKER_TIMESTAMPED_LOG_LINE.match(line)
+        if match is None:
+            continue
+        try:
+            log_time = datetime.fromisoformat(match.group("seconds"))
+            log_time = log_time.replace(tzinfo=timezone.utc)
+            timestamp = int(log_time.timestamp())
+        except (ValueError, OverflowError, OSError):
+            continue
+        if latest_timestamp is None or timestamp > latest_timestamp:
+            latest_timestamp = timestamp
+    return latest_timestamp
 
 
 def apply_log_timestamp_mode(

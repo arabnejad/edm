@@ -243,7 +243,7 @@ def test_late_log_poll_cannot_change_final_stopped_container_logs(
     logs_key = state.selected_container_tab_key
     state.tab_content_cache[logs_key] = "old logs"
     test_setup = docker_manager_factory(state)
-    test_setup.container_log_updater.record_initial_log_load_success("container-1", 100)
+    test_setup.container_log_updater._log_cursor_by_container_id["container-1"] = 100
     test_setup.container_log_updater.poll_if_needed(
         10.0, initial_log_load_in_progress=False
     )

@@ -461,6 +461,10 @@ replaces an existing file without asking for confirmation.
 | Stats | CPU, memory, network, block I/O, and process usage from Docker |
 | Top | Processes reported by Docker top |
 
+Live log updates use Docker's log timestamps, so the computer running EDM and
+the Docker server can have different clocks. Each update includes a short
+overlap, and EDM removes repeated lines before displaying the new output.
+
 Stats reloads every two seconds by default while that tab is visible. Network
 and block I/O rates need two samples, so the first sample shows `N/A` for those
 rates. Docker does not report every counter on every operating system or cgroup
