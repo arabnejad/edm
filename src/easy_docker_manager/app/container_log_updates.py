@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from concurrent.futures import Future
 from functools import partial
 from typing import Optional, Union
@@ -123,13 +122,15 @@ class ContainerLogUpdater:
     def record_initial_log_load_success(
         self,
         container_id: str,
-        request_started_at: int,
-        source_line_fingerprints: tuple[bytes, ...] = (),
+        log_batch: PreparedContainerLogBatch,
     ) -> None:
-        """Save where later log polls should begin after the first load succeeds."""
-        self._log_cursor_by_container_id[container_id] = request_started_at
+        """Use the first log batch to set the cursor and remember its lines."""
+        if log_batch.latest_timestamp is None:
+            self._log_cursor_by_container_id.pop(container_id, None)
+        else:
+            self._log_cursor_by_container_id[container_id] = log_batch.latest_timestamp
         self._source_log_line_fingerprints_by_container_id[container_id] = (
-            source_line_fingerprints
+            log_batch.source_line_fingerprints
         )
         self._next_log_poll_at = 0.0
 
@@ -210,11 +211,13 @@ class ContainerLogUpdater:
     def _request_log_poll(self, container_id: str) -> None:
         """Submit the next incremental log request for one container."""
         since_timestamp = self._log_cursor_by_container_id.get(container_id)
+        if since_timestamp is not None:
+            # Include the preceding second to catch lines at timestamp boundaries.
+            since_timestamp = max(0, since_timestamp - 1)
         tail_lines: Union[int, str] = (
             self.app_config.initial_log_tail_lines if since_timestamp is None else "all"
         )
         replace_existing = since_timestamp is None
-        request_started_at = int(time.time())
 
         self._log_poll_future = self.background_executor.submit(
             self._fetch_log_poll_content,
@@ -225,7 +228,6 @@ class ContainerLogUpdater:
                 self._apply_log_poll_result,
                 container_id,
                 replace_existing,
-                request_started_at,
             ),
         )
 
@@ -233,7 +235,6 @@ class ContainerLogUpdater:
         self,
         container_id: str,
         replace_existing: bool,
-        request_started_at: int,
         log_poll_future: Future[PreparedContainerLogBatch],
     ) -> bool:
         """Store a finished log poll and return True when the screen should redraw."""
@@ -275,7 +276,12 @@ class ContainerLogUpdater:
             prepared_log_batch,
             replace_existing=replace_existing,
         )
-        self._log_cursor_by_container_id[container_id] = request_started_at
+        latest_timestamp = prepared_log_batch.latest_timestamp
+        previous_timestamp = self._log_cursor_by_container_id.get(container_id)
+        if latest_timestamp is not None and (
+            previous_timestamp is None or latest_timestamp > previous_timestamp
+        ):
+            self._log_cursor_by_container_id[container_id] = latest_timestamp
 
         logs_cache_key = ContainerTabKey(container_id, TabName.LOGS)
         recovered_from_failure = (

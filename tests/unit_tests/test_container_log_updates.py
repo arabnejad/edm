@@ -4,9 +4,6 @@ from concurrent.futures import Future
 
 import pytest
 
-from easy_docker_manager.app import (
-    container_log_updates as container_log_updates_module,
-)
 from easy_docker_manager.app import docker_manager as docker_manager_module
 from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_list import ContainerList
@@ -44,7 +41,9 @@ def _prepare_log_batch(
     )
 
 
-def test_log_poll_uses_saved_time_and_merges_new_lines(
+@pytest.mark.parametrize("local_time", [50.0, 500.0])
+def test_log_poll_uses_docker_time_and_merges_new_lines(
+    local_time: float,
     monkeypatch,
     docker_manager_factory,
     session_state_factory,
@@ -53,29 +52,81 @@ def test_log_poll_uses_saved_time_and_merges_new_lines(
     selected_tab_key = state.selected_container_tab_key
     assert selected_tab_key is not None
     state.tab_content_cache[selected_tab_key] = "A\nB"
-    test_setup = docker_manager_factory(state, AppConfig(initial_log_tail_lines=25))
+    test_setup = docker_manager_factory(
+        state,
+        AppConfig(
+            initial_log_tail_lines=25, log_timestamp_mode=HIDDEN_LOG_TIMESTAMP_MODE
+        ),
+    )
     test_setup.container_list_refresher._next_refresh_at = 100.0
-    existing_log_batch = _prepare_log_batch("A\nB")
+    existing_log_batch = _prepare_log_batch(
+        "1970-01-01T00:02:20Z A\n1970-01-01T00:02:30Z B",
+        HIDDEN_LOG_TIMESTAMP_MODE,
+    )
     test_setup.container_log_updater.record_initial_log_load_success(
         "container-1",
-        150,
-        existing_log_batch.source_line_fingerprints,
+        existing_log_batch,
     )
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
+    monkeypatch.setattr("time.time", lambda: local_time)
 
     test_setup.docker_manager.refresh_docker_data_if_needed()
     request = test_setup.background_executor.requests[0]
-    assert request.arguments == ("container-1", "all", 150)
+    assert request.arguments == ("container-1", "all", 149)
     assert test_setup.background_executor.complete_submission(
-        result=_prepare_log_batch("B\nC")
+        result=_prepare_log_batch(
+            "1970-01-01T00:02:30Z B\n1970-01-01T00:02:40Z C",
+            HIDDEN_LOG_TIMESTAMP_MODE,
+        )
     )
 
     assert state.tab_content_cache[selected_tab_key] == "A\nB\nC"
     assert (
         test_setup.container_log_updater._log_cursor_by_container_id["container-1"]
-        == 200
+        == 160
     )
+
+
+@pytest.mark.parametrize("next_message", ["next", "ready"])
+def test_log_polls_keep_new_lines_with_the_same_timestamp(
+    next_message: str,
+    docker_manager_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    selected_tab_key = state.selected_container_tab_key
+    assert selected_tab_key is not None
+    test_setup = docker_manager_factory(
+        state, AppConfig(log_timestamp_mode=HIDDEN_LOG_TIMESTAMP_MODE)
+    )
+    timestamp = "1970-01-01T00:02:30.123456789Z"
+    initial_logs = f"{timestamp} ready"
+    test_setup.docker_manager.load_selected_tab_content_if_needed()
+    test_setup.background_executor.complete_submission(
+        result=_prepare_log_batch(initial_logs, HIDDEN_LOG_TIMESTAMP_MODE)
+    )
+
+    updater = test_setup.container_log_updater
+    updater.poll_if_needed(0.0, initial_log_load_in_progress=False)
+    assert test_setup.background_executor.requests[-1].arguments == (
+        "container-1",
+        "all",
+        149,
+    )
+    overlapping_logs = f"{initial_logs}\n{timestamp} {next_message}"
+    assert test_setup.background_executor.complete_submission(
+        result=_prepare_log_batch(overlapping_logs, HIDDEN_LOG_TIMESTAMP_MODE)
+    )
+    assert state.tab_content_cache[selected_tab_key] == f"ready\n{next_message}"
+    assert updater._log_cursor_by_container_id["container-1"] == 150
+
+    # The same response on the next poll must not add either line again.
+    updater.poll_if_needed(1.0, initial_log_load_in_progress=False)
+    assert not test_setup.background_executor.complete_submission(
+        result=_prepare_log_batch(overlapping_logs, HIDDEN_LOG_TIMESTAMP_MODE)
+    )
+    assert state.tab_content_cache[selected_tab_key] == f"ready\n{next_message}"
+    assert updater._log_cursor_by_container_id["container-1"] == 150
 
 
 def test_log_poll_applies_timestamp_mode_without_changing_its_cursor(
@@ -94,15 +145,14 @@ def test_log_poll_applies_timestamp_mode_without_changing_its_cursor(
     test_setup.container_list_refresher._next_refresh_at = 100.0
     test_setup.container_log_updater._log_cursor_by_container_id["container-1"] = 150
     test_setup.docker_container_client.get_container_logs.return_value = (
-        "2026-01-01T12:00:00.000000000Z second"
+        "1970-01-01T00:03:20.000000000Z second"
     )
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
 
     test_setup.docker_manager.refresh_docker_data_if_needed()
 
     request = test_setup.background_executor.requests[0]
-    assert request.arguments == ("container-1", "all", 150)
+    assert request.arguments == ("container-1", "all", 149)
     formatted_log_batch = request.fn(*request.arguments)
     assert formatted_log_batch.display_text == "second"
     assert test_setup.background_executor.complete_submission(
@@ -126,7 +176,6 @@ def test_first_log_poll_can_clear_stale_cached_text(
     test_setup = docker_manager_factory(state)
     test_setup.container_list_refresher._next_refresh_at = 100.0
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
 
     test_setup.docker_manager.refresh_docker_data_if_needed()
 
@@ -134,9 +183,10 @@ def test_first_log_poll_can_clear_stale_cached_text(
         result=_prepare_log_batch("")
     )
     assert state.tab_content_cache[selected_tab_key] == ""
+    assert test_setup.container_log_updater._log_cursor_by_container_id == {}
 
 
-def test_empty_incremental_log_poll_keeps_cached_text_and_advances_time(
+def test_empty_incremental_log_poll_keeps_cached_text_and_cursor(
     monkeypatch,
     docker_manager_factory,
     session_state_factory,
@@ -149,7 +199,6 @@ def test_empty_incremental_log_poll_keeps_cached_text_and_advances_time(
     test_setup.container_list_refresher._next_refresh_at = 100.0
     test_setup.container_log_updater._log_cursor_by_container_id["container-1"] = 150
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
 
     test_setup.docker_manager.refresh_docker_data_if_needed()
 
@@ -159,7 +208,7 @@ def test_empty_incremental_log_poll_keeps_cached_text_and_advances_time(
     assert state.tab_content_cache[selected_tab_key] == "existing"
     assert (
         test_setup.container_log_updater._log_cursor_by_container_id["container-1"]
-        == 200
+        == 150
     )
 
 
@@ -179,7 +228,6 @@ def test_merged_incremental_logs_are_limited_before_caching(
     test_setup.container_list_refresher._next_refresh_at = 100.0
     test_setup.container_log_updater._log_cursor_by_container_id["container-1"] = 150
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
 
     test_setup.docker_manager.refresh_docker_data_if_needed()
 
@@ -219,7 +267,6 @@ def test_failed_log_poll_keeps_previous_time(
     test_setup.container_list_refresher._next_refresh_at = 100.0
     test_setup.container_log_updater._log_cursor_by_container_id["container-1"] = 150
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
     test_setup.docker_manager.refresh_docker_data_if_needed()
 
     assert test_setup.background_executor.complete_submission(exception=error)
@@ -299,7 +346,6 @@ def test_hidden_container_log_update_changes_cache_without_redraw(
     assert not container_log_updater._apply_log_poll_result(
         "hidden",
         True,
-        200,
         completed_request,
     )
     assert state.tab_content_cache[ContainerTabKey("hidden", TabName.LOGS)] == "line"
@@ -380,8 +426,7 @@ def test_hidden_mode_keeps_equal_messages_from_different_timestamps(
     state.tab_content_cache[cache_key] = existing_batch.display_text
     test_setup.container_log_updater.record_initial_log_load_success(
         "container-1",
-        100,
-        existing_batch.source_line_fingerprints,
+        existing_batch,
     )
 
     assert test_setup.container_log_updater._apply_log_content_to_cache(
@@ -415,8 +460,7 @@ def test_hidden_mode_keeps_timestamp_only_lines(
     state.tab_content_cache[cache_key] = existing_batch.display_text
     test_setup.container_log_updater.record_initial_log_load_success(
         "container-1",
-        100,
-        existing_batch.source_line_fingerprints,
+        existing_batch,
     )
 
     assert test_setup.container_log_updater._apply_log_content_to_cache(

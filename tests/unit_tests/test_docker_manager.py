@@ -4,9 +4,6 @@ from concurrent.futures import Future
 
 import pytest
 
-from easy_docker_manager.app import (
-    container_log_updates as container_log_updates_module,
-)
 from easy_docker_manager.app import docker_manager as docker_manager_module
 from easy_docker_manager.app import selected_tab_load as selected_tab_load_module
 from easy_docker_manager.core.config import AppConfig
@@ -96,7 +93,6 @@ def test_shell_return_discards_log_poll_started_before_shell_opened(
     test_setup = docker_manager_factory(state)
     test_setup.container_list_refresher._next_refresh_at = 100.0
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 200.0)
 
     test_setup.docker_manager.refresh_docker_data_if_needed()
     old_log_poll = test_setup.background_executor.requests[0]
@@ -160,7 +156,6 @@ def test_loaded_readable_logs_are_polled_after_the_interval(
     test_setup = docker_manager_factory(state)
     test_setup.container_list_refresher._next_refresh_at = 100.0
     monkeypatch.setattr(docker_manager_module.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(container_log_updates_module.time, "time", lambda: 50.0)
 
     test_setup.docker_manager.refresh_docker_data_if_needed()
 
