@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -46,7 +47,28 @@ def test_find_available_shell_prefers_bash(monkeypatch) -> None:
         check=False,
         capture_output=True,
         text=True,
+        timeout=10,
     )
+
+
+def test_find_available_shell_reports_a_timeout_without_trying_another_shell(
+    monkeypatch,
+) -> None:
+    run_command = Mock(side_effect=subprocess.TimeoutExpired(["docker", "exec"], 10))
+    monkeypatch.setattr(docker_cli.shutil, "which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(container_shell_launcher.subprocess, "run", run_command)
+
+    with pytest.raises(ContainerShellLaunchError, match="timed out after 10 seconds"):
+        ContainerShellLauncher().find_available_shell_executable(
+            "container-id",
+            DockerContextDetails(
+                "default",
+                "unix:///var/run/docker.sock",
+                DockerConnectionTransport.LOCAL,
+            ),
+        )
+
+    assert run_command.call_count == 1
 
 
 def test_find_available_shell_falls_back_to_sh(monkeypatch) -> None:
