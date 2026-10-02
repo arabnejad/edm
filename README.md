@@ -271,7 +271,8 @@ leaving EDM. Application versions and file paths appear immediately. Docker
 details are loaded in the background, so an unavailable daemon does not stop
 keyboard input. Press `Esc` to close the popup. The Docker check runs again
 each time the popup opens. The title panel also shows the installed EDM
-version.
+version. Use `Up`/`Down` or `Page Up`/`Page Down` to scroll long reports. The
+closing instruction stays visible at the bottom.
 
 Use the command-line report when the terminal interface cannot start:
 
@@ -445,6 +446,9 @@ While File is selected, printable keys, including `q` and `Q`, edit the path.
 Use `Left` and `Right` to move its cursor, `Home` or `End` to jump to either
 end, and `Backspace` or `Delete` to remove characters. Use `Up`, `Down`, or
 `Tab` to move between File and Scope.
+
+Use `Page Up` and `Page Down` to read long paths or errors. The export and
+cancel instructions stay visible at the bottom.
 
 Exports may contain passwords, tokens, URLs, command arguments, or other
 sensitive values. EDM shows a warning before every export and writes the text

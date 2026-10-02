@@ -12,7 +12,10 @@ from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.container_actions import ContainerActionMenuState
 from easy_docker_manager.core.container_sorting import ContainerListMenuState
 from easy_docker_manager.core.docker_connections import DockerConnectionMenuState
-from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.core.terminal_session_state import (
+    ActivePopupState,
+    TerminalSessionState,
+)
 from easy_docker_manager.diagnostics import DiagnosticsReport, get_installed_edm_version
 from easy_docker_manager.tab_export.definitions import TabExportMenuState
 from easy_docker_manager.ui.container_action_popup import (
@@ -80,6 +83,8 @@ class TerminalLayoutView:
         )
         self.layout = urwid.WidgetPlaceholder(self._main_layout)
         self._is_showing_container_shell = False
+        self._popup_scroll_body = urwid.Scrollable(urwid.Text(""))
+        self._active_popup: Optional[ActivePopupState] = None
 
     def build_urwid_style_palette(self) -> list[tuple[str, str, str]]:
         """Return the color styles passed to Urwid when EDM starts.
@@ -206,10 +211,15 @@ class TerminalLayoutView:
         )
 
         active_popup = state.active_popup
+        if active_popup is not self._active_popup:
+            self._popup_scroll_body.set_scrollpos(0)
+        self._active_popup = active_popup
+
         if isinstance(active_popup, DiagnosticsReport):
             self.layout.original_widget = build_diagnostics_popup(
                 active_popup,
                 self._main_layout,
+                self._popup_scroll_body,
             )
         elif isinstance(active_popup, SettingsMenuState):
             self.layout.original_widget = build_settings_popup_menu(
@@ -230,6 +240,7 @@ class TerminalLayoutView:
             self.layout.original_widget = build_tab_export_popup_menu(
                 active_popup,
                 self._main_layout,
+                self._popup_scroll_body,
             )
         elif isinstance(active_popup, ContainerListMenuState):
             self.layout.original_widget = build_container_list_popup_menu(
@@ -238,6 +249,20 @@ class TerminalLayoutView:
             )
         else:
             self.layout.original_widget = self._main_layout
+
+    def scroll_popup(self, key: str, terminal_size: Optional[tuple[int, ...]]) -> bool:
+        """Scroll long popup text without changing the form's keyboard controls."""
+        if not isinstance(self._active_popup, (DiagnosticsReport, TabExportMenuState)):
+            return False
+        if terminal_size is None or len(terminal_size) < 2:
+            return False
+        scroll_keys = {"page up", "page down"}
+        if isinstance(self._active_popup, DiagnosticsReport):
+            scroll_keys.update({"up", "down", "home", "end"})
+        if key not in scroll_keys:
+            return False
+        self.layout.keypress((terminal_size[0], terminal_size[1]), key)
+        return True
 
     def show_container_shell(
         self,
