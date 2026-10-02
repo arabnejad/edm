@@ -5,6 +5,8 @@ from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
+
 from easy_docker_manager.config import app_config_store
 from easy_docker_manager.config.app_config_store import AppConfigStore
 from easy_docker_manager.core.config import AppConfig
@@ -117,6 +119,89 @@ def test_invalid_json_and_non_object_json_use_defaults(tmp_path: Path) -> None:
 
     assert AppConfigStore(invalid_path).load_and_sync() == AppConfig()
     assert AppConfigStore(list_path).load_and_sync() == AppConfig()
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf"), 10**400])
+def test_invalid_durations_use_defaults_and_keep_other_settings(
+    tmp_path: Path, value: object
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "container_list_refresh_interval_seconds": value,
+                "detail_tab_refresh_interval_seconds": value,
+                "docker_request_timeout_seconds": value,
+                "colors_enabled": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = AppConfigStore(config_path).load_and_sync()
+
+    assert loaded == AppConfig(colors_enabled=False)
+    assert json.loads(config_path.read_text(encoding="utf-8")) == asdict(loaded)
+
+
+@pytest.mark.parametrize("contents", [b"\xff\xfe", b"{broken", b"[]"])
+def test_unusable_settings_are_backed_up_before_writing_defaults(
+    tmp_path: Path, contents: bytes
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_bytes(contents)
+
+    assert AppConfigStore(config_path).load_and_sync() == AppConfig()
+
+    assert (tmp_path / "config.json.invalid").read_bytes() == contents
+    assert json.loads(config_path.read_text(encoding="utf-8")) == asdict(AppConfig())
+
+
+def test_backing_up_invalid_settings_keeps_previous_backups(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    (tmp_path / "config.json.invalid").write_bytes(b"first bad file")
+    (tmp_path / "config.json.invalid.1").write_bytes(b"second bad file")
+    config_path.write_bytes(b"\xff")
+
+    assert AppConfigStore(config_path).load_and_sync() == AppConfig()
+
+    assert (tmp_path / "config.json.invalid").read_bytes() == b"first bad file"
+    assert (tmp_path / "config.json.invalid.1").read_bytes() == b"second bad file"
+    assert (tmp_path / "config.json.invalid.2").read_bytes() == b"\xff"
+
+
+def test_backup_failure_leaves_invalid_settings_untouched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_bytes(b"\xff")
+    monkeypatch.setattr(Path, "rename", Mock(side_effect=OSError("read only")))
+
+    assert AppConfigStore(config_path).load_and_sync() == AppConfig()
+
+    assert config_path.read_bytes() == b"\xff"
+    assert "leaving it unchanged" in caplog.text
+
+
+def test_settings_directory_is_left_untouched(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.mkdir()
+
+    assert AppConfigStore(config_path).load_and_sync() == AppConfig()
+    assert config_path.is_dir()
+
+
+def test_save_rejects_non_finite_json_without_replacing_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"colors_enabled": false}', encoding="utf-8")
+    monkeypatch.setattr(
+        app_config_store, "asdict", lambda config: {"bad": float("nan")}
+    )
+
+    assert AppConfigStore(config_path).save(AppConfig()) is False
+    assert config_path.read_text(encoding="utf-8") == '{"colors_enabled": false}'
 
 
 def test_save_failure_does_not_prevent_config_loading(

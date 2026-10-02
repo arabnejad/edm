@@ -49,6 +49,20 @@ def test_app_config_rejects_non_positive_values(field_name: str) -> None:
         AppConfig(**{field_name: 0})
 
 
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "container_list_refresh_interval_seconds",
+        "detail_tab_refresh_interval_seconds",
+        "docker_request_timeout_seconds",
+    ],
+)
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_app_config_rejects_non_finite_durations(field_name: str, value: float) -> None:
+    with pytest.raises(ValueError, match=f"{field_name} must be positive and finite"):
+        AppConfig(**{field_name: value})
+
+
 def test_app_config_is_immutable() -> None:
     config = AppConfig()
 

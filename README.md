@@ -506,6 +506,11 @@ EDM creates this file on first use. On later starts, it keeps valid settings,
 fills in missing defaults, removes unknown or invalid values, and writes the
 cleaned configuration back to the file.
 
+Refresh intervals and the Docker timeout must be positive, finite numbers.
+If the file cannot be read as a UTF-8 JSON object, EDM keeps it as
+`config.json.invalid` before writing defaults. Later backups get numbered
+suffixes. If the backup fails, EDM uses defaults and leaves the file untouched.
+
 | Setting | Default | Purpose |
 | --- | ---: | --- |
 | `container_list_refresh_interval_seconds` | `2.0` | Seconds between container-list refreshes |
