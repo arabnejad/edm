@@ -150,6 +150,67 @@ def test_current_view_export_uses_filtered_log_lines(
     assert menu_state.phase == TabExportPhase.WRITING
 
 
+def test_no_matches_export_an_empty_file_without_the_display_message(
+    tab_export_controller_factory,
+    session_state_factory,
+    tmp_path,
+) -> None:
+    state = session_state_factory()
+    _cache_active_tab_content(state, "INFO ready")
+    tab_key = state.selected_container_tab_key
+    assert tab_key is not None
+    state.tab_search_queries[tab_key] = "missing"
+    test_setup = tab_export_controller_factory(state)
+    test_setup.tab_export_controller.open_tab_export_menu()
+    menu_state = _get_open_tab_export_menu(state)
+    menu_state.file_path = "empty.log"
+
+    assert test_setup.tab_export_controller.handle_menu_keypress("enter")
+
+    request = test_setup.background_executor.submit.call_args.args[1]
+    assert request.tab_text_snapshot == ""
+    TabExportWriter().export_text(request)
+    assert (tmp_path / "empty.log").read_bytes() == b""
+
+
+@pytest.mark.parametrize(
+    "phase", [TabExportPhase.EDITING, TabExportPhase.CONFIRMING_OVERWRITE]
+)
+@pytest.mark.parametrize("times_out", [False, True])
+def test_failed_search_stops_current_view_export(
+    phase,
+    times_out,
+    monkeypatch,
+    tab_export_controller_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    _cache_active_tab_content(state, "INFO ready\nERROR failed")
+    tab_key = state.selected_container_tab_key
+    assert tab_key is not None
+    state.tab_search_queries[tab_key] = "error" if times_out else "["
+    if times_out:
+        pattern = Mock()
+        # A timeout after a match must not export the partial result either.
+        pattern.search.side_effect = [True, TimeoutError]
+        monkeypatch.setattr(
+            "easy_docker_manager.tabs.tab_text_filter.compile_log_filter_regex",
+            lambda query: (pattern, None),
+        )
+    test_setup = tab_export_controller_factory(state)
+    test_setup.tab_export_controller.open_tab_export_menu()
+    menu_state = _get_open_tab_export_menu(state)
+    menu_state.phase = phase
+
+    assert test_setup.tab_export_controller.handle_menu_keypress("enter")
+
+    test_setup.background_executor.submit.assert_not_called()
+    test_setup.tab_export_writer.export_text.assert_not_called()
+    assert menu_state.phase == TabExportPhase.EDITING
+    expected = "Log search took too long." if times_out else "Invalid log search:"
+    assert menu_state.error_message.startswith(expected)
+
+
 def test_submit_export_expands_tilde_to_the_home_directory(
     tab_export_controller_factory,
     session_state_factory,
@@ -176,7 +237,9 @@ def test_submit_export_expands_tilde_to_the_home_directory(
     assert state.active_popup is None
 
 
+@pytest.mark.parametrize("query", ["ERROR", "["])
 def test_full_tab_export_keeps_all_cached_text(
+    query,
     tab_export_controller_factory,
     session_state_factory,
 ) -> None:
@@ -184,7 +247,7 @@ def test_full_tab_export_keeps_all_cached_text(
     _cache_active_tab_content(state, "INFO ready\nERROR failed")
     container_tab_key = state.selected_container_tab_key
     assert container_tab_key is not None
-    state.tab_search_queries[container_tab_key] = "ERROR"
+    state.tab_search_queries[container_tab_key] = query
     test_setup = tab_export_controller_factory(state)
     test_setup.tab_export_controller.open_tab_export_menu()
     menu_state = _get_open_tab_export_menu(state)
@@ -196,6 +259,29 @@ def test_full_tab_export_keeps_all_cached_text(
     export_request = test_setup.background_executor.submit.call_args.args[1]
     assert export_request.tab_text_snapshot == "INFO ready\nERROR failed"
     assert export_request.allow_overwrite
+
+
+@pytest.mark.parametrize(
+    "log_line",
+    ["No log lines match /missing/.", "Log search took too long. Try a simpler regex."],
+)
+def test_real_log_lines_that_resemble_messages_are_still_exported(
+    log_line,
+    tab_export_controller_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    _cache_active_tab_content(state, "INFO ready\n" + log_line)
+    tab_key = state.selected_container_tab_key
+    assert tab_key is not None
+    state.tab_search_queries[tab_key] = "log"
+    test_setup = tab_export_controller_factory(state)
+    test_setup.tab_export_controller.open_tab_export_menu()
+
+    assert test_setup.tab_export_controller.handle_menu_keypress("enter")
+
+    request = test_setup.background_executor.submit.call_args.args[1]
+    assert request.tab_text_snapshot == log_line
 
 
 def test_export_menu_edits_path_field_and_scope(

@@ -437,6 +437,10 @@ path and choose one of these scopes:
 - **Full loaded tab** exports all text currently held in EDM's cache. It does
   not request more data or older logs from Docker.
 
+A Current view log export writes only matching log lines. No matches produces
+an empty file. An invalid or timed-out search shows an error and stops the
+export; screen messages are never added to the file.
+
 The suggested path starts in the directory where you launched EDM. Logs use a
 `.log` extension; the other tabs use `.txt`. Relative paths are also resolved
 from that launch directory. When the path is inside your home directory, the
@@ -487,7 +491,7 @@ Each container and tab keeps its own search query:
   lines that do not match.
 - Env, Config, Stats, and Top use case-insensitive plain-text search. Matches are
   highlighted, but no lines are removed.
-- An invalid Logs regular expression leaves the log text visible.
+- An invalid Logs regular expression shows a search error instead of log lines.
 - Log regular expressions are limited to 200 characters.
 - Each regex search has a 50 ms timeout per line. A slow filter shows a message
   asking for a simpler regex; a slow highlight is skipped.

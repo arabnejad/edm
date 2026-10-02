@@ -868,8 +868,14 @@ or loaded text.
 `TabTextFilter` chooses which loaded lines remain visible:
 
 - Logs uses a case-insensitive regular expression. Lines that do not match are
-  hidden. Invalid expressions leave the full log text visible.
+  hidden. Invalid expressions and timeouts return a separate error message.
 - Env, Config, Stats, and Top keep every line visible.
+
+`TabTextFilter.filter_lines()` returns the data lines and a separate search
+error, if one occurs. It never adds display messages to the data.
+`TerminalController` adds errors and "no matches" messages for the screen.
+`TabExportController` writes only data lines: no matches gives an empty file,
+while a search error stops the export before a file write starts.
 
 `DetailTabTextFormatter` then adds terminal colors and highlights matching
 text. Env, Config, Stats, and Top use case-insensitive plain-text highlighting.

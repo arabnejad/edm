@@ -296,10 +296,17 @@ class TabExportController:
             )
             return True
 
-        tab_text_snapshot = self._build_export_text_snapshot(
-            menu_state,
-            full_content,
-        )
+        tab_text_snapshot = full_content
+        if menu_state.scope == TabExportScope.CURRENT_VIEW:
+            query = self.state.tab_search_queries.get(menu_state.container_tab_key, "")
+            lines, error = self.tab_text_filter.filter_lines(
+                full_content, menu_state.container_tab_key.tab_name, query
+            )
+            if error:
+                menu_state.phase = TabExportPhase.EDITING
+                menu_state.error_message = error
+                return True
+            tab_text_snapshot = "\n".join(lines)
         request = TabExportRequest(
             target_path=target_path,
             tab_text_snapshot=tab_text_snapshot,
@@ -359,23 +366,6 @@ class TabExportController:
         except ValueError:
             return str(target_path)
         return str(Path("~") / path_below_home)
-
-    def _build_export_text_snapshot(
-        self,
-        menu_state: TabExportMenuState,
-        full_content: str,
-    ) -> str:
-        """Copy the cached text selected by the export scope."""
-        if menu_state.scope == TabExportScope.FULL_TAB:
-            return full_content
-
-        query = self.state.tab_search_queries.get(menu_state.container_tab_key, "")
-        visible_lines = self.tab_text_filter.get_visible_lines(
-            full_content,
-            menu_state.container_tab_key.tab_name,
-            query,
-        )
-        return "\n".join(visible_lines)
 
     def _apply_tab_export_result(
         self,

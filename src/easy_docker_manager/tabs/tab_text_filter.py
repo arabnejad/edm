@@ -1,4 +1,4 @@
-"""Choose which tab lines remain visible after a search."""
+"""Filter tab data without adding messages meant only for the screen."""
 
 from __future__ import annotations
 
@@ -27,46 +27,45 @@ class TabTextFilter:
         """Keep the latest Logs result so an unchanged view is quick to reuse."""
         self._last_log_content: Optional[str] = None
         self._last_log_query: Optional[str] = None
-        self._last_visible_log_lines: Optional[list[str]] = None
+        self._last_log_result: Optional[tuple[list[str], Optional[str]]] = None
 
-    def get_visible_lines(
+    def filter_lines(
         self,
         content: str,
         tab_name: TabName,
         query: str,
-    ) -> list[str]:
-        """Return the lines that should remain visible for this tab and query."""
-        if not content:
-            return []
-
+    ) -> tuple[list[str], Optional[str]]:
+        """Return data lines and a separate error message if the search fails."""
         query = query.strip()
         if tab_name != TabName.LOGS or not query:
-            return content.splitlines()
+            return content.splitlines(), None
 
         if (
             content == self._last_log_content
             and query == self._last_log_query
-            and self._last_visible_log_lines is not None
+            and self._last_log_result is not None
         ):
-            return self._last_visible_log_lines
+            return self._last_log_result
 
+        matching_lines: list[str] = []
         pattern, error = compile_log_filter_regex(query)
         if error:
-            return content.splitlines()
+            error = f"Invalid log search: {error}"
+        else:
+            try:
+                matching_lines = [
+                    line
+                    for line in content.splitlines()
+                    if pattern.search(line, timeout=LOG_REGEX_TIMEOUT_SECONDS)
+                ]
+            except TimeoutError:
+                error = "Log search took too long. Try a simpler regex."
 
-        try:
-            matching_lines = [
-                line
-                for line in content.splitlines()
-                if pattern.search(line, timeout=LOG_REGEX_TIMEOUT_SECONDS)
-            ]
-            visible_lines = matching_lines or [f"No log lines match /{query}/."]
-        except TimeoutError:
-            visible_lines = ["Log search took too long. Try a simpler regex."]
+        result = matching_lines, error
         self._last_log_content = content
         self._last_log_query = query
-        self._last_visible_log_lines = visible_lines
-        return visible_lines
+        self._last_log_result = result
+        return result
 
 
 @lru_cache(maxsize=128)

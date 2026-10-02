@@ -113,13 +113,17 @@ class TerminalController:
             return ["Loading..."]
 
         content = self.state.tab_content_cache[container_tab_key]
-        if content == "":
-            return [self.get_empty_tab_message(self.state.active_detail_tab_name)]
-
         query = self.state.tab_search_queries.get(container_tab_key, "")
-        return self.tab_text_filter.get_visible_lines(
+        lines, error = self.tab_text_filter.filter_lines(
             content, self.state.active_detail_tab_name, query
         )
+        if error:
+            return [error]
+        if not content:
+            return [self.get_empty_tab_message(self.state.active_detail_tab_name)]
+        if not lines:
+            return [f"No log lines match /{query.strip()}/."]
+        return lines
 
     @staticmethod
     def get_empty_tab_message(tab_name: TabName) -> str:
