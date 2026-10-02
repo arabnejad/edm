@@ -8,7 +8,10 @@ from functools import lru_cache
 from typing import Optional, Union
 
 from easy_docker_manager.core.tabs import TabName
-from easy_docker_manager.tabs.tab_text_filter import compile_log_filter_regex
+from easy_docker_manager.tabs.tab_text_filter import (
+    LOG_REGEX_TIMEOUT_SECONDS,
+    compile_log_filter_regex,
+)
 
 MarkupSegment = Union[str, tuple[Hashable, str]]
 
@@ -139,11 +142,14 @@ def regex_match_ranges(line: str, query: str) -> list[tuple[int, int]]:
     pattern, error = compile_log_filter_regex(query)
     if error:
         return []
-    return [
-        (match.start(), match.end())
-        for match in pattern.finditer(line)
-        if match.start() != match.end()
-    ]
+    try:
+        return [
+            (match.start(), match.end())
+            for match in pattern.finditer(line, timeout=LOG_REGEX_TIMEOUT_SECONDS)
+            if match.start() != match.end()
+        ]
+    except TimeoutError:
+        return []
 
 
 def plain_text_match_ranges(line: str, query: str) -> list[tuple[int, int]]:
