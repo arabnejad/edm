@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from unittest.mock import Mock
+
+import pytest
+
 from easy_docker_manager.core.tabs import TabName
 from easy_docker_manager.ui.formatting import (
     DetailTabTextFormatter,
@@ -21,6 +25,21 @@ def test_regex_match_ranges_ignore_zero_width_matches() -> None:
     assert regex_match_ranges("error ERROR", "error") == [(0, 5), (6, 11)]
     assert regex_match_ranges("text", "^") == []
     assert regex_match_ranges("text", "[") == []
+
+
+def test_log_highlighting_keeps_text_and_colors_after_a_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pattern = Mock()
+    pattern.finditer.side_effect = TimeoutError
+    monkeypatch.setattr(
+        "easy_docker_manager.ui.formatting.compile_log_filter_regex",
+        lambda query: (pattern, None),
+    )
+
+    assert DetailTabTextFormatter().format_detail_line(
+        "ERROR failed", TabName.LOGS, "error"
+    ) == [("log_error", "ERROR"), " ", "failed"]
 
 
 def test_plain_text_match_ranges_escape_regex_characters() -> None:

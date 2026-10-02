@@ -474,6 +474,8 @@ Each container and tab keeps its own search query:
   highlighted, but no lines are removed.
 - An invalid Logs regular expression leaves the log text visible.
 - Log regular expressions are limited to 200 characters.
+- Each regex search has a 50 ms timeout per line. A slow filter shows a message
+  asking for a simpler regex; a slow highlight is skipped.
 
 ## Configuration
 

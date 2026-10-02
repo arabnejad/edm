@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import re
 from functools import lru_cache
 from typing import Optional
+
+import regex
 
 from easy_docker_manager.core.tabs import TabName
 
 MAX_REGEX_QUERY_LENGTH = 200
+LOG_REGEX_TIMEOUT_SECONDS = 0.05
 
 
 class TabTextFilter:
@@ -52,8 +54,15 @@ class TabTextFilter:
         if error:
             return content.splitlines()
 
-        matching_lines = [line for line in content.splitlines() if pattern.search(line)]
-        visible_lines = matching_lines or [f"No log lines match /{query}/."]
+        try:
+            matching_lines = [
+                line
+                for line in content.splitlines()
+                if pattern.search(line, timeout=LOG_REGEX_TIMEOUT_SECONDS)
+            ]
+            visible_lines = matching_lines or [f"No log lines match /{query}/."]
+        except TimeoutError:
+            visible_lines = ["Log search took too long. Try a simpler regex."]
         self._last_log_content = content
         self._last_log_query = query
         self._last_visible_log_lines = visible_lines
@@ -61,14 +70,19 @@ class TabTextFilter:
 
 
 @lru_cache(maxsize=128)
-def compile_log_filter_regex(query: str) -> tuple[re.Pattern[str], Optional[str]]:
+def compile_log_filter_regex(query: str) -> tuple[regex.Pattern[str], Optional[str]]:
     """Compile a case-insensitive regex, returning its error instead of raising."""
     if len(query) > MAX_REGEX_QUERY_LENGTH:
-        return re.compile(r"$."), "Regex query is too long."
+        return regex.compile(r"$."), "Regex query is too long."
     try:
-        return re.compile(query, re.IGNORECASE), None
-    except re.error as exc:
-        return re.compile(r"$."), str(exc)
+        return regex.compile(query, regex.IGNORECASE | regex.VERSION0), None
+    except (regex.error, ValueError, OverflowError) as exc:
+        return regex.compile(r"$."), str(exc)
 
 
-__all__ = ["MAX_REGEX_QUERY_LENGTH", "TabTextFilter", "compile_log_filter_regex"]
+__all__ = [
+    "LOG_REGEX_TIMEOUT_SECONDS",
+    "MAX_REGEX_QUERY_LENGTH",
+    "TabTextFilter",
+    "compile_log_filter_regex",
+]
