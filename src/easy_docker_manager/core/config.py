@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 
 from easy_docker_manager.core.log_text import (
     DOCKER_UTC_LOG_TIMESTAMP_MODE,
@@ -45,10 +46,20 @@ class AppConfig:
 
     def __post_init__(self) -> None:
         """Reject invalid settings before the application starts."""
-        if self.container_list_refresh_interval_seconds <= 0:
-            raise ValueError("container_list_refresh_interval_seconds must be positive")
-        if self.detail_tab_refresh_interval_seconds <= 0:
-            raise ValueError("detail_tab_refresh_interval_seconds must be positive")
+        if (
+            not isfinite(self.container_list_refresh_interval_seconds)
+            or self.container_list_refresh_interval_seconds <= 0
+        ):
+            raise ValueError(
+                "container_list_refresh_interval_seconds must be positive and finite"
+            )
+        if (
+            not isfinite(self.detail_tab_refresh_interval_seconds)
+            or self.detail_tab_refresh_interval_seconds <= 0
+        ):
+            raise ValueError(
+                "detail_tab_refresh_interval_seconds must be positive and finite"
+            )
         if self.initial_log_tail_lines <= 0:
             raise ValueError("initial_log_tail_lines must be positive")
         if self.max_log_lines <= 0:
@@ -64,8 +75,13 @@ class AppConfig:
             raise ValueError("tab_content_cache_max_entries must be positive")
         if self.tab_content_cache_max_bytes <= 0:
             raise ValueError("tab_content_cache_max_bytes must be positive")
-        if self.docker_request_timeout_seconds <= 0:
-            raise ValueError("docker_request_timeout_seconds must be positive")
+        if (
+            not isfinite(self.docker_request_timeout_seconds)
+            or self.docker_request_timeout_seconds <= 0
+        ):
+            raise ValueError(
+                "docker_request_timeout_seconds must be positive and finite"
+            )
         if self.max_background_worker_threads <= 0:
             raise ValueError("max_background_worker_threads must be positive")
         if self.application_log_level not in APPLICATION_LOG_LEVEL_NAMES:

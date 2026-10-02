@@ -46,7 +46,15 @@ class AppConfigStore:
         current defaults.
         The rewritten file contains the current settings and drops the old one.
         """
-        raw_config = self._read_json_object()
+        try:
+            raw_config = self._read_json_object()
+        except OSError as exc:
+            logger.warning(
+                "Unable to back up config file %s; leaving it unchanged: %s",
+                self.config_path,
+                exc,
+            )
+            return AppConfig()
         app_config = self._build_app_config(raw_config)
         self.save(app_config)
         return app_config
@@ -59,29 +67,34 @@ class AppConfigStore:
         checks it so a failed save is shown to the user.
         """
         try:
+            serialized_config = json.dumps(
+                asdict(app_config), indent=2, sort_keys=True, allow_nan=False
+            )
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
             temporary_path = self.config_path.with_suffix(
                 f"{self.config_path.suffix}.tmp"
             )
             temporary_path.write_text(
-                f"{json.dumps(asdict(app_config), indent=2, sort_keys=True)}\n",
+                f"{serialized_config}\n",
                 encoding="utf-8",
             )
             temporary_path.replace(self.config_path)
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             logger.warning("Unable to save config file %s: %s", self.config_path, exc)
             return False
         return True
 
     def _read_json_object(self) -> dict[str, Any]:
-        """Read the JSON object, or return an empty object if it cannot be used."""
+        """Read settings, backing up unusable files before returning defaults."""
         if not self.config_path.exists():
             return {}
 
         try:
             loaded = json.loads(self.config_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, ValueError) as exc:
+            # ValueError includes invalid JSON, UTF-8, and oversized JSON integers.
             logger.warning("Unable to load config file %s: %s", self.config_path, exc)
+            self._backup_invalid_file()
             return {}
 
         if isinstance(loaded, dict):
@@ -91,7 +104,22 @@ class AppConfigStore:
             "Ignoring config file %s because it is not a JSON object",
             self.config_path,
         )
+        self._backup_invalid_file()
         return {}
+
+    def _backup_invalid_file(self) -> None:
+        """Move a bad settings file aside without replacing earlier backups."""
+        if not self.config_path.is_file():
+            raise OSError("The settings path is not a regular file")
+        backup_path = self.config_path.with_name(f"{self.config_path.name}.invalid")
+        number = 1
+        while backup_path.exists():
+            backup_path = self.config_path.with_name(
+                f"{self.config_path.name}.invalid.{number}"
+            )
+            number += 1
+        self.config_path.rename(backup_path)
+        logger.warning("Backed up invalid config file to %s", backup_path)
 
     def _build_app_config(self, raw_config: dict[str, Any]) -> AppConfig:
         """Build AppConfig from known valid values and current defaults."""
@@ -108,7 +136,7 @@ class AppConfigStore:
                     raw_config[key],
                     type(default_value),
                 )
-            except TypeError:
+            except (TypeError, OverflowError):
                 logger.warning("Ignoring invalid config value for %s", key)
                 continue
 
