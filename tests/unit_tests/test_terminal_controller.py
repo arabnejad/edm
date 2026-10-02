@@ -96,6 +96,43 @@ def test_active_log_tab_display_lines_use_the_saved_query(
     ]
 
 
+def test_no_log_matches_are_reported_only_on_screen(
+    terminal_controller_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    tab_key = state.selected_container_tab_key
+    assert tab_key is not None
+    state.tab_content_cache[tab_key] = "INFO ready"
+    state.tab_search_queries[tab_key] = "missing"
+    controller = terminal_controller_factory(state).terminal_controller
+
+    assert controller.get_active_detail_tab_display_lines() == [
+        "No log lines match /missing/."
+    ]
+    assert state.tab_content_cache[tab_key] == "INFO ready"
+
+
+@pytest.mark.parametrize("content", ["", "INFO ready"])
+def test_invalid_log_search_is_shown_instead_of_log_data(
+    content,
+    terminal_controller_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory()
+    tab_key = state.selected_container_tab_key
+    assert tab_key is not None
+    state.tab_content_cache[tab_key] = content
+    state.tab_search_queries[tab_key] = "["
+    controller = terminal_controller_factory(state).terminal_controller
+
+    lines = controller.get_active_detail_tab_display_lines()
+
+    assert len(lines) == 1
+    assert lines[0].startswith("Invalid log search:")
+    assert state.tab_content_cache[tab_key] == content
+
+
 def test_render_passes_lines_and_error_state_to_the_view(
     terminal_controller_factory,
     session_state_factory,

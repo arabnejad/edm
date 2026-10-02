@@ -18,44 +18,59 @@ from easy_docker_manager.tabs.tab_text_filter import (
 def test_tab_text_filter_applies_case_insensitive_regex_to_logs() -> None:
     tab_text_filter = TabTextFilter()
 
-    assert tab_text_filter.get_visible_lines(
+    assert tab_text_filter.filter_lines(
         "INFO started\nERROR failed",
         TabName.LOGS,
         "error",
-    ) == ["ERROR failed"]
+    ) == (["ERROR failed"], None)
 
 
-def test_tab_text_filter_reports_when_no_log_lines_match() -> None:
-    visible_lines = TabTextFilter().get_visible_lines(
+def test_tab_text_filter_returns_empty_data_when_no_log_lines_match() -> None:
+    lines, error = TabTextFilter().filter_lines(
         "INFO",
         TabName.LOGS,
         "ERROR",
     )
 
-    assert visible_lines == ["No log lines match /ERROR/."]
+    assert lines == []
+    assert error is None
 
 
-def test_tab_text_filter_keeps_non_log_tabs_and_invalid_regex_unchanged() -> None:
+def test_tab_text_filter_keeps_non_log_tabs_unchanged() -> None:
     content = "A=1\nB=2"
     tab_text_filter = TabTextFilter()
 
-    assert tab_text_filter.get_visible_lines(content, TabName.ENV, "A") == [
-        "A=1",
-        "B=2",
-    ]
-    assert tab_text_filter.get_visible_lines(content, TabName.LOGS, "[") == [
-        "A=1",
-        "B=2",
-    ]
-    assert tab_text_filter.get_visible_lines("", TabName.LOGS, "A") == []
+    assert tab_text_filter.filter_lines(content, TabName.ENV, "[") == (
+        ["A=1", "B=2"],
+        None,
+    )
+    assert tab_text_filter.filter_lines("", TabName.LOGS, "A") == ([], None)
+    assert tab_text_filter.filter_lines(content, TabName.LOGS, " ") == (
+        ["A=1", "B=2"],
+        None,
+    )
 
 
 def test_tab_text_filter_reuses_the_latest_log_result() -> None:
     tab_text_filter = TabTextFilter()
-    first_result = tab_text_filter.get_visible_lines("A\nB", TabName.LOGS, "A")
-    repeated_result = tab_text_filter.get_visible_lines("A\nB", TabName.LOGS, "A")
+    first_result = tab_text_filter.filter_lines("A\nB", TabName.LOGS, "A")
+    repeated_result = tab_text_filter.filter_lines("A\nB", TabName.LOGS, "A")
 
     assert repeated_result is first_result
+
+
+@pytest.mark.parametrize("query", ["[", "a" * (MAX_REGEX_QUERY_LENGTH + 1)])
+@pytest.mark.parametrize("content", ["", "INFO\nERROR"])
+def test_invalid_log_search_returns_an_error_without_data(
+    query: str, content: str
+) -> None:
+    text_filter = TabTextFilter()
+
+    lines, error = text_filter.filter_lines(content, TabName.LOGS, query)
+
+    assert lines == []
+    assert error is not None
+    assert error.startswith("Invalid log search:")
 
 
 def test_compile_log_filter_regex_handles_valid_invalid_and_long_queries() -> None:
@@ -81,10 +96,11 @@ def test_log_filter_shows_and_caches_a_timeout_message(
     )
     text_filter = TabTextFilter()
 
-    result = text_filter.get_visible_lines("INFO\nERROR", TabName.LOGS, "error")
+    result = text_filter.filter_lines("INFO\nERROR", TabName.LOGS, "error")
 
-    assert result == ["Log search took too long. Try a simpler regex."]
-    assert text_filter.get_visible_lines("INFO\nERROR", TabName.LOGS, "error") is result
+    assert result == ([], "Log search took too long. Try a simpler regex.")
+    assert text_filter.filter_lines("INFO\nERROR", TabName.LOGS, "error") is result
+    pattern.search.assert_called_once()
 
 
 def test_expensive_regex_cannot_hang_filtering_or_highlighting() -> None:
@@ -100,18 +116,18 @@ def test_expensive_regex_cannot_hang_filtering_or_highlighting() -> None:
 
                 text_filter = TabTextFilter()
                 query = '(a+)+$'
-                assert text_filter.get_visible_lines(
+                assert text_filter.filter_lines(
                     'a' * 30 + '!', TabName.LOGS, query
-                ) == [f'No log lines match /{query}/.']
+                ) == ([], None)
 
                 content = 'a' * 1000 + '!'
                 query = '(a|aa)+$'
-                assert text_filter.get_visible_lines(
+                assert text_filter.filter_lines(
                     content, TabName.LOGS, query
-                ) == ['Log search took too long. Try a simpler regex.']
-                assert text_filter.get_visible_lines(
+                ) == ([], 'Log search took too long. Try a simpler regex.')
+                assert text_filter.filter_lines(
                     content, TabName.LOGS, 'a'
-                ) == [content]
+                ) == ([content], None)
                 assert regex_match_ranges('ok ' + content, 'ok|' + query) == []
                 """),
         ],
