@@ -14,11 +14,13 @@ from easy_docker_manager.app.background_executor import BackgroundExecutor
 from easy_docker_manager.app.background_notifier import BackgroundNotifier
 from easy_docker_manager.app.docker_manager import DockerManager
 from easy_docker_manager.app.runtime_factory import EDMRuntimeFactory
+from easy_docker_manager.core.config import AppConfig
 from easy_docker_manager.core.docker_connections import (
     DockerConnectionTransport,
     DockerContextDetails,
 )
 from easy_docker_manager.core.terminal_session_state import TerminalSessionState
+from easy_docker_manager.diagnostics import create_initial_diagnostics_report
 from easy_docker_manager.docker.container_client import DockerContainerClient
 from easy_docker_manager.docker.container_shell_launcher import ContainerShellLauncher
 from easy_docker_manager.ui.keyboard_controller import (
@@ -43,6 +45,7 @@ class EDMAppTestSetup:
 def edm_app_setup() -> EDMAppTestSetup:
     terminal_layout_view = Mock(spec=TerminalLayoutView)
     terminal_layout_view.layout = urwid.Text("layout")
+    terminal_layout_view.scroll_popup.return_value = False
     terminal_layout_view.build_urwid_style_palette.return_value = [
         ("test", "white", "black")
     ]
@@ -101,6 +104,26 @@ def test_root_widget_forwards_keypress_to_app(edm_app_setup) -> None:
     assert root.selectable()
     assert root.keypress((80, 24), "x") == "unhandled"
     edm_app_setup.app.handle_keyboard_input.assert_called_once_with("x", (80, 24))
+
+
+def test_app_routes_diagnostics_scrolling_to_the_visible_popup(edm_app_setup) -> None:
+    report = create_initial_diagnostics_report()
+    report.record_failed_docker_connection(RuntimeError("retry " * 500 + "\nERROR_END"))
+    state = TerminalSessionState(active_popup=report)
+    view = TerminalLayoutView(AppConfig())
+    view.render(state, [], lambda line: line)
+    size = (120, 30)
+    view.layout.render(size)
+    edm_app_setup.app.terminal_layout_view = view
+    edm_app_setup.app.layout = view.layout
+    root = _KeyboardRoutingWidget(edm_app_setup.app)
+
+    assert root.keypress(size, "end") is None
+    rendered_text = b"\n".join(root.render(size).text).decode()
+    assert "ERROR_END" in rendered_text
+    assert "Esc Close" in rendered_text
+    edm_app_setup.runtime.keyboard_controller.handle_keypress.assert_not_called()
+    edm_app_setup.runtime.terminal_controller.update_terminal_view.assert_not_called()
 
 
 def test_keyboard_render_action_redraws_and_checks_background_work(

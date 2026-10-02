@@ -349,13 +349,18 @@ flowchart LR
 
 `_KeyboardRoutingWidget` passes each Urwid key name to `EDMApp`.
 
+Before sending keys to the controllers, `EDMApp` lets `TerminalLayoutView`
+handle scrolling in the diagnostics and export popups. Their bodies scroll
+inside an Urwid `Frame`, while the footer instructions stay visible. The view
+reuses the scrolling body so background redraws keep the current position.
+
 `KeyboardController` handles simple key behavior, such as entering filter or
 search input and changing keyboard focus. It calls `TerminalController` for
 navigation, filtering, sorting, tab changes, and detail scrolling. While the
-export menu is open, it passes every key to `TabExportController`, which keeps
+export menu is open, it passes editing keys to `TabExportController`, which keeps
 the export rules in one place. `h` or `H` asks `DiagnosticsController` to open
-the help and diagnostics popup. While that popup is open, only `Esc` is
-handled.
+the help and diagnostics popup. Its controller handles `Esc` to close it;
+the view handles scrolling.
 
 `p` or `P` asks `SettingsController` to load the current `config.json` values.
 While the settings popup is open, `KeyboardController` passes every key to that
@@ -573,8 +578,9 @@ to. An export follows these steps:
 
 1. The user presses `e` while the details panel is active.
 2. `KeyboardController` asks `TabExportController` to open the popup.
-3. While the popup is open, `KeyboardController` passes each key to
-   `TabExportController.handle_menu_keypress()`.
+3. While the popup is open, `KeyboardController` passes editing keys to
+   `TabExportController.handle_menu_keypress()`. `Page Up` and `Page Down`
+   scroll the popup body through `TerminalLayoutView`.
 4. `TerminalSessionState.active_popup` stores the path, scope, selected field,
    and current menu phase.
 5. When the user presses `Enter`, the controller reads the tab text already in

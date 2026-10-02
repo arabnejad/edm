@@ -23,6 +23,7 @@ KEYBOARD_HELP_DETAILS = """  Up/Down     Select a container or detail line
 def build_diagnostics_popup(
     diagnostics_report: DiagnosticsReport,
     background_widget: urwid.Widget,
+    scroll_body: urwid.Scrollable,
 ) -> urwid.Overlay:
     """Place the current diagnostics report above the main terminal layout."""
     diagnostics_report_sections = build_diagnostics_report_sections(diagnostics_report)
@@ -36,11 +37,16 @@ def build_diagnostics_popup(
             wrap="clip",
         ),
         *_build_diagnostics_report_rows(diagnostics_report_sections),
-        urwid.AttrMap(urwid.Divider("─"), "title_border"),
-        urwid.Text("Esc Close", wrap="clip"),
     ]
+    scroll_body.original_widget = urwid.Pile(popup_rows)
+    footer = urwid.Pile(
+        [
+            urwid.AttrMap(urwid.Divider("─"), "title_border"),
+            urwid.Text("Up/Down or PgUp/PgDn Scroll   Esc Close", wrap="clip"),
+        ]
+    )
     popup_content = urwid.AttrMap(
-        urwid.Filler(urwid.Pile(popup_rows), valign="top"),
+        urwid.Frame(scroll_body, footer=footer),
         "diagnostics_popup",
     )
     popup = urwid.AttrMap(

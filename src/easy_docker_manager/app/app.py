@@ -164,6 +164,9 @@ class EDMApp:
                 ),
             )
 
+        if self.terminal_layout_view.scroll_popup(key, terminal_size):
+            return None
+
         keypress_result = self.keyboard_controller.handle_keypress(key, terminal_size)
         if keypress_result == KeypressResult.QUIT:
             raise urwid.ExitMainLoop()

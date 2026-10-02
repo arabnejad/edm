@@ -15,28 +15,37 @@ from easy_docker_manager.ui.formatting import MarkupSegment
 def build_tab_export_popup_menu(
     menu_state: TabExportMenuState,
     background_widget: urwid.Widget,
+    scroll_body: urwid.Scrollable,
 ) -> urwid.Overlay:
     """Place the export form or its current result message above the layout."""
     if menu_state.phase == TabExportPhase.WRITING:
         rows = [
             urwid.Text("Writing the selected tab to:", wrap="clip"),
             urwid.Text(("value", menu_state.file_path), wrap="any"),
-            urwid.Divider(),
-            urwid.Text("Please wait for the file write to finish.", wrap="clip"),
         ]
+        instructions = "Please wait for the file write to finish."
     elif menu_state.phase == TabExportPhase.CONFIRMING_OVERWRITE:
         rows = [
             urwid.Text(("export_warning", "This file already exists:"), wrap="clip"),
             urwid.Text(("value", menu_state.file_path), wrap="any"),
-            urwid.Divider(),
-            urwid.Text("Enter Overwrite   Esc Back", wrap="clip"),
         ]
+        instructions = "Enter Overwrite   Esc Back"
     else:
         rows = _build_tab_export_form_rows(menu_state)
+        instructions = "Up/Down Field   Left/Right Scope\nEnter Export     Esc Cancel"
+
+    scroll_body.original_widget = urwid.Pile(rows)
+    footer = urwid.Pile(
+        [
+            urwid.Divider(),
+            urwid.Text(instructions, wrap="clip"),
+            urwid.Text("PgUp/PgDn Scroll", wrap="clip"),
+        ]
+    )
 
     popup = urwid.AttrMap(
         urwid.LineBox(
-            urwid.Filler(urwid.Pile(rows), valign="top"),
+            urwid.Frame(scroll_body, footer=footer),
             title=f"Export {menu_state.container_tab_key.tab_name.value}",
             title_attr="export_menu_title",
         ),
@@ -55,7 +64,7 @@ def build_tab_export_popup_menu(
 def _build_tab_export_form_rows(
     menu_state: TabExportMenuState,
 ) -> list[urwid.Widget]:
-    """Build the path, scope, warning, and controls shown before writing."""
+    """Build the path, scope, warning, and error shown before writing."""
     file_style = (
         "export_menu_selected"
         if menu_state.selected_field == TabExportMenuField.FILE_PATH
@@ -109,13 +118,6 @@ def _build_tab_export_form_rows(
                 urwid.Text(("error", menu_state.error_message), wrap="any"),
             ]
         )
-    rows.extend(
-        [
-            urwid.Divider(),
-            urwid.Text("Up/Down Field   Left/Right Scope", wrap="clip"),
-            urwid.Text("Enter Export     Esc Cancel", wrap="clip"),
-        ]
-    )
     return rows
 
 

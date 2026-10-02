@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
 import urwid
 
 from easy_docker_manager.config.settings_definitions import SettingsMenuState
@@ -289,6 +290,79 @@ def test_render_shows_diagnostics_popup() -> None:
     assert "Connection:" in rendered_text
     assert "Checking..." in rendered_text
     assert "Esc Close" in rendered_text
+
+
+def test_long_diagnostics_error_scrolls_with_a_fixed_footer() -> None:
+    report = create_initial_diagnostics_report()
+    report.record_failed_docker_connection(
+        RuntimeError("Connection failed: " + "retry " * 500 + "\nERROR_END")
+    )
+    state = TerminalSessionState(active_popup=report)
+    view = TerminalLayoutView(AppConfig())
+    size = (120, 30)
+    view.render(state, [], lambda line: line)
+    initial_rows = [line.decode() for line in view.layout.render(size).text]
+    footer_row = next(i for i, row in enumerate(initial_rows) if "Esc Close" in row)
+    assert "ERROR_END" not in "\n".join(initial_rows)
+
+    assert view.scroll_popup("end", size)
+    scrolled_rows = [line.decode() for line in view.layout.render(size).text]
+    assert "ERROR_END" in "\n".join(scrolled_rows)
+    assert "Esc Close" in scrolled_rows[footer_row]
+
+    # A background redraw should leave the user at the same place in the report.
+    view.render(state, [], lambda line: line)
+    assert "ERROR_END" in b"\n".join(view.layout.render(size).text).decode()
+
+    state.active_popup = None
+    view.render(state, [], lambda line: line)
+    assert not view.scroll_popup("down", size)
+    state.active_popup = create_initial_diagnostics_report()
+    view.render(state, [], lambda line: line)
+    assert "Keyboard shortcuts" in b"\n".join(view.layout.render(size).text).decode()
+
+
+@pytest.mark.parametrize("phase", list(TabExportPhase))
+def test_long_export_text_scrolls_without_hiding_controls(
+    phase: TabExportPhase,
+) -> None:
+    menu_state = TabExportMenuState(
+        container_tab_key=ContainerTabKey("container-1", TabName.LOGS),
+        container_name="web",
+        file_path="/tmp/" + "nested/" * 300 + "PATH_END.txt",
+        file_path_cursor_index=0,
+        phase=phase,
+        error_message="Export failed: " + "reason " * 300 + "\nERROR_END",
+    )
+    state = TerminalSessionState(active_popup=menu_state)
+    view = TerminalLayoutView(AppConfig())
+    size = (120, 30)
+    view.render(state, [], lambda line: line)
+    controls = {
+        TabExportPhase.EDITING: "Enter Export     Esc Cancel",
+        TabExportPhase.CONFIRMING_OVERWRITE: "Enter Overwrite   Esc Back",
+        TabExportPhase.WRITING: "Please wait for the file write to finish.",
+    }[phase]
+    rows = [line.decode() for line in view.layout.render(size).text]
+    footer_row = next(i for i, row in enumerate(rows) if controls in row)
+    seen_text = "\n".join(rows)
+    assert "PATH_END.txt" not in seen_text
+
+    for _ in range(10):
+        assert view.scroll_popup("page down", size)
+        rows = [line.decode() for line in view.layout.render(size).text]
+        assert controls in rows[footer_row]
+        seen_text += "\n" + "\n".join(rows)
+    assert "PATH_END.txt" in seen_text
+    if phase == TabExportPhase.EDITING:
+        assert "ERROR_END" in seen_text
+
+    # These keys still belong to field selection and path editing.
+    for key in ["up", "down", "left", "right", "home", "end", "enter", "esc"]:
+        assert not view.scroll_popup(key, size)
+    assert not view.scroll_popup("page down", None)
+    assert not view.scroll_popup("page down", (120,))
+    assert view.scroll_popup("page up", size)
 
 
 def test_render_shows_editable_settings_popup() -> None:
