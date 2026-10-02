@@ -13,6 +13,8 @@ from easy_docker_manager.docker.docker_cli import (
     build_docker_cli_command_prefix,
 )
 
+COMPOSE_RECREATE_TIMEOUT_SECONDS = 120
+
 
 class DockerComposeServiceRecreateError(RuntimeError):
     """Raised when EDM cannot run the Compose recreation command."""
@@ -82,7 +84,14 @@ class DockerComposeServiceRecreator:
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=COMPOSE_RECREATE_TIMEOUT_SECONDS,
             )
+        except subprocess.TimeoutExpired as exc:
+            raise DockerComposeServiceRecreateError(
+                "Docker Compose recreation timed out after "
+                f"{COMPOSE_RECREATE_TIMEOUT_SECONDS} seconds. "
+                "Check the service state before trying again."
+            ) from exc
         except subprocess.CalledProcessError as exc:
             command_error = (exc.stderr or exc.stdout or "").strip()
             if not command_error:

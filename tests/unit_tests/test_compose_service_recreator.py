@@ -71,6 +71,7 @@ def test_recreate_service_runs_compose_for_the_selected_context(
         check=True,
         capture_output=True,
         text=True,
+        timeout=120,
     )
 
 
@@ -213,10 +214,27 @@ def test_recreate_service_reports_missing_config_file(
         )
 
 
+@pytest.mark.parametrize(
+    "error, message",
+    [
+        (
+            subprocess.CalledProcessError(
+                1, ["docker", "compose"], stderr="service web is invalid"
+            ),
+            "service web is invalid",
+        ),
+        (
+            subprocess.TimeoutExpired(["docker", "compose"], 120),
+            "timed out after 120 seconds.*Check the service state",
+        ),
+    ],
+)
 def test_recreate_service_reports_compose_command_error(
     monkeypatch,
     tmp_path: Path,
     container_summary_factory,
+    error: subprocess.SubprocessError,
+    message: str,
 ) -> None:
     config_file = tmp_path / "compose.yaml"
     config_file.write_text("services: {}\n", encoding="utf-8")
@@ -228,13 +246,7 @@ def test_recreate_service_reports_compose_command_error(
     monkeypatch.setattr(
         compose_service_recreator.subprocess,
         "run",
-        Mock(
-            side_effect=subprocess.CalledProcessError(
-                1,
-                ["docker", "compose"],
-                stderr="service web is invalid",
-            )
-        ),
+        Mock(side_effect=error),
     )
     container = container_summary_factory(
         compose_project_name="example",
@@ -245,7 +257,7 @@ def test_recreate_service_reports_compose_command_error(
 
     with pytest.raises(
         DockerComposeServiceRecreateError,
-        match="service web is invalid",
+        match=message,
     ):
         DockerComposeServiceRecreator().recreate_service(
             container,

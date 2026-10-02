@@ -315,11 +315,18 @@ computer. This matters for remote Docker contexts because those labels often
 contain paths from the remote server. EDM reports the missing path instead of
 running an incomplete command.
 
+Compose recreation has a two-minute time limit. If it times out, EDM reports
+the error. Check the service state before retrying because recreation may have
+partly completed.
+
 **Open shell** checks for `/bin/bash` first and uses `/bin/sh` when Bash is not
 available. The shell opens inside EDM and uses the full window. Type `exit` to
 leave the shell, or press `Ctrl+D` at an empty prompt. EDM returns to the
 container view when the shell exits. Commands run there can change the
 container.
+
+Each shell check has a 10-second time limit. EDM reports an error if a check
+times out. Once the interactive shell opens, it stays open until you exit it.
 
 The shell uses Docker Exec, so the container does not need an SSH server. EDM
 passes a named Docker context to the Docker CLI. Connections configured through

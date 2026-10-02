@@ -12,6 +12,8 @@ from easy_docker_manager.docker.docker_cli import (
     build_docker_cli_command_prefix,
 )
 
+SHELL_DETECTION_TIMEOUT_SECONDS = 10
+
 
 class ContainerShellLaunchError(RuntimeError):
     """Raised when EDM cannot start the Docker Exec command."""
@@ -44,7 +46,13 @@ class ContainerShellLauncher:
                     check=False,
                     capture_output=True,
                     text=True,
+                    timeout=SHELL_DETECTION_TIMEOUT_SECONDS,
                 )
+            except subprocess.TimeoutExpired as exc:
+                raise ContainerShellLaunchError(
+                    "Checking the container shell timed out after "
+                    f"{SHELL_DETECTION_TIMEOUT_SECONDS} seconds."
+                ) from exc
             except OSError as exc:
                 raise ContainerShellLaunchError(
                     f"Could not start the Docker Exec command: {exc}"
