@@ -472,6 +472,10 @@ replaces an existing file without asking for confirmation.
 | Stats | CPU, memory, network, block I/O, and process usage from Docker |
 | Top | Processes reported by Docker top |
 
+Env reuses its loaded values while they remain cached. Failed loads retry at
+the detail refresh interval while Env is visible on a running container.
+Config and Stats use binary size units such as KiB, MiB, and GiB.
+
 Live log updates use Docker's log timestamps, so the computer running EDM and
 the Docker server can have different clocks. Each update includes a short
 overlap, and EDM removes repeated lines before displaying the new output.
@@ -536,7 +540,7 @@ suffixes. If the backup fails, EDM uses defaults and leaves the file untouched.
 | Setting | Default | Purpose |
 | --- | ---: | --- |
 | `container_list_refresh_interval_seconds` | `2.0` | Seconds between container-list refreshes |
-| `detail_tab_refresh_interval_seconds` | `2.0` | Seconds between reloads of the visible Env, Config, Stats, or Top tab |
+| `detail_tab_refresh_interval_seconds` | `2.0` | Seconds between reloads of the visible Config, Stats, or Top tab, and retries of failed Env loads |
 | `initial_log_tail_lines` | `100` | Number of recent lines loaded when Logs first opens |
 | `max_log_lines` | `2000` | Maximum log lines kept for one container |
 | `max_log_line_chars` | `4000` | Maximum characters kept from one log line (minimum `32`) |

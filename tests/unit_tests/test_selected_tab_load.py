@@ -36,6 +36,86 @@ def test_tab_load_requires_selection_and_reuses_cached_text(
     assert cached_setup.background_executor.requests == []
 
 
+def test_successful_env_load_is_reused_but_can_be_forced(
+    monkeypatch,
+    docker_manager_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory(tab=TabName.ENV)
+    test_setup = docker_manager_factory(state)
+    loader = test_setup.selected_tab_content_loader
+    monkeypatch.setattr(selected_tab_load_module.time, "monotonic", lambda: 10.0)
+
+    assert loader.load_selected_tab_content_if_needed()
+    assert test_setup.background_executor.complete_submission(result="A=1")
+    assert loader.get_next_refresh_time() is None
+
+    loader.refresh_if_needed(100.0)
+    assert len(test_setup.background_executor.requests) == 1
+
+    test_setup.docker_manager.prepare_selected_container_details(force_reload=True)
+    assert len(test_setup.background_executor.requests) == 2
+    assert test_setup.background_executor.complete_submission(result="A=2")
+    assert state.tab_content_cache[state.selected_container_tab_key] == "A=2"
+    assert loader.get_next_refresh_time() is None
+
+
+@pytest.mark.parametrize("has_cached_content", [False, True])
+def test_failed_env_load_retries_then_reuses_the_successful_result(
+    has_cached_content: bool,
+    monkeypatch,
+    docker_manager_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory(tab=TabName.ENV)
+    tab_key = state.selected_container_tab_key
+    assert tab_key is not None
+    if has_cached_content:
+        state.tab_content_cache[tab_key] = "OLD=value"
+    test_setup = docker_manager_factory(state)
+    loader = test_setup.selected_tab_content_loader
+    monkeypatch.setattr(selected_tab_load_module.time, "monotonic", lambda: 10.0)
+
+    assert loader.load_selected_tab_content_if_needed(force=True)
+    assert test_setup.background_executor.complete_submission(
+        exception=RuntimeError("Docker unavailable")
+    )
+    assert loader.get_next_refresh_time() == 12.0
+    loader.refresh_if_needed(11.0)
+    assert len(test_setup.background_executor.requests) == 1
+
+    loader.refresh_if_needed(12.0)
+    assert len(test_setup.background_executor.requests) == 2
+    assert test_setup.background_executor.complete_submission(result="A=1")
+    assert state.tab_content_cache[tab_key] == "A=1"
+    assert tab_key not in state.tab_content_error_messages
+    assert loader.get_next_refresh_time() is None
+
+
+def test_env_reloads_when_its_cached_content_is_removed(
+    monkeypatch,
+    docker_manager_factory,
+    session_state_factory,
+) -> None:
+    state = session_state_factory(tab=TabName.ENV)
+    test_setup = docker_manager_factory(state)
+    loader = test_setup.selected_tab_content_loader
+    monkeypatch.setattr(selected_tab_load_module.time, "monotonic", lambda: 10.0)
+
+    assert loader.load_selected_tab_content_if_needed()
+    assert test_setup.background_executor.complete_submission(result="A=1")
+    assert loader.get_next_refresh_time() is None
+
+    state.tab_content_cache.clear()
+    assert loader.get_next_refresh_time() == 12.0
+    loader.refresh_if_needed(12.0)
+    assert test_setup.background_executor.requests[-1].arguments == (
+        "container-1",
+        TabName.ENV,
+    )
+    assert len(test_setup.background_executor.requests) == 2
+
+
 @pytest.mark.parametrize("local_time", [50.0, 500.0])
 def test_tab_load_clears_old_error_and_records_docker_log_time(
     local_time: float,

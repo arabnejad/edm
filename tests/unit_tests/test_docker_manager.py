@@ -116,7 +116,7 @@ def test_shell_return_discards_log_poll_started_before_shell_opened(
 
 @pytest.mark.parametrize(
     "tab_name",
-    [TabName.ENV, TabName.CONFIG, TabName.STATS, TabName.TOP],
+    [TabName.CONFIG, TabName.STATS, TabName.TOP],
 )
 def test_visible_periodically_refreshed_tab_is_reloaded_on_its_interval(
     tab_name: TabName,
