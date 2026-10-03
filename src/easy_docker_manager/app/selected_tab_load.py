@@ -63,9 +63,9 @@ class SelectedTabContentLoader:
         self._next_tab_refresh_at = 0.0
 
     def refresh_if_needed(self, current_time: float) -> None:
-        """Refresh the visible Env, Config, Stats, or Top tab when its interval ends."""
+        """Refresh live data or retry an Env load when its interval ends."""
         if (
-            self.state.active_detail_tab_name not in self.PERIODICALLY_REFRESHED_TABS
+            not self._selected_tab_needs_refresh()
             or not self.state.selected_container_id
             or not self._selected_container_is_running()
             or current_time < self._next_tab_refresh_at
@@ -77,13 +77,25 @@ class SelectedTabContentLoader:
     def get_next_refresh_time(self) -> Optional[float]:
         """Return when the visible tab should refresh, or None while it must wait."""
         if (
-            self.state.active_detail_tab_name not in self.PERIODICALLY_REFRESHED_TABS
+            not self._selected_tab_needs_refresh()
             or not self.state.selected_container_id
             or not self._selected_container_is_running()
             or self._tab_load_future is not None
         ):
             return None
         return self._next_tab_refresh_at
+
+    def _selected_tab_needs_refresh(self) -> bool:
+        """Reuse successful Env data; refresh changing data and retry failures."""
+        tab_key = self.state.selected_container_tab_key
+        if tab_key is None:
+            return False
+        if tab_key.tab_name == TabName.ENV:
+            return (
+                tab_key not in self.state.tab_content_cache
+                or tab_key in self.state.tab_content_error_messages
+            )
+        return tab_key.tab_name in self.PERIODICALLY_REFRESHED_TABS
 
     def load_selected_tab_content_if_needed(self, force: bool = False) -> bool:
         """Load the selected tab unless suitable cached content can be reused.

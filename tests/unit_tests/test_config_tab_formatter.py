@@ -130,7 +130,8 @@ def test_formatted_config_contains_all_sections_and_readable_values(
 
     assert "1234567890ab" in formatted_config
     assert "abcdef123456" in formatted_config
-    assert "1.0MB" in formatted_config
+    assert "1.0 MiB" in formatted_config
+    assert "2.0 MiB" in formatted_config
     assert "8080/tcp -> 0.0.0.0:8080" in formatted_config
     assert "9000/tcp -> <not published>" in formatted_config
     assert "bridge | 172.17.0.2 | aliases=web" in formatted_config

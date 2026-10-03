@@ -275,21 +275,21 @@ def _format_timestamp(value: Any) -> str:
 
 
 def _format_bytes(value: Any) -> str:
-    """Return bytes as a compact human-readable size."""
+    """Return bytes using binary units, matching the Stats tab."""
     if value in (None, "", 0):
-        return "<none>" if value in (None, "") else "0B"
+        return "<none>" if value in (None, "") else "0 B"
     try:
         size = float(value)
     except (TypeError, ValueError):
         return str(value)
-    units = ["B", "KB", "MB", "GB", "TB"]
+    units = ["B", "KiB", "MiB", "GiB", "TiB"]
     unit_index = 0
     while size >= 1024 and unit_index < len(units) - 1:
         size /= 1024
         unit_index += 1
     if unit_index == 0:
-        return f"{int(size)}{units[unit_index]}"
-    return f"{size:.1f}{units[unit_index]}"
+        return f"{int(size)} {units[unit_index]}"
+    return f"{size:.1f} {units[unit_index]}"
 
 
 def _format_keys(value: Any) -> str:

@@ -712,12 +712,18 @@ Docker lines for this check. This matters in Hidden mode, where two lines with
 different timestamps can otherwise look identical after their timestamps are
 removed.
 
-Env, Config, Stats, and Top reload while they are visible on a running
-container, using `detail_tab_refresh_interval_seconds`. Hidden tabs and stopped
-containers are left alone. Logs has a separate polling path that asks only for
-newer lines. Stopped-container logs load once. Stats and Top do not make Docker
-requests for a stopped container; their message is added immediately without
-starting a worker.
+Config, Stats, and Top reload while they are visible on a running container,
+using `detail_tab_refresh_interval_seconds`. Env reuses its successful cached
+text because a container's configured environment stays the same. Failed Env
+loads retry at the same interval. A forced reload, cache eviction, container
+status change, or Docker context change allows Env to load again.
+
+Hidden tabs and stopped containers are left alone by periodic refreshes.
+Logs has a separate polling path that asks only for newer lines.
+Stopped-container logs load once. Stats and Top do not make Docker requests
+for a stopped container; their message is added immediately without starting
+a worker. Config and Stats show binary size units such as KiB, MiB, and GiB,
+where each unit is 1024 times the previous one.
 
 The Docker connection keeps a deque of the latest 30 Stats samples for each
 container. A Stats request adds the same sample already used for rates, so the
