@@ -32,6 +32,10 @@ def build_docker_connection_popup_menu(
             "",
         )
 
+    controls = "Up/Down Select    Enter Connect    Esc Close"
+    if menu_state.context_name_being_validated is not None:
+        controls = "Checking connection...    Esc Close"
+
     content = urwid.Pile(
         [
             ("weight", 1, context_list),
@@ -45,7 +49,7 @@ def build_docker_connection_popup_menu(
             ),
             ("pack", urwid.Text(("error", message), wrap="space")),
             ("pack", urwid.AttrMap(urwid.Divider("─"), "title_border")),
-            ("pack", urwid.Text("Up/Down Select    Enter Connect    Esc Close")),
+            ("pack", urwid.Text(controls)),
         ]
     )
     popup = urwid.AttrMap(
