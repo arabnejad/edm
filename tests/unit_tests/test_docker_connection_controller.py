@@ -121,8 +121,8 @@ def test_enter_creates_and_validates_selected_context_client_in_background(
         state,
         [local_context, remote_context],
     )
-    validation_future: Future[DockerClient] = Future()
-    background_executor.submit.return_value = validation_future
+    docker_context_validation_future: Future[DockerClient] = Future()
+    background_executor.submit.return_value = docker_context_validation_future
     controller.open_docker_connection_menu()
 
     assert controller.handle_menu_keypress("down")
@@ -147,15 +147,15 @@ def test_successful_validation_reuses_client_and_refreshes_containers() -> None:
         [local_context, remote_context],
     )
     validated_docker_client = Mock(spec=DockerClient)
-    validation_future: Future[DockerClient] = Future()
-    background_executor.submit.return_value = validation_future
+    docker_context_validation_future: Future[DockerClient] = Future()
+    background_executor.submit.return_value = docker_context_validation_future
     controller.open_docker_connection_menu()
     controller.handle_menu_keypress("down")
     controller.handle_menu_keypress("enter")
     completion_callback = background_executor.submit.call_args.kwargs["on_complete"]
 
-    validation_future.set_result(validated_docker_client)
-    assert completion_callback(validation_future)
+    docker_context_validation_future.set_result(validated_docker_client)
+    assert completion_callback(docker_context_validation_future)
 
     docker_manager.reset_after_docker_context_change.assert_called_once_with()
     sdk_client.switch_docker_connection.assert_called_once_with(validated_docker_client)
@@ -173,15 +173,17 @@ def test_failed_validation_keeps_the_current_context() -> None:
         state,
         [local_context, remote_context],
     )
-    validation_future: Future[DockerClient] = Future()
-    background_executor.submit.return_value = validation_future
+    docker_context_validation_future: Future[DockerClient] = Future()
+    background_executor.submit.return_value = docker_context_validation_future
     controller.open_docker_connection_menu()
     controller.handle_menu_keypress("down")
     controller.handle_menu_keypress("enter")
     completion_callback = background_executor.submit.call_args.kwargs["on_complete"]
 
-    validation_future.set_exception(RuntimeError("SSH authentication failed"))
-    assert completion_callback(validation_future)
+    docker_context_validation_future.set_exception(
+        RuntimeError("SSH authentication failed")
+    )
+    assert completion_callback(docker_context_validation_future)
 
     assert state.active_docker_context == local_context
     menu_state = _get_open_docker_connection_menu(state)
@@ -304,7 +306,7 @@ def test_context_switch_is_unavailable_for_custom_docker_client() -> None:
     background_executor.submit.assert_not_called()
 
 
-def test_menu_ignores_keys_while_context_validation_is_running() -> None:
+def test_escape_closes_the_popup_while_a_check_is_pending() -> None:
     local_context = _local_context()
     remote_context = _remote_context()
     state = TerminalSessionState(active_docker_context=local_context)
@@ -312,21 +314,136 @@ def test_menu_ignores_keys_while_context_validation_is_running() -> None:
         state,
         [local_context, remote_context],
     )
-    background_executor.submit.return_value = Future()
+    docker_context_validation_future: Future[DockerClient] = Future()
+    background_executor.submit.return_value = docker_context_validation_future
     controller.open_docker_connection_menu()
     controller.handle_menu_keypress("down")
     controller.handle_menu_keypress("enter")
 
-    assert not controller.handle_menu_keypress("esc")
-    _get_open_docker_connection_menu(state)
+    completion_callback = background_executor.submit.call_args.kwargs["on_complete"]
+
+    for key in ("up", "down", "enter", "unknown"):
+        assert not controller.handle_menu_keypress(key)
+    assert _get_open_docker_connection_menu(state).selected_context_index == 1
+    background_executor.submit.assert_called_once()
+
+    assert controller.handle_menu_keypress("esc")
+    assert state.active_popup is None
+
+    unused_client = Mock(spec=DockerClient)
+    docker_context_validation_future.set_result(unused_client)
+    assert not completion_callback(docker_context_validation_future)
+    unused_client.close.assert_called_once_with()
+    assert state.active_docker_context == local_context
 
 
-def test_old_context_validation_completion_is_ignored() -> None:
+@pytest.mark.parametrize("check_succeeds", [False, True])
+def test_reopened_popup_ignores_the_previous_check(
+    check_succeeds: bool,
+) -> None:
+    local_context = _local_context()
+    remote_context = _remote_context()
+    state = TerminalSessionState(active_docker_context=local_context)
+    state.status_message = "Connected to localhost"
+    controller, background_executor, docker_manager, sdk_client, _ = _create_controller(
+        state,
+        [local_context, remote_context],
+    )
+    docker_context_validation_future: Future[DockerClient] = Future()
+    assert docker_context_validation_future.set_running_or_notify_cancel()
+    background_executor.submit.return_value = docker_context_validation_future
+    controller.open_docker_connection_menu()
+    controller.handle_menu_keypress("down")
+    controller.handle_menu_keypress("enter")
+    completion_callback = background_executor.submit.call_args.kwargs["on_complete"]
+
+    assert controller.handle_menu_keypress("esc")
+    assert state.active_popup is None
+    assert docker_context_validation_future.running()
+    assert controller.open_docker_connection_menu()
+    new_menu = _get_open_docker_connection_menu(state)
+
+    unused_client = Mock(spec=DockerClient)
+    if check_succeeds:
+        docker_context_validation_future.set_result(unused_client)
+    else:
+        docker_context_validation_future.set_exception(
+            RuntimeError("SSH authentication failed")
+        )
+
+    assert not completion_callback(docker_context_validation_future)
+
+    if check_succeeds:
+        unused_client.close.assert_called_once_with()
+    else:
+        unused_client.close.assert_not_called()
+    assert state.active_popup is new_menu
+    assert state.active_docker_context == local_context
+    assert state.status_message == "Connected to localhost"
+    assert new_menu.connection_error_messages == {}
+    assert new_menu.context_name_being_validated is None
+    docker_manager.reset_after_docker_context_change.assert_not_called()
+    docker_manager.start_container_list_refresh.assert_not_called()
+    sdk_client.switch_docker_connection.assert_not_called()
+
+
+def test_dismissed_check_does_not_interrupt_a_new_connection_check() -> None:
+    local_context = _local_context()
+    remote_context = _remote_context()
+    state = TerminalSessionState(active_docker_context=local_context)
+    controller, background_executor, docker_manager, sdk_client, _ = _create_controller(
+        state,
+        [local_context, remote_context],
+    )
+    old_future: Future[DockerClient] = Future()
+    assert old_future.set_running_or_notify_cancel()
+    new_future: Future[DockerClient] = Future()
+    background_executor.submit.side_effect = [old_future, new_future]
+    controller.open_docker_connection_menu()
+    controller.handle_menu_keypress("down")
+    controller.handle_menu_keypress("enter")
+    old_callback = background_executor.submit.call_args.kwargs["on_complete"]
+
+    controller.handle_menu_keypress("esc")
+    controller.open_docker_connection_menu()
+    controller.handle_menu_keypress("down")
+    controller.handle_menu_keypress("enter")
+    new_callback = background_executor.submit.call_args.kwargs["on_complete"]
+    new_menu = _get_open_docker_connection_menu(state)
+
+    old_client = Mock(spec=DockerClient)
+    old_future.set_result(old_client)
+    assert not old_callback(old_future)
+
+    old_client.close.assert_called_once_with()
+    assert state.active_popup is new_menu
+    assert new_menu.context_name_being_validated == "staging"
+    sdk_client.switch_docker_connection.assert_not_called()
+
+    new_client = Mock(spec=DockerClient)
+    new_future.set_result(new_client)
+    assert new_callback(new_future)
+
+    sdk_client.switch_docker_connection.assert_called_once_with(new_client)
+    docker_manager.start_container_list_refresh.assert_called_once_with(force=True)
+    new_client.close.assert_not_called()
+    assert state.active_docker_context == remote_context
+    assert state.active_popup is None
+
+
+def test_unused_client_close_failure_does_not_break_the_interface() -> None:
     local_context = _local_context()
     state = TerminalSessionState(active_docker_context=local_context)
     controller, _, _, _, _ = _create_controller(state, [local_context])
 
+    unused_client = Mock(spec=DockerClient)
+    unused_client.close.side_effect = RuntimeError("Connection already closed")
+    completed_future: Future[DockerClient] = Future()
+    completed_future.set_result(unused_client)
+
     assert not controller._apply_docker_context_validation_result(
         local_context,
-        Future(),
+        completed_future,
     )
+    unused_client.close.assert_called_once_with()
+    assert state.active_docker_context == local_context

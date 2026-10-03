@@ -178,6 +178,9 @@ clears the old container data and loads containers from the selected
 context. If it fails, the current connection stays active and the popup shows
 the reason.
 
+Press `Esc` to close the popup at any time. A connection check can finish in
+the background, but it will not change your current connection.
+
 If a later container-list refresh fails, EDM keeps the last successful list
 on screen and marks the context as `stale`. The status line shows when that
 list was last updated. EDM keeps retrying and changes the context back to

@@ -376,8 +376,10 @@ changing the container.
 `c` or `C` opens the connection popup. EDM reads the context list from Docker's
 local configuration but does not connect to any of them yet. `Up` and `Down`
 change the selection, and `Enter` checks the selected connection in a worker.
-Other shortcuts are ignored while the popup is open. `Esc` closes it when no
-check is running.
+Other shortcuts are ignored while the popup is open. `Esc` closes it at any
+time. The connection check can finish in the background, but its result is
+ignored and any unused client is closed. This also protects a reopened popup
+from results belonging to the previous one.
 
 Whenever Help opens, `DiagnosticsController` creates a new report with the
 application versions and file paths. It asks `BackgroundExecutor` to load the

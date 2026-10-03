@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from concurrent.futures import Future
+from contextlib import suppress
 from functools import partial
 from typing import Optional
 
@@ -94,6 +95,10 @@ class DockerConnectionController:
         menu_state = self.state.active_popup
         if not isinstance(menu_state, DockerConnectionMenuState):
             return False
+        if key == "esc":
+            self.state.active_popup = None
+            self._docker_context_validation_future = None
+            return True
         if menu_state.context_name_being_validated is not None:
             return False
         if key == "up":
@@ -102,9 +107,6 @@ class DockerConnectionController:
             return self._move_selected_context(1)
         if key == "enter":
             return self._connect_to_selected_context()
-        if key == "esc":
-            self.state.active_popup = None
-            return True
         return False
 
     def _move_selected_context(self, offset: int) -> bool:
@@ -175,16 +177,18 @@ class DockerConnectionController:
         docker_context_validation_future: Future[DockerClient],
     ) -> bool:
         """Switch to the checked context or show why the check failed."""
+        menu_state = self.state.active_popup
         if (
             docker_context_validation_future
             is not self._docker_context_validation_future
+            or not isinstance(menu_state, DockerConnectionMenuState)
         ):
+            # The popup was closed. Release the client without changing connections.
+            with suppress(Exception):
+                unused_client = docker_context_validation_future.result()
+                unused_client.close()
             return False
         self._docker_context_validation_future = None
-
-        menu_state = self.state.active_popup
-        if not isinstance(menu_state, DockerConnectionMenuState):
-            return False
         menu_state.context_name_being_validated = None
 
         try:

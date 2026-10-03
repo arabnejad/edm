@@ -243,7 +243,7 @@ def test_container_action_popup_warns_before_compose_recreation() -> None:
     assert "lost." in rendered_text
 
 
-def test_docker_connection_popup_shows_contexts_and_selected_endpoint() -> None:
+def test_connection_popup_shows_contexts_and_controls() -> None:
     local_context = DockerContextDetails(
         "default",
         "unix:///var/run/docker.sock",
@@ -254,13 +254,14 @@ def test_docker_connection_popup_shows_contexts_and_selected_endpoint() -> None:
         "ssh://docker@staging",
         DockerConnectionTransport.SSH,
     )
+    menu_state = DockerConnectionMenuState(
+        [local_context, remote_context],
+        active_context_name="default",
+        selected_context_index=1,
+    )
     state = TerminalSessionState(
         active_docker_context=local_context,
-        active_popup=DockerConnectionMenuState(
-            [local_context, remote_context],
-            active_context_name="default",
-            selected_context_index=1,
-        ),
+        active_popup=menu_state,
     )
     view = TerminalLayoutView(AppConfig(), installed_edm_version="1.2.0")
 
@@ -271,7 +272,19 @@ def test_docker_connection_popup_shows_contexts_and_selected_endpoint() -> None:
     assert "localhost" in rendered_text
     assert "> staging" in rendered_text
     assert "ssh://docker@staging" in rendered_text
+    assert "Esc Close" in rendered_text
     assert "Not checked" in rendered_text
+    assert "Up/Down Select" in rendered_text
+    assert "Enter Connect" in rendered_text
+
+    menu_state.context_name_being_validated = "staging"
+    view.render(state, [], lambda line: line)
+    rendered_text = b"\n".join(view.layout.render((120, 30)).text).decode()
+    assert "Checking..." in rendered_text
+    assert "Checking connection..." in rendered_text
+    assert "Esc Close" in rendered_text
+    assert "Enter Connect" not in rendered_text
+    assert "Up/Down Select" not in rendered_text
 
 
 def test_render_shows_diagnostics_popup() -> None:
