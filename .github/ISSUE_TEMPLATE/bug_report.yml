@@ -14,8 +14,8 @@ body:
     id: edm-version
     attributes:
       label: EDM version
-      description: Run `python -m pip show easy-docker-manager` to find it.
-      placeholder: Paste the value shown after Version
+      description: Run `edm --version` to check the installed EDM command.
+      placeholder: Paste the output of edm --version
     validations:
       required: true
 
@@ -88,7 +88,9 @@ body:
     id: logs
     attributes:
       label: Relevant output
-      description: Paste sanitized terminal output or EDM log entries, if available.
+      description: >-
+        Paste sanitized terminal output, EDM log entries, or `edm --diagnostics`
+        output, if available.
       render: shell
 
   - type: checkboxes

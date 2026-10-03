@@ -176,7 +176,7 @@ class TabExportController:
         return menu_state.selected_field != previous_field
 
     def _toggle_tab_export_scope(self) -> bool:
-        """Switch between the current view and all loaded tab content.
+        """Switch between matching Logs lines and all loaded text.
 
         Current view applies the active Logs regex. Searches on Env, Config,
         and Top only highlight text, so those tabs keep all loaded lines in

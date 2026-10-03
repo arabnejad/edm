@@ -60,11 +60,10 @@ class AppConfigStore:
         return app_config
 
     def save(self, app_config: AppConfig) -> bool:
-        """Write config.json and report whether the file was saved.
+        """Save settings and return whether the write succeeded.
 
-        Startup does not need the return value because EDM can keep running
-        with defaults when the file cannot be written. The settings editor
-        checks it so a failed save is shown to the user.
+        Startup can use loaded settings even when saving fails. The settings
+        editor checks the result so it can show a failed save.
         """
         try:
             serialized_config = json.dumps(

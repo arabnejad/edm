@@ -21,19 +21,19 @@ Easy Docker Manager (EDM) lets you inspect Docker containers from a
 keyboard-driven terminal interface. It uses Urwid for the screen and the
 Docker Python SDK to read container data.
 
-With EDM, you can view:
+EDM lets you:
 
-- running containers, with an option to include stopped containers
-- recent logs with automatic updates
-- container environment variables
-- a readable summary of Docker inspection data
-- current CPU, memory, network, disk, and process statistics
-- the process list returned by Docker top
-- Start, Stop, and Restart container actions
-- live filtering, grouping, and sorting of the container list
-- a separate search query for each container tab
-- export of the active tab to a local text file
-- a local JSON configuration file
+- view running containers, with an option to include stopped containers
+- follow recent logs with automatic updates
+- read container environment variables
+- view a readable summary of Docker inspection data
+- monitor CPU, memory, network, disk, and process statistics
+- inspect the process list returned by Docker top
+- start, stop, and restart containers
+- filter, group, and sort the container list
+- search each container tab separately
+- export the active tab to a local text file
+- save settings in a local JSON configuration file
 
 ## Demo
 
@@ -259,7 +259,7 @@ and the server certificate is verified. A context created with
 | `/` | Start editing the search for the current tab |
 | `f` | Start editing the container filter while the container panel is active |
 | `s` | Open container list options while the container panel is active |
-| `a` or `A` | Open actions for the selected running container |
+| `a` or `A` | Open actions for the selected container. Available actions depend on its status. |
 | `e` | Export the active tab while the detail panel is active |
 | `Page Up` / `Page Down` | Move through the detail panel one page at a time |
 | `Home` / `End` | Select the first or last detail line |
@@ -590,8 +590,10 @@ terminal and continues to start.
 
 ## Development Checks
 
-Use Python 3.10 or newer for the development tools. Installed EDM releases
-still support Python 3.9.
+Use Python 3.10 or newer for development. CI runs the static checks on Python
+3.12, but pre-commit uses the Python interpreter that runs it. The pinned
+Bandit version supports Python 3.14. Installed EDM releases still support
+Python 3.9 and newer.
 
 Run the normal formatting, linting, type, and source-security checks:
 
