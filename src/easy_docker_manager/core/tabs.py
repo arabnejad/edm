@@ -25,7 +25,7 @@ class TabName(str, Enum):
 
 @dataclass(frozen=True)
 class ContainerTabKey:
-    """Identify one container and one of its detail tabs.
+    """Identify a container tab for cached text, searches, and loading errors.
 
     EDM uses this object as a dictionary key for loaded text, search queries,
     loading errors, and background requests. It is frozen so its hash cannot

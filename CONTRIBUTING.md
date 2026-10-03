@@ -11,12 +11,16 @@ Thank you for helping improve Easy Docker Manager.
 
 ## Development Setup
 
-Fork and clone the repository, then use Python 3.10 or newer to create a
-virtual environment:
+Fork and clone the repository, then create a virtual environment with Python
+3.10 or newer. CI runs the static checks on Python 3.12. Pre-commit uses the
+Python interpreter that runs it, so you do not need to install Python 3.12
+separately.
 
 ```bash
 python -m venv .venv
 ```
+
+On Windows, you can use `py -3 -m venv .venv` instead.
 
 Activate it on Linux or macOS:
 
@@ -39,9 +43,8 @@ pre-commit install
 ```
 
 The development tools require a recent pip version because pip uses the
-dependency groups defined in `pyproject.toml`. EDM still supports Python 3.9
-as a runtime; the newer Python requirement applies only to its development
-tools.
+dependency groups defined in `pyproject.toml`. The pinned Bandit version
+supports Python 3.14. EDM still supports Python 3.9 and newer at runtime.
 
 ## Making A Change
 

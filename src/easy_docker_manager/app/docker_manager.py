@@ -27,7 +27,7 @@ from easy_docker_manager.tabs.tab_data_loader import ContainerTabTextLoader
 
 
 class DockerManager:
-    """Route Docker requests to the class responsible for each workflow.
+    """Coordinate container refreshes, tab loads, log polling, and container actions.
 
     EDMApp asks when Docker data should be refreshed. TerminalController uses
     the same object after the user changes a container, tab, or sort order.

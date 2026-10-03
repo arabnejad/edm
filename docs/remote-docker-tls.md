@@ -424,6 +424,19 @@ fi
 
 The command has no output when it succeeds.
 
+Keep this backup until the TLS setup works. Before changing the service
+override below, also back up any existing `override.conf`:
+
+```bash
+if sudo test -f /etc/systemd/system/docker.service.d/override.conf; then
+  sudo cp /etc/systemd/system/docker.service.d/override.conf \
+    /etc/docker/docker-service-override.before-edm-tls
+fi
+```
+
+Note whether these two files existed before the setup. The rollback steps use
+their backups to restore your previous settings.
+
 Open the Docker configuration:
 
 ```bash
@@ -610,9 +623,16 @@ Only port `2376` should appear. Port `2375` is normally used for unencrypted
 Docker API traffic. Stop and check the daemon configuration if `2375` is also
 listening.
 
-At this point, `systemd` is running Docker in the background. It will also
-start Docker after the server reboots. You do not need to run `dockerd`
-yourself.
+At this point, `systemd` is running Docker in the background. Check whether it
+is enabled to start after reboot:
+
+```bash
+systemctl is-enabled docker.service
+```
+
+If the output is `enabled`, Docker will start after reboot. If it is `disabled`
+and you want automatic startup, run `sudo systemctl enable docker.service`.
+You do not need to run `dockerd` yourself.
 
 If Docker does not become active, inspect its log:
 
@@ -760,6 +780,7 @@ EDM also supports Docker's TLS environment variables:
 
 ```bash
 export TLS_SERVER_IP=192.0.2.10
+unset DOCKER_CONTEXT
 export DOCKER_HOST="tcp://${TLS_SERVER_IP}:2376"
 export DOCKER_TLS_VERIFY=1
 export DOCKER_CERT_PATH="$HOME/.docker/edm-remote"
@@ -770,6 +791,10 @@ The directory in `DOCKER_CERT_PATH` must contain `ca.pem`, `cert.pem`, and
 `key.pem`. This is a local path on the computer where EDM runs. It is not a
 path on the remote Docker server. Replace `192.0.2.10` with the real server
 address, as described earlier in this guide.
+
+Clear `DOCKER_CONTEXT` first because it takes precedence over `DOCKER_HOST`.
+Docker's [CLI environment-variable reference](https://docs.docker.com/reference/cli/docker/#environment-variables)
+describes this order. These exports affect only the current shell.
 
 The two locations contain different runtime files:
 
@@ -782,6 +807,167 @@ Remote Docker server: /etc/docker/tls/ca.pem
                        /etc/docker/tls/server-cert.pem
                        /etc/docker/tls/server-key.pem
 ```
+
+## Renew the Server and Client Certificates
+
+Renew before the `notAfter` dates shown in step 4. This procedure keeps the
+existing CA and creates new server and client keys and certificates. Arrange
+a short Docker restart, as in the initial setup.
+
+On the remote server, create a new private working directory. Restore `ca.pem`
+and the password-protected `ca-key.pem` from your protected backup into it.
+Restore `ca.srl` too if you kept the CA serial file. Do not create a new CA for
+this renewal.
+
+```bash
+mkdir -m 0700 ~/docker-tls-renewal
+cd ~/docker-tls-renewal
+export TLS_SERVER_IP=192.0.2.10
+```
+
+Use an unused directory name if that directory already exists. Replace the IP
+address with the one used by the Docker context. Check that the CA will remain
+valid for the full year covered by the new certificates:
+
+```bash
+chmod 0400 ca-key.pem
+openssl x509 -in ca.pem -noout -checkend 31536000
+```
+
+Continue only if this check succeeds. If the CA needs replacement, repeat the
+CA creation in step 3 and replace the trusted `ca.pem` on the server and every
+client, as well as all certificates and their Docker context copies.
+
+Create and verify the replacement certificates. Each signing command asks for
+the CA key password:
+
+```bash
+openssl genrsa -out server-key.pem 4096
+openssl req -new -sha256 -key server-key.pem \
+  -subj '/CN=edm-docker-server' -out server.csr
+printf 'subjectAltName = IP:%s\nextendedKeyUsage = serverAuth\n' \
+  "$TLS_SERVER_IP" > server-ext.cnf
+openssl x509 -req -days 365 -sha256 -in server.csr \
+  -CA ca.pem -CAkey ca-key.pem -CAcreateserial \
+  -out server-cert.pem -extfile server-ext.cnf
+
+openssl genrsa -out key.pem 4096
+openssl req -new -sha256 -key key.pem \
+  -subj '/CN=edm-client' -out client.csr
+printf 'extendedKeyUsage = clientAuth\n' > client-ext.cnf
+openssl x509 -req -days 365 -sha256 -in client.csr \
+  -CA ca.pem -CAkey ca-key.pem -CAcreateserial \
+  -out cert.pem -extfile client-ext.cnf
+
+openssl verify -CAfile ca.pem -purpose sslserver server-cert.pem
+openssl verify -CAfile ca.pem -verify_ip "$TLS_SERVER_IP" server-cert.pem
+openssl verify -CAfile ca.pem -purpose sslclient cert.pem
+openssl x509 -in server-cert.pem -noout -dates
+openssl x509 -in cert.pem -noout -dates
+chmod 0400 server-key.pem key.pem
+chmod 0444 ca.pem server-cert.pem cert.pem
+```
+
+All three verification commands must report `OK`. Back up the installed server
+files, install the new server pair, and restart Docker:
+
+```bash
+export TLS_BACKUP_DIR="/etc/docker/tls-backup-$(date -u +%Y%m%dT%H%M%SZ)"
+sudo cp -a /etc/docker/tls "$TLS_BACKUP_DIR"
+sudo install -o root -g root -m 0444 server-cert.pem /etc/docker/tls/
+sudo install -o root -g root -m 0400 server-key.pem /etc/docker/tls/
+sudo systemctl restart docker.service
+systemctl is-active docker.service
+```
+
+The service must report `active`. If it fails, restore `server-cert.pem` and
+`server-key.pem` from `$TLS_BACKUP_DIR` with the same `install` commands and
+restart Docker. The CA is unchanged, so existing client certificates continue
+to work while you distribute the new client pair.
+
+On the EDM computer, close EDM and copy the new client files into a temporary
+private directory before replacing the old read-only files:
+
+```bash
+export TLS_SERVER_IP=192.0.2.10
+export TLS_CLIENT_STAGE="$(mktemp -d)"
+scp remote-admin@"${TLS_SERVER_IP}":docker-tls-renewal/{ca.pem,cert.pem,key.pem} \
+  "$TLS_CLIENT_STAGE/"
+install -m 0444 "$TLS_CLIENT_STAGE/ca.pem" "$TLS_CLIENT_STAGE/cert.pem" \
+  "$HOME/.docker/edm-remote/"
+install -m 0400 "$TLS_CLIENT_STAGE/key.pem" "$HOME/.docker/edm-remote/"
+rm "$TLS_CLIENT_STAGE/ca.pem" "$TLS_CLIENT_STAGE/cert.pem" "$TLS_CLIENT_STAGE/key.pem"
+rmdir "$TLS_CLIENT_STAGE"
+```
+
+Docker contexts hold imported copies of certificates. Replacing the original
+files does not refresh those copies. Use
+[`docker context update`](https://docs.docker.com/reference/cli/docker/context/update/)
+to import the replacement files, then test the context:
+
+```bash
+docker context update remote-tls-context \
+  --docker "host=tcp://${TLS_SERVER_IP}:2376,ca=$HOME/.docker/edm-remote/ca.pem,cert=$HOME/.docker/edm-remote/cert.pem,key=$HOME/.docker/edm-remote/key.pem"
+docker --context remote-tls-context version
+docker --context remote-tls-context ps
+```
+
+Update every context and client that uses these credentials. Environment-based
+connections read the files from `DOCKER_CERT_PATH` instead. Reopen EDM after
+the tests pass. Remove the extra client key and temporary request files from
+the server's renewal directory, then return the CA key to protected storage.
+
+## Roll Back the TLS Listener
+
+On the remote server, restore the configuration saved before step 6:
+
+```bash
+sudo cp /etc/docker/daemon.json.before-edm-tls /etc/docker/daemon.json
+```
+
+If `daemon.json` did not exist before the setup, remove the file created in
+step 6 instead. Keep any unrelated settings added since then.
+
+If you changed an existing service override, restore its backup:
+
+```bash
+sudo cp /etc/docker/docker-service-override.before-edm-tls \
+  /etc/systemd/system/docker.service.d/override.conf
+```
+
+If step 6 created a new `override.conf`, remove that file instead. Leave other
+service drop-ins in place. Then restart Docker and check local access:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart docker.service
+systemctl is-active docker.service
+sudo ss -lntp | grep -E ':(2375|2376)'
+env -u DOCKER_CONTEXT -u DOCKER_HOST -u DOCKER_TLS \
+  -u DOCKER_TLS_VERIFY -u DOCKER_CERT_PATH \
+  docker --host unix:///var/run/docker.sock version
+```
+
+The service should be `active`. If Docker previously used only the local
+socket, neither TCP port should appear; `grep` returning no matches is expected.
+Remove the firewall rule added in step 7, using the same client source address:
+
+```bash
+sudo ufw delete allow proto tcp from 198.51.100.25 to any port 2376
+```
+
+For other firewalls, remove the equivalent rule. On the EDM computer, close
+EDM, clear the TLS environment variables, and return to the local context:
+
+```bash
+unset DOCKER_CONTEXT DOCKER_HOST DOCKER_TLS DOCKER_TLS_VERIFY DOCKER_CERT_PATH
+docker context use default
+docker context rm remote-tls-context
+```
+
+Remove the context only if you no longer need it. After local Docker works,
+remove TLS files that are no longer used. Keep any CA backup needed by other
+servers or clients.
 
 ## Common Problems
 
@@ -827,13 +1013,8 @@ encrypting the traffic without checking identities is not enough.
 - [Docker: `dockerd` command reference](https://docs.docker.com/reference/cli/dockerd/)
 - [Docker: Create a Docker context](https://docs.docker.com/reference/cli/docker/context/create/)
 - [Docker: Understand and inspect Docker contexts](https://docs.docker.com/engine/manage-resources/contexts/)
-- [OpenSSL: Display certificate fields with `openssl x509`](https://docs.openssl.org/4.0/man1/openssl-x509/)
-- [OpenSSL: Verify certificates with `openssl verify`](https://docs.openssl.org/master/man1/openssl-verify/)
+- [Docker: Update a Docker context and its certificates](https://docs.docker.com/reference/cli/docker/context/update/)
+- [OpenSSL 3.0: Display certificate fields with `openssl x509`](https://docs.openssl.org/3.0/man1/openssl-x509/)
+- [OpenSSL 3.0: Verify certificates with `openssl verify`](https://docs.openssl.org/3.0/man1/openssl-verify/)
 - [Ubuntu Server: Configure a firewall with UFW](https://documentation.ubuntu.com/server/how-to/security/firewalls/)
 - [IETF RFC 5737: IPv4 address ranges reserved for documentation](https://www.rfc-editor.org/rfc/rfc5737.html)
-- [Flatcar: Enable the Docker remote API with TLS authentication](https://www.flatcar.org/docs/latest/orchestrate/containers/customizing-docker/#enable-the-remote-api-with-tls-authentication)
-- [JetBrains: Configure a Docker TCP connection and certificate folder](https://www.jetbrains.com/help/idea/settings-docker.html)
-- [GitLab: Use Docker over TLS on port 2376](https://docs.gitlab.com/ci/docker/docker_in_docker/#docker-in-docker-with-tls-enabled-in-kubernetes)
-- [Portainer: Connect to a remote Docker API with TLS](https://docs.portainer.io/admin/environments/add/docker/api)
-- [Oracle Linux: Docker security recommendations](https://docs.oracle.com/en/operating-systems/oracle-linux/docker/docker-SecurityRecommendations.html)
-- [Cloudflare: How mutual TLS works](https://www.cloudflare.com/learning/access-management/what-is-mutual-tls/)

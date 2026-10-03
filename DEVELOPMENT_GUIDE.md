@@ -112,6 +112,7 @@ flowchart TD
     UI[TerminalController]
     ExportController[TabExportController]
     SettingsController[SettingsController]
+    DiagnosticsController[DiagnosticsController]
     ActionController[ContainerActionController]
     ConnectionController[DockerConnectionController]
     State[(TerminalSessionState)]
@@ -139,6 +140,7 @@ flowchart TD
     Keyboard --> UI
     Keyboard --> ExportController
     Keyboard --> SettingsController
+    Keyboard --> DiagnosticsController
     Keyboard --> ActionController
     Keyboard --> ConnectionController
 
@@ -150,6 +152,8 @@ flowchart TD
     ExportController --> State
     ExportController --> Executor
     SettingsController --> State
+    DiagnosticsController --> State
+    DiagnosticsController --> Executor
     ActionController --> State
     ActionController --> DockerManager
     ConnectionController --> State
@@ -185,7 +189,7 @@ flowchart TD
     classDef thirdParty fill:#fff8c5,stroke:#9a6700,color:#1f2328
     classDef external fill:#f6f8fa,stroke:#57606a,color:#1f2328
 
-    class App,Keyboard,UI,ExportController,SettingsController,ActionController,ConnectionController,State,DockerManager,ContainerRefresh,TabLoad,LogUpdates,ActionRunner,Executor,Notifier,Loader,ContextReader,Client,Filter,Formatter,Exporter,View edm
+    class App,Keyboard,UI,ExportController,SettingsController,DiagnosticsController,ActionController,ConnectionController,State,DockerManager,ContainerRefresh,TabLoad,LogUpdates,ActionRunner,Executor,Notifier,Loader,ContextReader,Client,Filter,Formatter,Exporter,View edm
     class DockerSDK,Urwid thirdParty
     class User,Docker,Terminal,File external
 ```
@@ -199,10 +203,12 @@ The main responsibilities are:
   filtering, sorting, and tab searches, and prepares the screen for drawing.
 - `TabExportController` edits export choices, prepares a cached text snapshot,
   and handles the result of the file write.
+- `DiagnosticsController` opens the diagnostics popup and loads Docker version
+  details in a worker.
 - `SettingsController` edits a configuration draft and saves it for the next
   EDM run.
 - `ContainerActionController` handles action selection and confirmation for
-  the selected running container.
+  the selected container. Available actions depend on its status.
 - `DockerConnectionController` reads saved contexts, checks the selected one
   in a worker, and switches the connection when the check succeeds.
 - `TabTextFilter` applies the same line-visibility rules to the terminal and
@@ -362,10 +368,17 @@ the export rules in one place. `h` or `H` asks `DiagnosticsController` to open
 the help and diagnostics popup. Its controller handles `Esc` to close it;
 the view handles scrolling.
 
+`KeyboardController.handle_keypress()` returns a `KeypressResult`:
+
+- `NONE`: nothing visible changed.
+- `REDRAW`: draw the screen again and check whether background work should start.
+- `QUIT`: leave the terminal application.
+
 `p` or `P` asks `SettingsController` to load the current `config.json` values.
 While the settings popup is open, `KeyboardController` passes every key to that
-controller. This prevents normal shortcuts from running while a value is being
-edited.
+controller. It returns a Boolean indicating whether the menu changed.
+`KeyboardController` turns that result into `REDRAW` or `NONE` for `EDMApp`.
+This prevents normal shortcuts from running while a value is being edited.
 
 `a` or `A` asks `ContainerActionController` to show the actions available for
 the selected container. While the popup is open, normal shortcuts are ignored.
@@ -459,12 +472,6 @@ not switch to the new object because the Docker client, background executor,
 cache, and Urwid palette were already created from the startup config. The
 popup stays open and tells the user to restart EDM. `Esc` closes the popup and
 leaves the running application unchanged.
-
-The controller returns a `KeypressResult`:
-
-- `NONE`: nothing visible changed.
-- `REDRAW`: draw the screen again and check whether background work should start.
-- `QUIT`: leave the terminal application.
 
 ### Container Actions
 
@@ -917,11 +924,15 @@ old key is removed and the new setting receives its default.
 
 ## Development Setup
 
-Create a virtual environment:
+Use Python 3.10 or newer for development. CI runs the static checks on Python
+3.12, but pre-commit uses the Python interpreter that runs it. Create a virtual
+environment:
 
 ```bash
 python -m venv .venv
 ```
+
+On Windows, you can use `py -3 -m venv .venv` instead.
 
 Activate it on Linux or macOS:
 
@@ -961,8 +972,10 @@ make check
 ```
 
 `make check` runs Black in check mode, Ruff, mypy, Bandit, and the unit tests.
-It requires Python 3.10 or newer and does not need network access. EDM's Python
-3.9 runtime support is checked separately by CI.
+The pinned tools support Python 3.10 and newer, including Python 3.14.
+Once the development dependencies are installed, `make check`
+does not need network access. CI tests EDM at runtime on Python 3.9 through
+3.14.
 
 Other useful commands are:
 
